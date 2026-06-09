@@ -3,13 +3,13 @@ import { isUpstoxAuthenticated, getInstrumentKey, getUpstoxHistoricalData, getFi
 import { isDhanConfigured, getSecurityId, getDhanHistoricalData } from '@/lib/dhan-api'
 
 const INTERVAL_MAP: Record<string, { yahoo: string; dhan: string; upstox: string }> = {
-  '1D': { yahoo: '5m', dhan: '1', upstox: '5_minute' },
-  '1W': { yahoo: '30m', dhan: '5', upstox: '30_minute' },
-  '1M': { yahoo: '1d', dhan: 'DAY', upstox: '1_day' },
-  '3M': { yahoo: '1d', dhan: 'DAY', upstox: '1_day' },
-  '6M': { yahoo: '1wk', dhan: 'WEEK', upstox: '1_week' },
-  '1Y': { yahoo: '1wk', dhan: 'WEEK', upstox: '1_week' },
-  '5Y': { yahoo: '1mo', dhan: 'MONTH', upstox: '1_month' },
+  '1D': { yahoo: '5m', dhan: '1', upstox: '1minute' },
+  '1W': { yahoo: '30m', dhan: '5', upstox: '30minute' },
+  '1M': { yahoo: '1d', dhan: 'DAY', upstox: 'day' },
+  '3M': { yahoo: '1d', dhan: 'DAY', upstox: 'day' },
+  '6M': { yahoo: '1wk', dhan: 'WEEK', upstox: 'week' },
+  '1Y': { yahoo: '1wk', dhan: 'WEEK', upstox: 'week' },
+  '5Y': { yahoo: '1mo', dhan: 'MONTH', upstox: 'month' },
 }
 
 const LIMIT_MAP: Record<string, number> = {

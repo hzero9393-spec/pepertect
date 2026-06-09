@@ -35,29 +35,26 @@ export interface UpstoxProfile {
 
 export interface UpstoxQuote {
   instrument_token: string
-  exchange: string
-  trading_symbol: string
   symbol: string
-  ltp: number
-  open: number
-  high: number
-  low: number
-  close: number
-  previous_close: number
-  change: number
-  change_percent: number
-  volume: number
-  total_buy_quantity: number
-  total_sell_quantity: number
-  average_price: number
-  oi: number
-  oi_day_high: number
-  oi_day_low: number
+  last_price: number
+  ohlc: {
+    open: number
+    high: number
+    low: number
+    close: number
+  }
+  net_change: number
+  volume: number | null
+  average_price: number | null
+  oi: number | null
+  total_buy_quantity: number | null
+  total_sell_quantity: number | null
+  lower_circuit_limit: number | null
+  upper_circuit_limit: number | null
   last_trade_time: string
-  upper_circuit: number
-  lower_circuit: number
-  week_52_high: number
-  week_52_low: number
+  oi_day_high: number | null
+  oi_day_low: number | null
+  timestamp: string
   depth: {
     buy: Array<{ quantity: number; price: number; orders: number }>
     sell: Array<{ quantity: number; price: number; orders: number }>
@@ -350,13 +347,17 @@ export async function getUpstoxQuotes(instrumentKeys: string[]): Promise<UpstoxQ
       }
     )
 
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.warn(`[Upstox] Quotes API returned ${res.status}`)
+      return []
+    }
     const data = await res.json()
     if (!data?.data) return []
 
-    // Upstox returns data as object keyed by instrument_key
+    // Upstox returns data as object keyed by "NSE_EQ:RELIANCE" or "NSE_INDEX:Nifty 50"
     return Object.values(data.data) as UpstoxQuote[]
-  } catch {
+  } catch (err) {
+    console.warn('[Upstox] Quotes fetch error:', err)
     return []
   }
 }
@@ -447,7 +448,7 @@ export async function getUpstoxOptionChain(
  */
 export async function getUpstoxHistoricalData(
   instrumentKey: string,
-  resolution: string = '1d',
+  resolution: string = 'day',
   fromDate: string,
   toDate: string
 ): Promise<UpstoxHistoricalCandle[]> {
@@ -455,8 +456,10 @@ export async function getUpstoxHistoricalData(
   if (!token) return []
 
   try {
+    // Upstox URL format: /historical-candle/{instrument_key}/{interval}/{to_date}/{from_date}
+    // to_date is the recent date, from_date is the older date
     const res = await fetch(
-      `${UPSTOX_API_V2}/historical-candle/${encodeURIComponent(instrumentKey)}/${resolution}/${fromDate}/${toDate}`,
+      `${UPSTOX_API_V2}/historical-candle/${encodeURIComponent(instrumentKey)}/${resolution}/${toDate}/${fromDate}`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -465,8 +468,15 @@ export async function getUpstoxHistoricalData(
       }
     )
 
-    if (!res.ok) return []
+    if (!res.ok) {
+      console.warn(`[Upstox] Historical API returned ${res.status} for ${instrumentKey}`)
+      return []
+    }
     const data = await res.json()
+    if (data?.status === 'error') {
+      console.warn(`[Upstox] Historical API error:`, data.errors)
+      return []
+    }
     if (!data?.data?.candles) return []
 
     // Upstox returns candles as arrays: [timestamp, open, high, low, close, volume, oi]
@@ -479,7 +489,8 @@ export async function getUpstoxHistoricalData(
       volume: Number(c[5] || 0),
       oi: Number(c[6] || 0),
     }))
-  } catch {
+  } catch (err) {
+    console.warn(`[Upstox] Historical data error:`, err)
     return []
   }
 }
@@ -679,23 +690,25 @@ export async function fetchStockOverviewData(symbol: string, dbStock: Record<str
   if (isUpstoxAuthenticated()) {
     try {
       const upstoxQuote = await getUpstoxStockQuote(symbolUpper)
-      if (upstoxQuote && upstoxQuote.ltp > 0) {
+      if (upstoxQuote && upstoxQuote.last_price > 0) {
         dataSource = 'upstox'
+        const previousClose = upstoxQuote.ohlc.close - upstoxQuote.net_change
+        const changePercent = previousClose > 0 ? (upstoxQuote.net_change / previousClose) * 100 : 0
         realtimeData = {
-          currentPrice: upstoxQuote.ltp,
-          open: upstoxQuote.open,
-          high: upstoxQuote.high,
-          low: upstoxQuote.low,
-          close: upstoxQuote.close,
-          previousClose: upstoxQuote.previous_close,
-          change: upstoxQuote.change,
-          changePercent: upstoxQuote.change_percent,
-          volume: upstoxQuote.volume,
-          averageTradePrice: upstoxQuote.average_price,
-          week52High: upstoxQuote.week_52_high,
-          week52Low: upstoxQuote.week_52_low,
-          upperCircuit: upstoxQuote.upper_circuit,
-          lowerCircuit: upstoxQuote.lower_circuit,
+          currentPrice: upstoxQuote.last_price,
+          open: upstoxQuote.ohlc.open,
+          high: upstoxQuote.ohlc.high,
+          low: upstoxQuote.ohlc.low,
+          close: upstoxQuote.ohlc.close,
+          previousClose,
+          change: upstoxQuote.net_change,
+          changePercent,
+          volume: upstoxQuote.volume || 0,
+          averageTradePrice: upstoxQuote.average_price || 0,
+          week52High: 0, // Not available in Upstox quote
+          week52Low: 0,  // Not available in Upstox quote
+          upperCircuit: upstoxQuote.upper_circuit_limit || 0,
+          lowerCircuit: upstoxQuote.lower_circuit_limit || 0,
           isRealData: true,
         }
       }
@@ -845,20 +858,22 @@ export async function fetchIndexDetailData(symbol: string): Promise<IndexDetailD
   if (isUpstoxAuthenticated()) {
     try {
       const upstoxQuote = await getUpstoxIndexQuote(symbolUpper)
-      if (upstoxQuote && upstoxQuote.ltp > 0) {
+      if (upstoxQuote && upstoxQuote.last_price > 0) {
+        const previousClose = upstoxQuote.ohlc.close - upstoxQuote.net_change
+        const changePercent = previousClose > 0 ? (upstoxQuote.net_change / previousClose) * 100 : 0
         return {
           symbol: symbolUpper,
           name: indexConfig.name,
-          currentPrice: upstoxQuote.ltp,
-          change: upstoxQuote.change,
-          changePercent: upstoxQuote.change_percent,
-          open: upstoxQuote.open,
-          high: upstoxQuote.high,
-          low: upstoxQuote.low,
-          previousClose: upstoxQuote.previous_close,
-          volume: upstoxQuote.volume,
-          week52High: upstoxQuote.week_52_high,
-          week52Low: upstoxQuote.week_52_low,
+          currentPrice: upstoxQuote.last_price,
+          change: upstoxQuote.net_change,
+          changePercent,
+          open: upstoxQuote.ohlc.open,
+          high: upstoxQuote.ohlc.high,
+          low: upstoxQuote.ohlc.low,
+          previousClose,
+          volume: upstoxQuote.volume || 0,
+          week52High: 0,
+          week52Low: 0,
           lotSize: indexConfig.lotSize,
           strikeInterval: indexConfig.strikeInterval,
           marketState: 'OPEN',
