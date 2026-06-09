@@ -849,8 +849,29 @@ export async function fetchStockOverviewData(symbol: string, dbStock: Record<str
  * Fetch index detail data
  * Priority: Upstox → Yahoo Finance → Fallback
  */
+// Alias map: common alternative names → canonical keys
+const INDEX_ALIASES: Record<string, string> = {
+  'NIFTY 50': 'NIFTY',
+  'NIFTY50': 'NIFTY',
+  'BANK NIFTY': 'BANKNIFTY',
+  'BANKNIFTY': 'BANKNIFTY',
+  'FIN NIFTY': 'FINNIFTY',
+  'FINNIFTY': 'FINNIFTY',
+  'MIDCAP NIFTY': 'MIDCPNIFTY',
+  'MIDCAPNIFTY': 'MIDCPNIFTY',
+  'NIFTY MIDCAP 150': 'MIDCPNIFTY',
+  'NIFTY FINANCIAL SERVICES': 'FINNIFTY',
+  'NIFTY BANK': 'BANKNIFTY',
+}
+
+function resolveIndexSymbol(symbol: string): string {
+  const upper = symbol.toUpperCase()
+  return INDEX_ALIASES[upper] || (INDEX_CONFIGS[upper] ? upper : upper)
+}
+
 export async function fetchIndexDetailData(symbol: string): Promise<IndexDetailData | null> {
-  const symbolUpper = symbol.toUpperCase()
+  const resolvedSymbol = resolveIndexSymbol(symbol)
+  const symbolUpper = resolvedSymbol.toUpperCase()
   const indexConfig = INDEX_CONFIGS[symbolUpper]
   if (!indexConfig) return null
 
