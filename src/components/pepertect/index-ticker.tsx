@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { formatPercent } from '@/lib/format'
+import { useAppStore } from '@/lib/store'
 
 interface IndexData {
   symbol: string
@@ -21,6 +22,7 @@ interface MarketStatus {
 export function IndexTicker() {
   const [indices, setIndices] = useState<IndexData[]>([])
   const [marketStatus, setMarketStatus] = useState<MarketStatus | null>(null)
+  const { navigateToIndex } = useAppStore()
 
   useEffect(() => {
     async function fetchData() {
@@ -83,7 +85,7 @@ export function IndexTicker() {
             </span>
           </div>
 
-          {/* Index Ticker - Groww style minimal */}
+          {/* Index Ticker - Clickable to open index detail */}
           <div className="flex items-center gap-1 overflow-x-auto">
             {indices.map((idx) => {
               const isPositive = idx.change >= 0
@@ -92,13 +94,7 @@ export function IndexTicker() {
                   key={idx.symbol}
                   type="button"
                   className="flex items-center gap-1.5 shrink-0 cursor-pointer hover:bg-white px-2.5 py-1 rounded-md transition-colors"
-                  onClick={() => {
-                    window.dispatchEvent(
-                      new CustomEvent('openIndexDetail', {
-                        detail: { symbol: idx.symbol },
-                      })
-                    )
-                  }}
+                  onClick={() => navigateToIndex(idx.symbol)}
                 >
                   <span className="text-[11px] font-semibold" style={{ color: '#4a4a4a' }}>
                     {idx.symbol}

@@ -264,7 +264,7 @@ export function AppShell() {
 
         {/* Main Content */}
         <main
-          className="flex-1 md:ml-[240px] mt-14 pb-16 md:pb-0 transition-all duration-300"
+          className={`flex-1 md:ml-[240px] pb-16 md:pb-0 transition-all duration-300 ${isFooterPage ? 'mt-14' : 'mt-[92px]'}`}
           style={{ marginRight: watchlistSidebarOpen ? 280 : 0 }}
         >
           <PageContent page={currentPage} />
