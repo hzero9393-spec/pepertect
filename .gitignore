@@ -75,3 +75,6 @@ mini-services/
 
 # Download
 download/
+
+# Credentials master file
+PEPERTECT_CREDENTIALS.md
