@@ -336,14 +336,16 @@ export async function getUpstoxQuotes(instrumentKeys: string[]): Promise<UpstoxQ
   if (!token || instrumentKeys.length === 0) return []
 
   try {
+    const encodedKeys = instrumentKeys.map(k => encodeURIComponent(k)).join(',')
     const res = await fetch(
-      `${UPSTOX_API_V2}/market-quote/quotes?instrument_key=${instrumentKeys.join(',')}`,
+      `${UPSTOX_API_V2}/market-quote/quotes?instrument_key=${encodedKeys}`,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Accept': 'application/json',
         },
         next: { revalidate: 30 },
+        signal: AbortSignal.timeout(15000),
       }
     )
 
@@ -354,7 +356,7 @@ export async function getUpstoxQuotes(instrumentKeys: string[]): Promise<UpstoxQ
     const data = await res.json()
     if (!data?.data) return []
 
-    // Upstox returns data as object keyed by "NSE_EQ:RELIANCE" or "NSE_INDEX:Nifty 50"
+    // Upstox returns data as object keyed by "NSE_EQ:INE002A01018" or "NSE_INDEX:Nifty 50"
     return Object.values(data.data) as UpstoxQuote[]
   } catch (err) {
     console.warn('[Upstox] Quotes fetch error:', err)
@@ -545,6 +547,136 @@ export async function getUpstoxAllIndexQuotes(): Promise<UpstoxQuote[]> {
 export async function getUpstoxTopStockQuotes(count: number = 50): Promise<UpstoxQuote[]> {
   const keys = Object.values(NSE_EQ_INSTRUMENT_MAP).slice(0, count)
   return getUpstoxQuotes(keys)
+}
+
+/**
+ * Get stock quotes as a map keyed by symbol (e.g., "RELIANCE" → UpstoxQuote)
+ * This is the recommended way to fetch quotes when you need to match back to symbols
+ */
+export async function getUpstoxStockQuotesMap(symbols?: string[]): Promise<Record<string, UpstoxQuote>> {
+  const token = getAccessToken()
+  if (!token) return {}
+
+  const mapToUse = symbols
+    ? Object.fromEntries(Object.entries(NSE_EQ_INSTRUMENT_MAP).filter(([k]) => symbols.includes(k)))
+    : NSE_EQ_INSTRUMENT_MAP
+
+  const keys = Object.values(mapToUse)
+  if (keys.length === 0) return {}
+
+  try {
+    // URL-encode the instrument keys (pipe | needs to be %7C)
+    const encodedKeys = keys.map(k => encodeURIComponent(k)).join(',')
+    const res = await fetch(
+      `${UPSTOX_API_V2}/market-quote/quotes?instrument_key=${encodedKeys}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        next: { revalidate: 30 },
+        signal: AbortSignal.timeout(15000), // 15s timeout
+      }
+    )
+
+    if (!res.ok) return {}
+    const data = await res.json()
+    if (!data?.data) return {}
+
+    // Upstox response keys are in format "NSE_EQ:RELIANCE" (segment:symbol)
+    // We need to match our symbol names to the response keys
+    const result: Record<string, UpstoxQuote> = {}
+    for (const [symbol, instrumentKey] of Object.entries(mapToUse)) {
+      // Try multiple key formats: "NSE_EQ:SYMBOL", "NSE_INDEX:Nifty 50", and the pipe version
+      const possibleKeys = [
+        `${instrumentKey.replace('|', ':')}`,  // NSE_EQ:INE002A01018 (unlikely but check)
+        instrumentKey,                          // NSE_EQ|INE002A01018 (pipe format)
+      ]
+      // Also try the segment:symbol format (most common in Upstox responses)
+      const segment = instrumentKey.split('|')[0] // NSE_EQ, NSE_INDEX, BSE_INDEX
+      const segmentSymbolKey = `${segment}:${symbol}`  // NSE_EQ:RELIANCE
+      possibleKeys.unshift(segmentSymbolKey)
+
+      let quoteData = null
+      for (const key of possibleKeys) {
+        if (data.data[key]) {
+          quoteData = data.data[key]
+          break
+        }
+      }
+      if (quoteData) {
+        result[symbol] = quoteData as UpstoxQuote
+      }
+    }
+
+    return result
+  } catch (err) {
+    console.warn('[Upstox] Stock quotes map error:', err)
+    return {}
+  }
+}
+
+/**
+ * Get index quotes as a map keyed by symbol (e.g., "NIFTY" → UpstoxQuote)
+ */
+export async function getUpstoxIndexQuotesMap(symbols?: string[]): Promise<Record<string, UpstoxQuote>> {
+  const token = getAccessToken()
+  if (!token) return {}
+
+  const mapToUse = symbols
+    ? Object.fromEntries(Object.entries(NSE_INDEX_INSTRUMENT_MAP).filter(([k]) => symbols.includes(k)))
+    : NSE_INDEX_INSTRUMENT_MAP
+
+  const keys = Object.values(mapToUse)
+  if (keys.length === 0) return {}
+
+  try {
+    const encodedKeys = keys.map(k => encodeURIComponent(k)).join(',')
+    const res = await fetch(
+      `${UPSTOX_API_V2}/market-quote/quotes?instrument_key=${encodedKeys}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/json',
+        },
+        next: { revalidate: 30 },
+        signal: AbortSignal.timeout(15000), // 15s timeout
+      }
+    )
+
+    if (!res.ok) return {}
+    const data = await res.json()
+    if (!data?.data) return {}
+
+    // Upstox response keys for indices: "NSE_INDEX:Nifty 50", "NSE_INDEX:Nifty Bank", "BSE_INDEX:SENSEX"
+    // Our instrument keys: "NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX"
+    const result: Record<string, UpstoxQuote> = {}
+    for (const [symbol, instrumentKey] of Object.entries(mapToUse)) {
+      const possibleKeys = [
+        instrumentKey.replace('|', ':'),  // NSE_INDEX:Nifty 50 (most likely!)
+        instrumentKey,                    // NSE_INDEX|Nifty 50
+      ]
+      // Also try segment:symbol for index
+      const segment = instrumentKey.split('|')[0]
+      possibleKeys.unshift(`${segment}:${symbol}`)
+
+      let quoteData = null
+      for (const key of possibleKeys) {
+        if (data.data[key]) {
+          quoteData = data.data[key]
+          break
+        }
+      }
+      if (quoteData) {
+        result[symbol] = quoteData as UpstoxQuote
+      }
+    }
+
+    return result
+  } catch (err) {
+    console.warn('[Upstox] Index quotes map error:', err)
+    return {}
+  }
 }
 
 // ─── Yahoo Finance Fallback ──────────────────────────────────────────────

@@ -194,6 +194,9 @@ export function IndexDetailPage() {
   useEffect(() => {
     if (symbol) {
       fetchDetail()
+      // Auto-refresh every 30 seconds
+      const interval = setInterval(fetchDetail, 30000)
+      return () => clearInterval(interval)
     }
   }, [symbol, fetchDetail])
 

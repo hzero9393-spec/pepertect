@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server'
 
 export async function GET() {
   try {
+    // Get top gainers from DB (sorted by changePercent desc)
+    // Note: For real-time data, the /api/stocks endpoint updates prices from Upstox
+    // The DB values get updated on page load. For now, we sort by DB data.
     const gainers = await db.stock.findMany({
       where: {
         isActive: true,

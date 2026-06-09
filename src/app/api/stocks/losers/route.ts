@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 
 export async function GET() {
   try {
+    // Get top losers from DB (sorted by changePercent asc)
     const losers = await db.stock.findMany({
       where: {
         isActive: true,

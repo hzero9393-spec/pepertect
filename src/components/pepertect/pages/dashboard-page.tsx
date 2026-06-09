@@ -231,6 +231,14 @@ export function DashboardPage() {
     fetchStocks()
     fetchGainers()
     fetchLosers()
+    // Auto-refresh every 30 seconds for real-time data
+    const interval = setInterval(() => {
+      fetchIndices()
+      fetchStocks()
+      fetchGainers()
+      fetchLosers()
+    }, 30000)
+    return () => clearInterval(interval)
   }, [fetchIndices, fetchStocks, fetchGainers, fetchLosers])
 
   // ─── Listen for index detail events from ticker ────────────
