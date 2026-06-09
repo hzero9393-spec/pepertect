@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { fetchStockOverviewData } from '@/lib/dhan-api'
+import { fetchStockOverviewData } from '@/lib/upstox-api'
 
 export async function GET(
   request: NextRequest,
@@ -15,7 +15,7 @@ export async function GET(
       where: { symbol: symbolUpper },
     })
 
-    // Use comprehensive data fetcher (Dhan → Yahoo → DB fallback)
+    // Use comprehensive data fetcher (Upstox → Dhan → Yahoo → DB fallback)
     const stockData = await fetchStockOverviewData(symbolUpper, dbStock as Record<string, unknown> | null)
 
     // Get similar stocks from the same sector

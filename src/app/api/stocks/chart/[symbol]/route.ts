@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { isDhanConfigured, getSecurityId, getDhanHistoricalData, getFinanceHistoricalData } from '@/lib/dhan-api'
+import { isUpstoxAuthenticated, getInstrumentKey, getUpstoxHistoricalData, getFinanceHistoricalData } from '@/lib/upstox-api'
+import { isDhanConfigured, getSecurityId, getDhanHistoricalData } from '@/lib/dhan-api'
 
-const INTERVAL_MAP: Record<string, { yahoo: string; dhan: string }> = {
-  '1D': { yahoo: '5m', dhan: '1' },
-  '1W': { yahoo: '30m', dhan: '5' },
-  '1M': { yahoo: '1d', dhan: 'DAY' },
-  '3M': { yahoo: '1d', dhan: 'DAY' },
-  '6M': { yahoo: '1wk', dhan: 'WEEK' },
-  '1Y': { yahoo: '1wk', dhan: 'WEEK' },
-  '5Y': { yahoo: '1mo', dhan: 'MONTH' },
+const INTERVAL_MAP: Record<string, { yahoo: string; dhan: string; upstox: string }> = {
+  '1D': { yahoo: '5m', dhan: '1', upstox: '5_minute' },
+  '1W': { yahoo: '30m', dhan: '5', upstox: '30_minute' },
+  '1M': { yahoo: '1d', dhan: 'DAY', upstox: '1_day' },
+  '3M': { yahoo: '1d', dhan: 'DAY', upstox: '1_day' },
+  '6M': { yahoo: '1wk', dhan: 'WEEK', upstox: '1_week' },
+  '1Y': { yahoo: '1wk', dhan: 'WEEK', upstox: '1_week' },
+  '5Y': { yahoo: '1mo', dhan: 'MONTH', upstox: '1_month' },
 }
 
 const LIMIT_MAP: Record<string, number> = {
@@ -76,7 +77,57 @@ export async function GET(
     const range = searchParams.get('range') || '1M'
     const basePrice = searchParams.get('basePrice') ? parseFloat(searchParams.get('basePrice')!) : 1500
 
-    // 1. Try Dhan API for historical data
+    const intervals = INTERVAL_MAP[range]
+
+    // 1. Try Upstox API for historical data
+    if (isUpstoxAuthenticated()) {
+      try {
+        const instrumentKey = getInstrumentKey(symbolUpper, 'NSE_EQ')
+        if (instrumentKey) {
+          const now = new Date()
+          const from = new Date(now)
+
+          if (range === '1D') from.setDate(from.getDate() - 1)
+          else if (range === '1W') from.setDate(from.getDate() - 7)
+          else if (range === '1M') from.setMonth(from.getMonth() - 1)
+          else if (range === '3M') from.setMonth(from.getMonth() - 3)
+          else if (range === '6M') from.setMonth(from.getMonth() - 6)
+          else if (range === '1Y') from.setFullYear(from.getFullYear() - 1)
+          else from.setFullYear(from.getFullYear() - 5)
+
+          const candles = await getUpstoxHistoricalData(
+            instrumentKey,
+            intervals.upstox,
+            from.toISOString().split('T')[0],
+            now.toISOString().split('T')[0]
+          )
+
+          if (candles.length > 0) {
+            const parsed = candles.map(c => ({
+              date: c.timestamp,
+              open: c.open,
+              high: c.high,
+              low: c.low,
+              close: c.close,
+              volume: c.volume,
+            })).filter(c => c.close > 0)
+
+            if (parsed.length > 0) {
+              return NextResponse.json({
+                success: true,
+                data: parsed,
+                isRealData: true,
+                dataSource: 'upstox',
+              })
+            }
+          }
+        }
+      } catch (upstoxErr) {
+        console.warn(`[Upstox] Chart data error for ${symbolUpper}:`, upstoxErr)
+      }
+    }
+
+    // 2. Try Dhan API for historical data
     if (isDhanConfigured()) {
       const securityId = getSecurityId(symbolUpper, 'NSE_EQ')
       const foId = getSecurityId(symbolUpper, 'NSE_FO')
@@ -84,11 +135,9 @@ export async function GET(
       const segment = securityId ? 'NSE_EQ' : 'NSE_FO'
 
       if (id) {
-        const intervals = INTERVAL_MAP[range]
         const now = new Date()
         const from = new Date(now)
 
-        // Calculate from date based on range
         if (range === '1D') from.setDate(from.getDate() - 1)
         else if (range === '1W') from.setDate(from.getDate() - 7)
         else if (range === '1M') from.setMonth(from.getMonth() - 1)
@@ -122,15 +171,15 @@ export async function GET(
               success: true,
               data: parsed,
               isRealData: true,
+              dataSource: 'dhan',
             })
           }
         }
       }
     }
 
-    // 2. Try Finance API (Yahoo)
+    // 3. Try Finance API (Yahoo)
     try {
-      const intervals = INTERVAL_MAP[range]
       const limit = LIMIT_MAP[range] || 30
       const candles = await getFinanceHistoricalData(symbolUpper, intervals.yahoo, limit)
 
@@ -149,6 +198,7 @@ export async function GET(
             success: true,
             data: parsed,
             isRealData: true,
+            dataSource: 'yahoo',
           })
         }
       }
@@ -156,12 +206,13 @@ export async function GET(
       console.warn(`[API /stocks/chart/${symbolUpper}] Finance API error:`, apiErr)
     }
 
-    // 3. Fallback: generate mock chart data
+    // 4. Fallback: generate mock chart data
     const mockData = generateMockChartData(symbolUpper, range, basePrice)
     return NextResponse.json({
       success: true,
       data: mockData,
       isRealData: false,
+      dataSource: 'mock',
     })
   } catch (error) {
     console.error(`[API /stocks/chart] Error:`, error)
