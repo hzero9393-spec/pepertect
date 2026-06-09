@@ -249,7 +249,7 @@ export function AppShell() {
             className="w-[240px] p-0"
             style={{ background: '#ffffff', borderRight: '1px solid #e5e7eb' }}
           >
-            <Sidebar onLogout={handleLogout} userName={user?.name} userEmail={user?.email} userRole={user?.role} userAvatar={user?.avatar} />
+            <Sidebar variant="mobile" onLogout={handleLogout} userName={user?.name} userEmail={user?.email} userRole={user?.role} userAvatar={user?.avatar} />
           </SheetContent>
         </Sheet>
 

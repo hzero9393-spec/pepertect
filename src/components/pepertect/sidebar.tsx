@@ -81,9 +81,10 @@ interface SidebarProps {
   userEmail?: string | null
   userRole?: string | null
   userAvatar?: string | null
+  variant?: 'desktop' | 'mobile'
 }
 
-export function Sidebar({ onLogout, userName, userAvatar }: SidebarProps) {
+export function Sidebar({ onLogout, userName, userAvatar, variant = 'desktop' }: SidebarProps) {
   const { setCurrentPage, currentPage } = useAppStore()
   const { user } = useAuthStore()
   const pathname = usePathname()
@@ -120,7 +121,10 @@ export function Sidebar({ onLogout, userName, userAvatar }: SidebarProps) {
 
   return (
     <aside
-      className="fixed left-0 top-0 z-40 hidden h-screen w-[240px] flex-col md:flex"
+      className={cn(
+        'h-screen w-[240px] flex-col',
+        variant === 'desktop' ? 'fixed left-0 top-0 z-40 hidden md:flex' : 'flex',
+      )}
       role="navigation"
       aria-label="Main navigation"
     >
