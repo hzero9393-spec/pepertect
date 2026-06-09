@@ -92,11 +92,11 @@ export function TopBar({ userName, onLogout, userAvatar }: TopBarProps) {
 
         {/* Right section */}
         <div className="flex items-center gap-1.5">
-          {/* Watchlist Toggle */}
+          {/* Watchlist Toggle - Desktop only */}
           <Button
             variant="ghost"
             size="icon"
-            className={`relative shrink-0 h-9 w-9 rounded-xl transition-all duration-200 ${
+            className={`relative hidden md:flex shrink-0 h-9 w-9 rounded-xl transition-all duration-200 ${
               watchlistSidebarOpen
                 ? 'text-[#00D09C] bg-[#00D09C]/10 hover:bg-[#00D09C]/15'
                 : 'text-[#9ca3af] hover:text-[#00D09C] hover:bg-[#f4f6f8]'
