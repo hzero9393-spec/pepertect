@@ -124,20 +124,24 @@ export async function GET(request: Request) {
     if (realCount > 0) {
       // Fire and forget - don't await
       Promise.allSettled(
-        Object.entries(upstoxMap).map(([symbol, rt]) =>
-          db.stock.update({
+        Object.entries(upstoxMap).map(([symbol, rt]) => {
+          const previousClose = rt.ohlc.close - rt.net_change
+          const changePercent = previousClose > 0 ? (rt.net_change / previousClose) * 100 : 0
+          return db.stock.update({
             where: { symbol },
             data: {
               currentPrice: rt.last_price,
               change: rt.net_change,
+              changePercent: Math.round(changePercent * 100) / 100,
               open: rt.ohlc.open,
               high: rt.ohlc.high,
               low: rt.ohlc.low,
+              previousClose,
               volume: rt.volume,
               lastUpdated: new Date(),
             },
           }).catch(() => {}) // Silently ignore individual update errors
-        )
+        })
       ).catch(() => {}) // Silently ignore overall errors
     }
 
