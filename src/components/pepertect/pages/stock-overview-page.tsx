@@ -35,6 +35,7 @@ import {
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/auth-store'
 import { useAppStore } from '@/lib/store'
+import { useWatchlistStore } from '@/lib/watchlist-store'
 import { useTradeSuccess } from '@/components/pepertect/trade-success-popup'
 import { TradeConfirmModal, TradeConfirmData } from '@/components/pepertect/ui/trade-confirm-modal'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -352,8 +353,9 @@ export function StockOverviewPage() {
   const [selectedExpiry, setSelectedExpiry] = useState<string>('')
   const optionChainRef = useRef<HTMLDivElement>(null)
 
-  // Watchlist state
-  const [isInWatchlist, setIsInWatchlist] = useState(false)
+  // Watchlist state - use shared store for instant sync
+  const { isInWatchlist: isInWatchlistStore, addSymbol, removeSymbol, setSymbols: setWatchlistSymbols, loaded: watchlistLoaded } = useWatchlistStore()
+  const isInWatchlist = isInWatchlistStore(selectedStockSymbol || '')
   const [watchlistLoading, setWatchlistLoading] = useState(false)
 
   // Trade modal state
@@ -368,22 +370,20 @@ export function StockOverviewPage() {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false)
   const [confirmData, setConfirmData] = useState<TradeConfirmData | null>(null)
 
-  // ─── Check if stock is in watchlist ─────────────────────────────
-  const checkWatchlistStatus = useCallback(async () => {
-    if (!token || !selectedStockSymbol) return
-    try {
-      const res = await fetch('/api/trade/watchlist', {
-        headers: { Authorization: `Bearer ${token}` },
+  // ─── Load watchlist into shared store ──────────────────────────
+  useEffect(() => {
+    if (!token || watchlistLoaded) return
+    fetch('/api/trade/watchlist', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setWatchlistSymbols(data.data.map((item: { symbol: string }) => item.symbol))
+        }
       })
-      const data = await res.json()
-      if (data.success && Array.isArray(data.data)) {
-        const found = data.data.some((item: { symbol: string }) => item.symbol === selectedStockSymbol)
-        setIsInWatchlist(found)
-      }
-    } catch {
-      // Silent
-    }
-  }, [token, selectedStockSymbol])
+      .catch(() => { /* silent */ })
+  }, [token, watchlistLoaded, setWatchlistSymbols])
 
   // ─── Toggle watchlist ───────────────────────────────────────────
   const toggleWatchlist = async () => {
@@ -401,7 +401,7 @@ export function StockOverviewPage() {
         })
         const data = await res.json()
         if (data.success) {
-          setIsInWatchlist(false)
+          removeSymbol(stockDetail.symbol)
           toast.success(data.message || 'Removed from watchlist')
         } else {
           toast.error(data.error || 'Failed to remove')
@@ -417,7 +417,7 @@ export function StockOverviewPage() {
         })
         const data = await res.json()
         if (data.success) {
-          setIsInWatchlist(true)
+          addSymbol(stockDetail.symbol)
           toast.success(data.message || 'Added to watchlist')
         } else {
           toast.error(data.error || 'Failed to add')
@@ -493,10 +493,6 @@ export function StockOverviewPage() {
   useEffect(() => {
     fetchDetail()
   }, [fetchDetail])
-
-  useEffect(() => {
-    checkWatchlistStatus()
-  }, [checkWatchlistStatus])
 
   useEffect(() => {
     fetchChart()

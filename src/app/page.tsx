@@ -204,6 +204,9 @@ export default function Home() {
       // Ignore logout API errors
     }
     logout()
+    // Clear watchlist store on logout
+    const { useWatchlistStore } = await import('@/lib/watchlist-store')
+    useWatchlistStore.getState().clear()
   }
 
   const isFooterPage = FOOTER_PAGES.has(currentPage)

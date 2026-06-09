@@ -21,10 +21,12 @@ import {
   Plus,
   Loader2,
   ShoppingCart,
+  Star,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/auth-store'
 import { useAppStore } from '@/lib/store'
+import { useWatchlistStore } from '@/lib/watchlist-store'
 import { useTradeSuccess } from '@/components/pepertect/trade-success-popup'
 import { TradeConfirmModal, TradeConfirmData } from '@/components/pepertect/ui/trade-confirm-modal'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -164,14 +166,56 @@ function SkeletonRow() {
 
 function StockRow({ stock, onClick }: { stock: TradeableStock; onClick: () => void }) {
   const isPositive = stock.changePercent >= 0
+  const { token } = useAuthStore()
+  const { isInWatchlist, addSymbol, removeSymbol } = useWatchlistStore()
+  const [starLoading, setStarLoading] = useState(false)
+  const inWatchlist = isInWatchlist(stock.symbol)
+
+  const handleToggleWatchlist = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!token || starLoading) return
+    setStarLoading(true)
+    try {
+      if (inWatchlist) {
+        const res = await fetch('/api/trade/watchlist', {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: stock.symbol }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          removeSymbol(stock.symbol)
+          toast.success(data.message || `${stock.symbol} removed from watchlist`)
+        } else {
+          toast.error(data.error || 'Failed to remove')
+        }
+      } else {
+        const res = await fetch('/api/trade/watchlist', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: stock.symbol }),
+        })
+        const data = await res.json()
+        if (data.success) {
+          addSymbol(stock.symbol)
+          toast.success(data.message || `${stock.symbol} added to watchlist`)
+        } else {
+          toast.error(data.error || 'Failed to add')
+        }
+      }
+    } catch {
+      toast.error('Network error')
+    } finally {
+      setStarLoading(false)
+    }
+  }
 
   return (
-    <motion.button
-      onClick={onClick}
+    <motion.div
       className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#f8f9fb] transition-colors cursor-pointer text-left border-b border-[#f0f2f5] last:border-b-0 group"
       whileTap={{ scale: 0.998 }}
     >
-      <div className="flex items-center gap-3 min-w-0 flex-1">
+      <div className="flex items-center gap-3 min-w-0 flex-1" onClick={onClick}>
         <StockLogo symbol={stock.symbol} name={stock.name} sector={stock.sector} size="md" />
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -209,8 +253,22 @@ function StockRow({ stock, onClick }: { stock: TradeableStock; onClick: () => vo
           )}
           {isPositive ? '+' : ''}{stock.changePercent.toFixed(2)}%
         </div>
+        {/* Watchlist Star */}
+        <button
+          onClick={handleToggleWatchlist}
+          disabled={starLoading}
+          className={`flex size-7 items-center justify-center rounded-lg transition-all duration-200 shrink-0 ${
+            inWatchlist
+              ? 'text-[#00D09C] hover:bg-[#00D09C]/10'
+              : 'text-[#d1d5db] hover:text-[#00D09C] hover:bg-[#00D09C]/5'
+          }`}
+          title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+          aria-label={inWatchlist ? `Remove ${stock.symbol} from watchlist` : `Add ${stock.symbol} to watchlist`}
+        >
+          <Star className={`size-4 ${inWatchlist ? 'fill-[#00D09C]' : ''}`} />
+        </button>
       </div>
-    </motion.button>
+    </motion.div>
   )
 }
 
@@ -574,6 +632,7 @@ export function TradingPage() {
   const { token, user } = useAuthStore()
   const { setCurrentPage, navigateToStock } = useAppStore()
   const { showTradeSuccess } = useTradeSuccess()
+  const { setSymbols: setWatchlistSymbols, loaded: watchlistLoaded } = useWatchlistStore()
 
   // ── State ─────────────────────────────────────────────────────────────
   const [stocks, setStocks] = useState<TradeableStock[]>([])
@@ -714,6 +773,21 @@ export function TradingPage() {
   useEffect(() => {
     fetchPortfolio()
   }, [fetchPortfolio])
+
+  // Load watchlist symbols into shared store on mount
+  useEffect(() => {
+    if (!token || watchlistLoaded) return
+    fetch('/api/trade/watchlist', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && Array.isArray(data.data)) {
+          setWatchlistSymbols(data.data.map((item: { symbol: string }) => item.symbol))
+        }
+      })
+      .catch(() => { /* silent */ })
+  }, [token, watchlistLoaded, setWatchlistSymbols])
 
   // ── Filtered Stocks ──────────────────────────────────────────────────
   const displayStocks = useMemo(() => {

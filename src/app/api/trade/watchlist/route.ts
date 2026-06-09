@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
     const watchlistItems = await db.watchlistItem.findMany({
       where: { userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { addedAt: 'desc' },
     })
 
     if (watchlistItems.length === 0) {
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       return {
         id: item.id,
         symbol: item.symbol,
-        addedAt: item.createdAt,
+        addedAt: item.addedAt,
         // Stock details (may be null if stock not found)
         stock: stock || null,
       }
@@ -158,18 +158,34 @@ export async function DELETE(request: NextRequest) {
     const body = await request.json()
     const { symbol, id } = body
 
-    // Remove by ID or symbol
-    let deletedItem
+    let deletedSymbol = ''
 
     if (id) {
-      deletedItem = await db.watchlistItem.deleteFirst({
+      // Delete by ID — verify ownership first
+      const item = await db.watchlistItem.findFirst({
         where: { id, userId },
       })
+      if (!item) {
+        return NextResponse.json(
+          { error: 'Item not found in watchlist' },
+          { status: 404 }
+        )
+      }
+      await db.watchlistItem.delete({ where: { id } })
+      deletedSymbol = item.symbol
     } else if (symbol) {
       const upperSymbol = symbol.toUpperCase()
-      deletedItem = await db.watchlistItem.deleteFirst({
-        where: { userId_symbol: { userId, symbol: upperSymbol } },
+      // Use deleteMany with filter (safe, won't throw if not found)
+      const result = await db.watchlistItem.deleteMany({
+        where: { userId, symbol: upperSymbol },
       })
+      if (result.count === 0) {
+        return NextResponse.json(
+          { error: 'Item not found in watchlist' },
+          { status: 404 }
+        )
+      }
+      deletedSymbol = upperSymbol
     } else {
       return NextResponse.json(
         { error: 'Either symbol or id is required' },
@@ -177,16 +193,9 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    if (!deletedItem) {
-      return NextResponse.json(
-        { error: 'Item not found in watchlist' },
-        { status: 404 }
-      )
-    }
-
     return NextResponse.json({
       success: true,
-      message: `${deletedItem.symbol} removed from watchlist`,
+      message: `${deletedSymbol} removed from watchlist`,
     })
   } catch (error) {
     console.error('[DELETE /api/trade/watchlist] Error:', error)

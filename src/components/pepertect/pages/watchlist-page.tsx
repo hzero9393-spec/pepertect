@@ -20,6 +20,7 @@ import {
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/auth-store'
 import { useAppStore } from '@/lib/store'
+import { useWatchlistStore } from '@/lib/watchlist-store'
 import { formatINR } from '@/lib/format'
 import { StockLogo } from '@/components/pepertect/ui/stock-logo'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -79,11 +80,13 @@ function SkeletonRow() {
 export function WatchlistPage() {
   const { token } = useAuthStore()
   const { navigateToStock } = useAppStore()
+  const { removeSymbol } = useWatchlistStore()
 
   const [items, setItems] = useState<WatchlistItem[]>([])
   const [loading, setLoading] = useState(true)
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [clearingAll, setClearingAll] = useState(false)
 
   // ── Fetch Watchlist ──────────────────────────────────────────────────
   const fetchWatchlist = useCallback(async () => {
@@ -123,6 +126,7 @@ export function WatchlistPage() {
       const data = await res.json()
       if (data.success) {
         setItems(prev => prev.filter(i => i.id !== item.id))
+        removeSymbol(item.symbol)
         toast.success(data.message || `${item.symbol} removed from watchlist`)
       } else {
         toast.error(data.error || 'Failed to remove')
@@ -131,6 +135,33 @@ export function WatchlistPage() {
       toast.error('Network error')
     } finally {
       setRemovingId(null)
+    }
+  }
+
+  // ── Clear All from Watchlist ─────────────────────────────────────────
+  const handleClearAll = async () => {
+    if (!token || items.length === 0) return
+    setClearingAll(true)
+    try {
+      // Delete all items one by one (parallel)
+      const deletePromises = items.map(item =>
+        fetch('/api/trade/watchlist', {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id: item.id }),
+        })
+      )
+      await Promise.allSettled(deletePromises)
+      setItems([])
+      useWatchlistStore.getState().clear()
+      toast.success('Watchlist cleared')
+    } catch {
+      toast.error('Failed to clear watchlist')
+    } finally {
+      setClearingAll(false)
     }
   }
 
@@ -199,6 +230,19 @@ export function WatchlistPage() {
               >
                 <RefreshCw className="size-4" />
               </Button>
+              {/* Clear All button */}
+              {items.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-10 px-3 rounded-xl border-[#EB5B3C]/20 text-[#EB5B3C] hover:bg-[#EB5B3C]/5 hover:border-[#EB5B3C]/30 gap-1.5 font-semibold text-xs"
+                  onClick={handleClearAll}
+                  disabled={clearingAll}
+                >
+                  <Trash2 className="size-3.5" />
+                  {clearingAll ? 'Clearing...' : 'Clear All'}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -394,7 +438,7 @@ export function WatchlistPage() {
                               handleRemove(item)
                             }}
                             disabled={isRemoving}
-                            className="flex size-8 items-center justify-center rounded-lg text-[#9ca3af] hover:text-[#EB5B3C] hover:bg-[#EB5B3C]/10 transition-all duration-200 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                            className="flex size-8 items-center justify-center rounded-lg text-[#9ca3af] hover:text-[#EB5B3C] hover:bg-[#EB5B3C]/10 transition-all duration-200 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100"
                             title="Remove from watchlist"
                             aria-label={`Remove ${item.symbol} from watchlist`}
                           >

@@ -77,4 +77,5 @@ mini-services/
 download/
 
 # Credentials master file
-PEPERTECT_CREDENTIALS.md
+PEPERTECT_CREDENTIALS.mdprisma/dev.db
+prisma/dev.db

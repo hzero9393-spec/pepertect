@@ -15,6 +15,7 @@ import {
 import { toast } from 'sonner'
 import { useAuthStore } from '@/lib/auth-store'
 import { useAppStore } from '@/lib/store'
+import { useWatchlistStore } from '@/lib/watchlist-store'
 import { formatINR } from '@/lib/format'
 import { StockLogo } from '@/components/pepertect/ui/stock-logo'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -69,6 +70,7 @@ function SkeletonRow() {
 export function WatchlistSidebar() {
   const { token } = useAuthStore()
   const { watchlistSidebarOpen, setWatchlistSidebarOpen, navigateToStock, setCurrentPage } = useAppStore()
+  const { addSymbol, removeSymbol } = useWatchlistStore()
 
   const [items, setItems] = useState<WatchlistItem[]>([])
   const [loading, setLoading] = useState(false)
@@ -132,6 +134,7 @@ export function WatchlistSidebar() {
       const data = await res.json()
       if (data.success) {
         setItems(prev => prev.filter(i => i.id !== item.id))
+        removeSymbol(item.symbol)
         toast.success(data.message || `${item.symbol} removed from watchlist`)
       } else {
         toast.error(data.error || 'Failed to remove')
