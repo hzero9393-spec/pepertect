@@ -36,7 +36,13 @@ export function MobileNav() {
     if (item.id === 'trading' && (pathname.startsWith('/stock/') || pathname.startsWith('/index/'))) {
       return true
     }
-    return pathname === item.url
+    if (item.id === 'trading' && pathname === '/stocks') {
+      return true
+    }
+    if (item.url && pathname === item.url) {
+      return true
+    }
+    return false
   }
 
   return (

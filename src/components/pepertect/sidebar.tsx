@@ -84,7 +84,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onLogout, userName, userAvatar }: SidebarProps) {
-  const { setCurrentPage } = useAppStore()
+  const { setCurrentPage, currentPage } = useAppStore()
   const { user } = useAuthStore()
   const pathname = usePathname()
   const userPlan = (user?.subscription as SubscriptionPlan) || 'FREE'
@@ -102,7 +102,13 @@ export function Sidebar({ onLogout, userName, userAvatar }: SidebarProps) {
     if (item.id === 'trading' && (pathname.startsWith('/stock/') || pathname.startsWith('/index/'))) {
       return true
     }
-    return pathname === item.url
+    if (item.id === 'trading' && pathname === '/stocks') {
+      return true
+    }
+    if (item.url && pathname === item.url) {
+      return true
+    }
+    return false
   }
 
   // Group items
@@ -127,7 +133,7 @@ export function Sidebar({ onLogout, userName, userAvatar }: SidebarProps) {
       >
         {/* Logo Area */}
         <div className="flex items-center gap-3 px-6 py-5">
-          <button onClick={() => setCurrentPage('dashboard')} className="flex items-center gap-3 group">
+          <button onClick={() => { setCurrentPage('dashboard') }} className="flex items-center gap-3 group">
             <div
               className="flex size-9 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-105"
               style={{
@@ -248,15 +254,15 @@ export function Sidebar({ onLogout, userName, userAvatar }: SidebarProps) {
             onClick={() => setCurrentPage('profile')}
             className={cn(
               'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200 outline-none w-full',
-              pathname === '/profile' ? '' : 'hover:bg-[#f4f6f8]',
+              currentPage === 'profile' ? '' : 'hover:bg-[#f4f6f8]',
               'focus-visible:ring-2 focus-visible:ring-[#00D09C]/20',
             )}
             style={{
-              background: pathname === '/profile' ? 'linear-gradient(135deg, rgba(0,208,156,0.1) 0%, rgba(0,166,126,0.06) 100%)' : 'transparent',
-              color: pathname === '/profile' ? '#00A67E' : '#4b5563',
+              background: currentPage === 'profile' ? 'linear-gradient(135deg, rgba(0,208,156,0.1) 0%, rgba(0,166,126,0.06) 100%)' : 'transparent',
+              color: currentPage === 'profile' ? '#00A67E' : '#4b5563',
             }}
           >
-            {pathname === '/profile' && (
+            {currentPage === 'profile' && (
               <div
                 className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full"
                 style={{ background: 'linear-gradient(180deg, #00D09C, #00A67E)' }}
@@ -264,15 +270,15 @@ export function Sidebar({ onLogout, userName, userAvatar }: SidebarProps) {
             )}
             <div className={cn(
               'flex size-8 items-center justify-center rounded-lg overflow-hidden transition-all duration-200',
-              pathname === '/profile' ? 'bg-[#00D09C]/10' : 'group-hover:bg-[#e8ecf0]',
+              currentPage === 'profile' ? 'bg-[#00D09C]/10' : 'group-hover:bg-[#e8ecf0]',
             )}>
               {avatar ? (
                 <img src={avatar} alt="Profile" className="w-full h-full object-cover rounded-lg" />
               ) : (
-                <Settings className="size-[16px] shrink-0" style={{ color: pathname === '/profile' ? '#00D09C' : '#9ca3af' }} />
+                <Settings className="size-[16px] shrink-0" style={{ color: currentPage === 'profile' ? '#00D09C' : '#9ca3af' }} />
               )}
             </div>
-            <span className={pathname === '/profile' ? 'font-semibold' : ''}>Settings</span>
+            <span className={currentPage === 'profile' ? 'font-semibold' : ''}>Settings</span>
             <ChevronRight className="ml-auto size-3 text-transparent group-hover:text-[#b0b8c4] transition-colors duration-200" />
           </button>
 
