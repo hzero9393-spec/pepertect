@@ -8,6 +8,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-inter: var(--font-inter);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -41,75 +42,132 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Groww-inspired Light Theme */
+  --color-tp-surface: #ffffff;
+  --color-tp-surface-dim: #f5f7fa;
+  --color-tp-surface-bright: #ffffff;
+  --color-tp-surface-variant: #f0f2f5;
+  --color-tp-surface-container: #ffffff;
+  --color-tp-surface-container-low: #f8f9fb;
+  --color-tp-surface-container-high: #ffffff;
+  --color-tp-surface-container-highest: #ffffff;
+  --color-tp-surface-container-lowest: #fafbfc;
+  --color-tp-on-surface: #1a1a1a;
+  --color-tp-on-surface-variant: #6b7280;
+  --color-tp-on-background: #1a1a1a;
+  --color-tp-outline: #e5e7eb;
+  --color-tp-outline-variant: #f0f0f0;
+  --color-tp-primary: #00D09C;
+  --color-tp-on-primary: #ffffff;
+  --color-tp-primary-container: rgba(0, 208, 156, 0.08);
+  --color-tp-on-primary-container: #3a4fd4;
+  --color-tp-primary-fixed: #00D09C;
+  --color-tp-primary-fixed-dim: #00b88a;
+  --color-tp-on-primary-fixed: #ffffff;
+  --color-tp-on-primary-fixed-variant: rgba(0, 208, 156, 0.08);
+  --color-tp-secondary: #00d09c;
+  --color-tp-on-secondary: #ffffff;
+  --color-tp-secondary-container: #e6faf3;
+  --color-tp-on-secondary-container: #009e76;
+  --color-tp-secondary-fixed: #00d09c;
+  --color-tp-secondary-fixed-dim: #00b887;
+  --color-tp-on-secondary-fixed: #ffffff;
+  --color-tp-on-secondary-fixed-variant: #e6faf3;
+  --color-tp-tertiary: #eb5b3c;
+  --color-tp-on-tertiary: #ffffff;
+  --color-tp-tertiary-container: #fde8e3;
+  --color-tp-on-tertiary-container: #c4422a;
+  --color-tp-tertiary-fixed: #eb5b3c;
+  --color-tp-tertiary-fixed-dim: #d44a2d;
+  --color-tp-on-tertiary-fixed: #ffffff;
+  --color-tp-on-tertiary-fixed-variant: #fde8e3;
+  --color-tp-error: #eb5b3c;
+  --color-tp-on-error: #ffffff;
+  --color-tp-error-container: #fde8e3;
+  --color-tp-on-error-container: #c4422a;
+  --color-tp-inverse-surface: #1a1a1a;
+  --color-tp-inverse-on-surface: #f5f7fa;
+  --color-tp-inverse-primary: #95a3ff;
+  --color-tp-surface-tint: #00D09C;
+
+  /* Trading-specific semantic colors */
+  --color-tp-profit: #00B386;
+  --color-tp-loss: #EB5B3C;
+  --color-tp-profit-bg: rgba(0, 179, 134, 0.08);
+  --color-tp-loss-bg: rgba(235, 91, 60, 0.08);
+  --color-tp-profit-border: rgba(0, 179, 134, 0.2);
+  --color-tp-loss-border: rgba(235, 91, 60, 0.2);
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --radius: 0.75rem;
+  /* Groww-inspired Light Theme */
+  --background: #f5f7fa;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary: #00D09C;
+  --primary-foreground: #ffffff;
+  --secondary: #00d09c;
+  --secondary-foreground: #ffffff;
+  --muted: #f0f2f5;
+  --muted-foreground: #6b7280;
+  --accent: #f0f2f5;
+  --accent-foreground: #1a1a1a;
+  --destructive: #eb5b3c;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #00D09C;
+  --chart-1: #00D09C;
+  --chart-2: #00d09c;
+  --chart-3: #eb5b3c;
+  --chart-4: #f59e0b;
+  --chart-5: #8b5cf6;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: #00D09C;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f2f5;
+  --sidebar-accent-foreground: #1a1a1a;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #00D09C;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #f5f7fa;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  --primary: #00D09C;
+  --primary-foreground: #ffffff;
+  --secondary: #00d09c;
+  --secondary-foreground: #ffffff;
+  --muted: #f0f2f5;
+  --muted-foreground: #6b7280;
+  --accent: #f0f2f5;
+  --accent-foreground: #1a1a1a;
+  --destructive: #eb5b3c;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #00D09C;
+  --chart-1: #00D09C;
+  --chart-2: #00d09c;
+  --chart-3: #eb5b3c;
+  --chart-4: #f59e0b;
+  --chart-5: #8b5cf6;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: #00D09C;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f2f5;
+  --sidebar-accent-foreground: #1a1a1a;
+  --sidebar-border: #e5e7eb;
+  --sidebar-ring: #00D09C;
 }
 
 @layer base {
@@ -119,4 +177,162 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Staggered animation */
+.animate-stagger > * {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: fadeInSlide 0.4s ease forwards;
+}
+@keyframes fadeInSlide {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Number font */
+.font-mono-data {
+  font-family: var(--font-inter), 'Inter', 'Roboto', system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Groww-style number formatting */
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Price transition animation */
+.price-transition {
+  transition: color 0.3s ease;
+}
+
+/* LTP (Last Traded Price) style */
+.ltp-value {
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* P&L value style */
+.pnl-value {
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Trading-specific utility classes - Light Theme */
+.text-profit {
+  color: #00B386;
+}
+.text-loss {
+  color: #EB5B3C;
+}
+.bg-profit {
+  background-color: rgba(0, 179, 134, 0.1);
+}
+.bg-loss {
+  background-color: rgba(235, 91, 60, 0.1);
+}
+.border-profit {
+  border-color: rgba(0, 179, 134, 0.2);
+}
+.border-loss {
+  border-color: rgba(235, 91, 60, 0.2);
+}
+
+/* Groww-style card */
+.groww-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.groww-card:hover {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  border-color: #d1d5db;
+}
+
+/* Groww-style button hover */
+.groww-btn-hover {
+  transition: all 0.15s ease;
+}
+.groww-btn-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 208, 156, 0.25);
+}
+.groww-btn-hover:active {
+  transform: translateY(0);
+}
+
+/* Tab transition */
+.tab-transition {
+  transition: all 0.2s ease;
+}
+
+/* Pulse for live indicators */
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.animate-live-pulse {
+  animation: livePulse 2s ease-in-out infinite;
+}
+
+/* Groww-style pill badge */
+.groww-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* Groww-style search bar */
+.groww-search {
+  background: #f0f2f5;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+.groww-search:focus-within {
+  background: #ffffff;
+  border-color: #00D09C;
+  box-shadow: 0 0 0 3px rgba(0, 208, 156, 0.1);
+}
+
+/* Profit/Loss pill */
+.pill-profit {
+  background: rgba(0, 179, 134, 0.1);
+  color: #009e76;
+  border: 1px solid rgba(0, 179, 134, 0.15);
+}
+.pill-loss {
+  background: rgba(235, 91, 60, 0.08);
+  color: #d44a2d;
+  border: 1px solid rgba(235, 91, 60, 0.12);
 }
