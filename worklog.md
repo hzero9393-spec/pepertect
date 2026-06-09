@@ -26,3 +26,29 @@ Stage Summary:
 - Toast notifications now visible (Sonner Toaster added to layout)
 - Clear All button added to watchlist page
 - Mobile-friendly remove buttons
+---
+Task ID: 1
+Agent: Main Agent
+Task: Implement URL-based routing for stocks and pages (fix page refresh issue)
+
+Work Log:
+- Updated `src/lib/store.ts` with URL mapping (pageId ↔ URL), `parseUrlPath()`, `getPageUrl()`, `pushUrl()` helpers
+- Added `initFromUrl()` function to initialize store from URL on mount
+- Updated `navigateToStock()`, `navigateToIndex()`, `setCurrentPage()` to push URL via `window.history.pushState`
+- Added `popstate` event handler in AppShell for browser back/forward
+- Created `src/components/pepertect/app-shell.tsx` - extracted main app from page.tsx with URL init logic
+- Simplified `src/app/page.tsx` to just render `<AppShell />`
+- Created `src/app/[...slug]/page.tsx` catch-all route for URL-based access on refresh
+- Updated sidebar.tsx to use `currentPage` from store for profile/Settings active state
+- Updated mobile-nav.tsx `isActive` to properly match `/stocks` URL
+- Tested all URL patterns with agent-browser: /stock/ONGC, /index/NIFTY, /stocks, /watchlist, etc.
+- Verified page refresh preserves the view (the main issue the user reported)
+- Verified browser back/forward works correctly
+- Deployed to production via GitHub push → Vercel auto-deploy
+
+Stage Summary:
+- URL-based routing implemented: /stock/TCS, /index/NIFTY, /stocks, /watchlist, etc.
+- Page refresh now preserves the current view instead of redirecting to home
+- Browser back/forward navigation works
+- All navigation functions auto-sync URL with browser history
+- Production deployment confirmed: all URL patterns return HTTP 200
