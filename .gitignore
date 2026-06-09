@@ -52,3 +52,26 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Database
+db/*.db
+db/*.db-journal
+
+# Uploads
+upload/
+
+# Screenshots
+*.png
+!public/*.png
+
+# Scripts
+.zscripts/
+
+# Examples
+examples/
+
+# Mini services
+mini-services/
+
+# Download
+download/
