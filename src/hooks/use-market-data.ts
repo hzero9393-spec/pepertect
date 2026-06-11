@@ -180,14 +180,50 @@ class MarketDataManager {
 
   // ─── WebSocket Connection ─────────────────────────────────────────
 
+  private getWebSocketUrl(): string | undefined {
+    // Priority: 1) NEXT_PUBLIC_WS_URL env var (Railway/Render), 2) Caddy gateway (sandbox), 3) undefined (polling only)
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL
+    if (wsUrl) {
+      // Railway/Render deployment: wss://xxx.up.railway.app
+      return wsUrl
+    }
+    // Sandbox environment: use Caddy gateway with XTransformPort
+    if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+      return undefined // Will use '/?XTransformPort=3003' below
+    }
+    // Production without WS: polling fallback
+    return undefined
+  }
+
   private connectWebSocket() {
     if (this.socket) {
       this.socket.disconnect()
     }
 
     try {
-      // Connect through Caddy gateway using XTransformPort
-      this.socket = io('/?XTransformPort=3003', {
+      const wsUrl = this.getWebSocketUrl()
+
+      // Determine the socket connection URL
+      let socketUrl: string | undefined
+      let socketPath: string | undefined
+
+      if (wsUrl) {
+        // External WebSocket server (Railway/Render)
+        socketUrl = wsUrl
+        socketPath = '/socket.io'
+      } else if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+        // Sandbox environment: connect through Caddy gateway
+        socketUrl = undefined // Same origin
+        socketPath = '/?XTransformPort=3003'
+      } else {
+        // Production without WS configured: skip WebSocket, use polling
+        console.log('[Market WS] No WebSocket URL configured, using polling fallback')
+        this.startPolling()
+        return
+      }
+
+      this.socket = io(socketUrl || '/', {
+        path: socketPath,
         transports: ['websocket', 'polling'],
         reconnection: true,
         reconnectionAttempts: this.maxReconnectAttempts,
