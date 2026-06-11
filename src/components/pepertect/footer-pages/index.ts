@@ -1,0 +1,8 @@
+export { PrivacyPolicyPage } from './privacy-policy-page'
+export { TermsOfServicePage } from './terms-of-service-page'
+export { SupportPage } from './support-page'
+export { ContactUsPage } from './contact-us-page'
+export { FAQPage } from './faq-page'
+export { DisclaimerPage } from './disclaimer-page'
+export { AboutUsPage } from './about-us-page'
+export { RefundPolicyPage } from './refund-policy-page'
