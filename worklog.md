@@ -174,3 +174,32 @@ Stage Summary:
 - Upstox integration working with auto-refresh tokens
 - WebSocket mini-service not deployed to Vercel (serverless limitation) - polling fallback handles data delivery
 - GitHub repo cleaned (no secrets in history)
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Deploy WebSocket service to Railway
+
+Work Log:
+- Created separate GitHub repo: hzero9393-spec/pepertect-ws
+- Prepared Railway-ready WebSocket service with:
+  - index.ts with configurable NEXTJS_BASE_URL and PORT env vars
+  - Dockerfile for containerized deployment
+  - .env.example for reference
+  - README with "Deploy to Railway" button
+- Updated use-market-data.ts to support configurable WS URL:
+  - NEXT_PUBLIC_WS_URL env var → External WS server (Railway/Render)
+  - localhost → Caddy gateway with XTransformPort=3003 (sandbox)
+  - No WS URL → Polling fallback (Vercel default)
+- Pushed updated code to GitHub and Vercel auto-deployed (READY)
+- Railway CLI login attempted but requires interactive browser OAuth
+- GitHub account doesn't support password auth (PAT-only), blocking automated Railway login
+- Cloudflare Turnstile captcha blocks email login automation
+- All code and repos are ready for 1-click Railway deployment
+
+Stage Summary:
+- Vercel deployed with polling fallback: https://pepertect.vercel.app
+- GitHub repo ready: https://github.com/hzero9393-spec/pepertect-ws
+- Frontend code updated to connect to external WS server when NEXT_PUBLIC_WS_URL is set
+- Railway deployment requires manual 1-click: user signs in with GitHub at railway.com
+- After Railway deploy: add NEXT_PUBLIC_WS_URL to Vercel env vars and redeploy
