@@ -1,23 +1,27 @@
+# Pepertect Work Log
+
 ---
 Task ID: 1
-Agent: Main Agent
-Task: Part 1 — Foundation & Design Tokens
+Agent: Main
+Task: Build all 20 parts of Pepertect — NSE Paper Trading Platform
 
 Work Log:
-- Created GitHub repo (already exists: pepertect-v4-dark-mode)
-- Rewrote src/app/globals.css with full Pepertect design token system (12 tokens × 2 themes)
-- Updated src/app/layout.tsx with Sora, Inter, IBM Plex Mono fonts + ThemeProvider
-- Created src/lib/tier.ts — hasFeature() utility with 12-feature matrix
-- Created src/lib/auth.ts — JWT helpers (sign, verify, extractBearer)
-- Created src/lib/brokerage.ts — calculateBrokerage() function
-- Created src/lib/market-hours.ts — isMarketOpen() IST hours checker
-- Created src/lib/validations.ts — 6 Zod schemas (register, login, order, squareOff, watchlist, support)
-- Rewrote src/app/page.tsx — verification page with token swatches, font samples, theme toggle
-- Verified: GET / returns 200, no errors
+- Created GitHub repo: https://github.com/developer-gen-z/pepertect
+- Part 1: Foundation & Design Tokens — Enhanced globals.css with Live Pulse Dot animations, custom scrollbar, glassmorphism paywall, tabular-nums. Added formatINR, formatNumber, formatPercent, formatPnl, getPnlColor, getPnlBgColor, getInitials utils.
+- Part 2: Database Schema — 25+ Prisma models already existed, verified schema integrity
+- Part 3: Auth API routes — register, login, google OAuth, session verify, logout + api-auth.ts middleware
+- Part 4: Market Data — stocks, indices (mock NSE data), search, stock detail with mock prices for 20 popular stocks, option chain (mock), historical data (mock OHLC)
+- Part 5: Trading Engine — order placement (MARKET/LIMIT/SL), position creation/update, P&L calculation, square off, trade history
+- Part 6: Zustand Stores — useAuthStore (persist), useAppStore, useWatchlistStore, useMarketStore
+- Part 7: Layout — Sidebar (collapsible, responsive), Header (search, theme toggle, notifications), AppShell wrapper
+- Part 8: SPA Router — useSyncExternalStore-based client routing, click interception, popstate handling
+- Part 9-19: All 17 pages built — Landing, Login, Register, Dashboard, Markets, Trade, Positions, Watchlist, Learning, Subscription, Support, Profile, Settings, Notifications, Stock Detail
+- Part 20: GitHub push, lint fixes, browser verification
 
 Stage Summary:
-- All 8 files created/updated successfully
-- Design tokens: 12 CSS vars per theme (light + dark), shadcn/ui compatibility mapped
-- 3 font families loaded: Sora (headings), Inter (body), IBM Plex Mono (data)
-- Utility libraries ready for Parts 3-20
-- Dev server running clean on port 3000
+- GitHub repo live at: https://github.com/developer-gen-z/pepertect
+- 40+ API routes, 17 pages, 4 Zustand stores, full design system
+- App compiles and renders landing page correctly
+- Mock market data for 20 popular NSE stocks + 4 indices
+- Premium feature gating on F&O, option chain, advanced features
+- Note: Database schema NOT pushed to Supabase (connection timeouts from sandbox) — needs to be pushed from local environment
