@@ -1,0 +1,542 @@
+// ============================================
+// Pepertect v4 — Prisma Schema
+// Paper Trading Platform
+// Database: PostgreSQL (Supabase)
+// ============================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// 1. USERS & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String?                        // null for OAuth users
+  avatar        String?
+  phone         String?
+  role          String    @default("USER")      // USER, ADMIN
+  tier          String    @default("FREE")      // FREE, PREMIUM
+  virtualCapital Decimal   @default(100000)     // Virtual trading balance
+  isActive      Boolean   @default(true)
+  googleId      String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  orders         Order[]
+  positions      Position[]
+  portfolio      Portfolio?
+  watchlist      Watchlist[]
+  subscriptions  Subscription[]
+  progress       UserProgress[]
+  supportTickets SupportTicket[]
+  activeDevices  ActiveDevice[]
+  sessions       Session[]
+  notifications   Notification[]
+  activityLogs   ActivityLog[]
+  trades         Trade[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  device    String?
+  ip        String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model ActiveDevice {
+  id        String   @id @default(cuid())
+  userId    String
+  device    String
+  browser   String?
+  os        String?
+  ip        String?
+  lastSeen  DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("active_devices")
+}
+
+// ============================================
+// 2. MARKET DATA
+// ============================================
+
+model Stock {
+  id          String   @id @default(cuid())
+  symbol      String   @unique               // e.g., "RELIANCE"
+  name        String                          // e.g., "Reliance Industries Ltd"
+  exchange    String   @default("NSE")
+  segment     String   @default("EQUITY")     // EQUITY
+  sector      String?
+  lotSize     Int      @default(1)
+  tickSize    Float    @default(0.05)
+  freezeQty   Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  options       Option[]
+  futures       Future[]
+  watchlist     Watchlist[]
+  optionChains  OptionChain[]
+  trades        Trade[]
+  orders        Order[]
+  positions     Position[]
+
+  @@map("stocks")
+}
+
+model Index {
+  id        String   @id @default(cuid())
+  name      String   @unique               // e.g., "NIFTY 50"
+  symbol    String   @unique               // e.g., "NIFTY"
+  exchange  String   @default("NSE")
+  lastPrice Float?
+  change    Float?
+  changePct Float?
+  high      Float?
+  low       Float?
+  open      Float?
+  close     Float?
+  updatedAt DateTime @updatedAt
+
+  sectors   Sector[]
+
+  @@map("indices")
+}
+
+model Sector {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  indexId   String?
+  changePct Float?
+  updatedAt DateTime @updatedAt
+
+  index Index? @relation(fields: [indexId], references: [id], onDelete: SetNull)
+
+  @@map("sectors")
+}
+
+// ============================================
+// 3. TRADING — ORDERS, POSITIONS, TRADES
+// ============================================
+
+model Order {
+  id           String   @id @default(cuid())
+  userId       String
+  stockId      String
+  symbol       String                         // Denormalized for quick access
+  side         String                         // BUY, SELL
+  orderType    String                         // MARKET, LIMIT, SL
+  quantity     Int
+  price        Float?                         // null for MARKET orders
+  triggerPrice Float?                         // for SL orders
+  status       String   @default("PENDING")   // PENDING, FILLED, CANCELLED, REJECTED
+  filledPrice  Float?
+  filledQty    Int      @default(0)
+  segment      String                         // EQUITY, FUTURES, OPTIONS
+  optionType   String?                        // CE, PE (for options)
+  strikePrice  Float?                         // (for options)
+  expiry       DateTime?                      // (for derivatives)
+  reason       String?                        // cancellation/rejection reason
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock Stock  @relation(fields: [stockId], references: [id])
+  trade Trade?
+
+  @@map("orders")
+}
+
+model Position {
+  id           String   @id @default(cuid())
+  userId       String
+  stockId      String
+  symbol       String
+  side         String                         // LONG, SHORT
+  quantity     Int
+  avgPrice     Float
+  currentPrice Float    @default(0)
+  pnl          Float    @default(0)
+  pnlPct       Float    @default(0)
+  investedAmt  Float
+  segment      String                         // EQUITY, FUTURES, OPTIONS
+  optionType   String?                        // CE, PE
+  strikePrice  Float?
+  expiry       DateTime?
+  stopLoss     Float?
+  target       Float?
+  status       String   @default("OPEN")      // OPEN, CLOSED, SQUAREDOFF
+  exitPrice    Float?
+  exitReason   String?                        // MANUAL, SL_HIT, TARGET_HIT, EXPIRY
+  openedAt     DateTime @default(now())
+  closedAt     DateTime?
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock Stock  @relation(fields: [stockId], references: [id])
+  trade Trade?
+
+  @@map("positions")
+}
+
+model Trade {
+  id           String   @id @default(cuid())
+  userId       String
+  stockId      String
+  orderId      String?   @unique
+  positionId   String?   @unique
+  symbol       String
+  side         String
+  quantity     Int
+  price        Float
+  segment      String
+  optionType   String?
+  strikePrice  Float?
+  expiry       DateTime?
+  pnl          Float    @default(0)
+  brokerage    Float    @default(0)
+  type         String                         // OPEN, CLOSE
+  createdAt    DateTime @default(now())
+
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock    Stock   @relation(fields: [stockId], references: [id])
+  order    Order?  @relation(fields: [orderId], references: [id])
+  position Position? @relation(fields: [positionId], references: [id])
+
+  @@map("trades")
+}
+
+// ============================================
+// 4. DERIVATIVES — OPTIONS, FUTURES, OPTION CHAIN
+// ============================================
+
+model Option {
+  id          String   @id @default(cuid())
+  stockId     String
+  symbol      String
+  optionType  String                         // CE, PE
+  strikePrice Float
+  expiry      DateTime
+  lotSize     Int      @default(1)
+  lastPrice   Float    @default(0)
+  change      Float    @default(0)
+  changePct   Float    @default(0)
+  volume      Int      @default(0)
+  oi          Int      @default(0)
+  iv          Float?
+  delta       Float?
+  gamma       Float?
+  theta       Float?
+  vega        Float?
+  updatedAt   DateTime @updatedAt
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, optionType, strikePrice, expiry])
+  @@map("options")
+}
+
+model Future {
+  id          String   @id @default(cuid())
+  stockId     String
+  symbol      String
+  expiry      DateTime
+  lotSize     Int      @default(1)
+  lastPrice   Float    @default(0)
+  change      Float    @default(0)
+  changePct   Float    @default(0)
+  volume      Int      @default(0)
+  oi          Int      @default(0)
+  marginPct   Float    @default(20)          // margin percentage required
+  updatedAt   DateTime @updatedAt
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, expiry])
+  @@map("futures")
+}
+
+model OptionChain {
+  id          String   @id @default(cuid())
+  stockId     String
+  expiry      DateTime
+  strikePrice Float
+  ceLastPrice Float    @default(0)
+  ceOi        Int      @default(0)
+  ceVolume    Int      @default(0)
+  ceIv        Float?
+  peLastPrice Float    @default(0)
+  peOi        Int      @default(0)
+  peVolume    Int      @default(0)
+  peIv        Float?
+  updatedAt   DateTime @updatedAt
+
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([stockId, expiry, strikePrice])
+  @@map("option_chains")
+}
+
+// ============================================
+// 5. PORTFOLIO & TRANSACTIONS
+// ============================================
+
+model Portfolio {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  totalBalance    Decimal   @default(100000)
+  investedAmount  Decimal   @default(0)
+  availableMargin Decimal   @default(100000)
+  totalPnl        Decimal   @default(0)
+  realizedPnl     Decimal   @default(0)
+  unrealizedPnl   Decimal   @default(0)
+  dayPnl          Decimal   @default(0)
+  winRate         Float    @default(0)
+  totalTrades     Int      @default(0)
+  winningTrades   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("portfolios")
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  portfolioId String
+  type        String                         // CREDIT, DEBIT, TRADE_SETTLEMENT
+  amount      Decimal
+  balance     Decimal                         // balance after transaction
+  description String?
+  reference   String?                        // orderId or subscriptionId
+  createdAt   DateTime @default(now())
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+// ============================================
+// 6. WATCHLIST
+// ============================================
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  stockId   String
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stock Stock @relation(fields: [stockId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, stockId])
+  @@map("watchlists")
+}
+
+// ============================================
+// 7. LEARNING PATH
+// ============================================
+
+model LearningPath {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  level       String                         // BEGINNER, INTERMEDIATE, ADVANCED
+  order       Int      @default(0)
+  isPremium   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  modules Module[]
+
+  @@map("learning_paths")
+}
+
+model Module {
+  id             String   @id @default(cuid())
+  learningPathId String
+  title          String
+  description    String?
+  content        String?                        // Markdown content
+  order          Int      @default(0)
+  duration       Int?                           // estimated minutes
+  createdAt      DateTime @default(now())
+
+  learningPath LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
+  challenges    Challenge[]
+  progress      UserProgress[]
+
+  @@map("modules")
+}
+
+model Challenge {
+  id        String   @id @default(cuid())
+  moduleId  String
+  title     String
+  type      String                          // QUIZ, TRADE_SIMULATION, STRATEGY
+  questions String?                         // JSON array of questions
+  passingScore Int?
+  reward    String?                         // virtual reward description
+  createdAt DateTime @default(now())
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("challenges")
+}
+
+model UserProgress {
+  id           String   @id @default(cuid())
+  userId       String
+  moduleId     String
+  status       String   @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED
+  score        Float?
+  completedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId])
+  @@map("user_progress")
+}
+
+// ============================================
+// 8. SUBSCRIPTIONS & PAYMENTS
+// ============================================
+
+model Subscription {
+  id            String    @id @default(cuid())
+  userId        String
+  plan          String    @default("FREE")       // FREE, PREMIUM
+  status        String    @default("ACTIVE")      // ACTIVE, EXPIRED, CANCELLED
+  startDate     DateTime  @default(now())
+  endDate       DateTime?
+  autoRenew     Boolean   @default(false)
+  razorpaySubId String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@map("subscriptions")
+}
+
+model Payment {
+  id               String   @id @default(cuid())
+  subscriptionId   String
+  razorpayPaymentId String   @unique
+  amount           Decimal
+  currency         String   @default("INR")
+  status           String   @default("PENDING") // PENDING, SUCCESS, FAILED, REFUNDED
+  orderId          String?                          // Razorpay order ID
+  createdAt        DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+// ============================================
+// 9. SUPPORT
+// ============================================
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  userId    String
+  subject   String
+  status    String   @default("OPEN")        // OPEN, IN_PROGRESS, RESOLVED, CLOSED
+  priority  String   @default("NORMAL")       // LOW, NORMAL, HIGH, URGENT
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages TicketMessage[]
+
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id         String   @id @default(cuid())
+  ticketId   String
+  senderId   String                          // userId or admin userId
+  senderType String   @default("USER")       // USER, ADMIN
+  content    String
+  createdAt  DateTime @default(now())
+
+  ticket SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_messages")
+}
+
+// ============================================
+// 10. PLATFORM — SETTINGS & LOGS
+// ============================================
+
+model PlatformSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  updatedAt DateTime @updatedAt
+
+  @@map("platform_settings")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String                         // LOGIN, LOGOUT, TRADE, etc.
+  details   String?                        // JSON metadata
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("activity_logs")
+}
+
+// ============================================
+// 11. NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String                         // TRADE, SYSTEM, SUBSCRIPTION, PRICE_ALERT
+  title     String
+  message   String
+  isRead    Boolean   @default(false)
+  data      String?                         // JSON for additional metadata
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
