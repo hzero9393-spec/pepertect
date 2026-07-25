@@ -1,0 +1,899 @@
+     1→     1→You've already written an exhaustive build prompt — it's incredibly detailed and covers everything from architecture to edge cases. Since you said "Or ek new prompt bana lekin pdf main", I understand you want a clean, structured version that can be easily saved as a PDF and shared with an AI agent or team.
+     2→     2→
+     3→     3→I've restructured the same content into a well‑formatted, hierarchical document with:
+     4→     4→
+     5→     5→· Clear headings (H1–H4)
+     6→     6→· Numbered sections
+     7→     7→· Tables for comparisons
+     8→     8→· Code blocks for schemas and environment variables
+     9→     9→· A full table of contents
+    10→    10→
+    11→    11→You can copy this version into Google Docs / Microsoft Word / Markdown editor and export as PDF — or use a tool like pandoc to convert Markdown → PDF.
+    12→    12→
+    13→    13→---
+    14→    14→
+    15→    15→PEPERTECT — Full-Stack Build Specification (PDF‑Ready)
+    16→    16→
+    17→    17→Purpose
+    18→    18→This document is the single source of truth for building Pepertect — a production‑grade NSE paper trading platform for equity, futures, and options.
+    19→    19→It is designed to be handed to any AI coding agent (Claude Code, Cursor, Windsurf, etc.) to generate a complete working application without ambiguity.
+    20→    20→
+    21→    21→---
+    22→    22→
+    23→    23→Table of Contents
+    24→    24→
+    25→    25→1. Product Context
+    26→    26→2. Tech Stack
+    27→    27→3. Page‑by‑Page Specification
+    28→    28→4. Business Logic Rules
+    29→    29→5. API Routes
+    30→    30→6. Database Schema (Prisma)
+    31→    31→7. Routing & Client Architecture
+    32→    32→8. Zustand Store Shapes
+    33→    33→9. Legal Disclaimer Content
+    34→    34→10. Non‑Functional Requirements
+    35→    35→11. Error Handling & Empty States
+    36→    36→12. Build Order Checklist
+    37→    37→13. Testing Checklist
+    38→    38→
+    39→    39→---
+    40→    40→
+    41→    41→1. Product Context
+    42→    42→
+    43→    43→Problem
+    44→    44→
+    45→    45→Beginners in India cannot practice F&O trading without risking real capital. Existing paper‑trading tools are either oversimplified (no F&O) or paid.
+    46→    46→
+    47→    47→Solution
+    48→    48→
+    49→    49→Pepertect provides virtual currency, real‑time NSE pricing (Upstox primary / Yahoo Finance fallback), full equity/futures/options simulation, auto SL/Target exit engine, and guided learning paths.
+    50→    50→
+    51→    51→Target Users
+    52→    52→
+    53→    53→· College students (18–25) – no capital, need structured learning
+    54→    54→· Working professionals (22–35) – have Demat but scared of F&O
+    55→    55→· Aspiring traders (20–35) – want to test strategies realistically
+    56→    56→
+    57→    57→Value Proposition
+    58→    58→
+    59→    59→“Learn F&O trading with zero risk, real data, and real results.”
+    60→    60→
+    61→    61→Out of Scope (DO NOT BUILD)
+    62→    62→
+    63→    63→· Real‑money trading
+    64→    64→· Mutual funds / SIP
+    65→    65→· MCX commodities, forex/currency, international markets
+    66→    66→· Algorithmic/API trading, social copying
+    67→    67→· Brokerage integration, tax reporting, IPO bidding
+    68→    68→
+    69→    69→---
+    70→    70→
+    71→    71→2. Tech Stack
+    72→    72→
+    73→    73→Layer Technology Notes
+    74→    74→Framework Next.js 16 (App Router) SSR/SSG hybrid, single catch‑all route
+    75→    75→UI React 19 + TypeScript 5 Strict mode, no any
+    76→    76→Styling Tailwind CSS 4 Utility‑first, dark mode via class
+    77→    77→Components shadcn/ui Accessible composable primitives
+    78→    78→ORM Prisma (latest) Type‑safe queries & migrations
+    79→    79→Database PostgreSQL 15+ (Supabase‑hosted) 34 tables (schema in §6)
+    80→    80→State Zustand useAuthStore, useAppStore, useWatchlistStore
+    81→    81→Real‑time Socket.io (separate service, port 3001) 
+    82→    82→Market Data Upstox API (WebSocket + REST) primary; Yahoo Finance fallback 
+    83→    83→Auth JWT (jsonwebtoken) + bcrypt 7‑day expiry
+    84→    84→OAuth Google Identity Services (code flow) 
+    85→    85→Payments Razorpay Webhooks for subscription
+    86→    86→Validation Zod Every API route validated server‑side
+    87→    87→Hosting Vercel (Next.js) / Render (WebSocket + Market Data Manager) 
+    88→    88→
+    89→    89→Environment Variables (.env)
+    90→    90→
+    91→    91→```
+    92→    92→DATABASE_URL=
+    93→    93→DIRECT_URL=                        # Supabase direct for migrations
+    94→    94→JWT_SECRET=
+    95→    95→JWT_EXPIRES_IN=7d
+    96→    96→GOOGLE_CLIENT_ID=
+    97→    97→GOOGLE_CLIENT_SECRET=
+    98→    98→GOOGLE_REDIRECT_URI=
+    99→    99→UPSTOX_API_KEY=
+   100→   100→UPSTOX_API_SECRET=
+   101→   101→UPSTOX_REDIRECT_URI=
+   102→   102→YAHOO_FINANCE_BASE_URL=
+   103→   103→RAZORPAY_KEY_ID=
+   104→   104→RAZORPAY_KEY_SECRET=
+   105→   105→RAZORPAY_WEBHOOK_SECRET=
+   106→   106→NEXT_PUBLIC_WS_URL=
+   107→   107→NEXT_PUBLIC_APP_URL=
+   108→   108→BROKERAGE_PERCENT=0.03
+   109→   109→MIN_BROKERAGE=20
+   110→   110→MAX_BROKERAGE=100
+   111→   111→DEFAULT_FUTURES_MARGIN_PERCENT=15
+   112→   112→ENFORCE_MARKET_HOURS=true
+   113→   113→MARKET_OPEN_TIME=09:15
+   114→   114→MARKET_CLOSE_TIME=15:30
+   115→   115→FREE_TIER_VIRTUAL_CAPITAL=100000
+   116→   116→PREMIUM_TIER_VIRTUAL_CAPITAL=1000000
+   117→   117→FREE_TIER_WATCHLIST_LIMIT=10
+   118→   118→```
+   119→   119→
+   120→   120→---
+   121→   121→
+   122→   122→3. Page‑by‑Page Specification
+   123→   123→
+   124→   124→For every page: build the route, component, exact UI elements, API calls, loading/empty/error states, and tier gating.
+   125→   125→
+   126→   126→3.1 /login – AuthPage
+   127→   127→
+   128→   128→· Two tabs: Sign In / Sign Up (shadcn Tabs)
+   129→   129→· Sign Up: email, password, confirm password, live password‑strength meter
+   130→   130→· Sign In: email, password, “Forgot password?” (stub), “Remember me”
+   131→   131→· “Continue with Google” button → calls GET /api/auth/google
+   132→   132→· Client‑side Zod validation; inline field errors
+   133→   133→· On success: store JWT + user, open Socket.io, redirect to /
+   134→   134→· On failure: toast matching server error (409, 401, 404, 403, 400)
+   135→   135→· Loading state: disable submit + spinner
+   136→   136→
+   137→   137→3.2 / – DashboardPage
+   138→   138→
+   139→   139→· Greeting + virtual balance + tier badge + “Upgrade” CTA
+   140→   140→· Live index ticker strip (NIFTY 50, SENSEX, BANK NIFTY) via WebSocket, coloured deltas
+   141→   141→· Portfolio summary card: total value, day’s P&L, overall P&L, mini‑chart
+   142→   142→· “Continue Learning” card with progress
+   143→   143→· Quick tiles: Positions count, Pending Orders, Watchlist preview
+   144→   144→· Recent activity feed (last 5 trades/orders)
+   145→   145→· Empty state for new users: onboarding checklist
+   146→   146→
+   147→   147→3.3 /stocks – StocksPage
+   148→   148→
+   149→   149→· Search bar (debounced, by symbol/name)
+   150→   150→· Filter chips: All / Gainers / Losers / Most Active / Sector
+   151→   151→· Table/grid: symbol, LTP, day change %, volume, “Add to Watchlist” icon
+   152→   152→· Sortable columns (price, % change, volume)
+   153→   153→· Pagination or infinite scroll
+   154→   154→· Row click → /stock/:symbol
+   155→   155→· Live price flashes green/red on tick
+   156→   156→
+   157→   157→3.4 /stock/:symbol – StockDetailPage
+   158→   158→
+   159→   159→· Header: symbol, company name, LTP, day change, day high/low, 52‑week high/low
+   160→   160→· Price chart (candlestick/line, timeframe 1D/1W/1M/1Y) – data from Yahoo Finance
+   161→   161→· Fundamentals panel: market cap, P/E, sector
+   162→   162→· Trade Panel (sticky sidebar or bottom sheet):
+   163→   163→  · BUY/SELL toggle
+   164→   164→  · Order type: MARKET / LIMIT / SL
+   165→   165→  · Quantity with +/- steppers
+   166→   166→  · Price input (LIMIT/SL only)
+   167→   167→  · Stop Loss & Target inputs (optional)
+   168→   168→  · Live calculation: order value, brokerage, margin, resulting balance
+   169→   169→  · Inline validation (see §4.4)
+   170→   170→  · “Place Order” → confirmation modal → API call
+   171→   171→· “Add to Watchlist” toggle
+   172→   172→· Tab for Option Chain link (if derivatives exist)
+   173→   173→
+   174→   174→3.5 /watchlist – WatchlistPage
+   175→   175→
+   176→   176→· List of user’s watchlist stocks with live LTP, day change, quick buy/sell
+   177→   177→· “Add Stock” button → search modal
+   178→   178→· Remove button (with confirm) per row
+   179→   179→· FREE tier: show count “7/10 used” + upgrade prompt at limit
+   180→   180→· Empty state: prompt to search and add
+   181→   181→
+   182→   182→3.6 /futures – FuturesPage (Premium‑gated)
+   183→   183→
+   184→   184→· FREE tier: locked overlay / paywall card with upgrade CTA
+   185→   185→· Premium: list of futures contracts (symbol, expiry, lot size, LTP, margin required)
+   186→   186→· Trade panel similar to stock but lot‑based, margin % displayed, expiry countdown
+   187→   187→
+   188→   188→3.7 /option-chain – OptionChainPage (Premium‑gated)
+   189→   189→
+   190→   190→· Underlying selector (NIFTY / BANKNIFTY / stock options)
+   191→   191→· Expiry date selector (weekly/monthly tabs)
+   192→   192→· Full option chain table:
+   193→   193→    Strike | CE OI | CE Vol | CE LTP | CE Change | Strike | PE LTP | PE Change | PE Vol | PE OI
+   194→   194→· ATM strike highlighted
+   195→   195→· Click CE/PE cell → opens trade panel pre‑filled
+   196→   196→· OI chart (bar chart) for PCR (Put‑Call Ratio)
+   197→   197→· FREE tier: locked overlay
+   198→   198→
+   199→   199→3.8 /positions – PositionsPage
+   200→   200→
+   201→   201→· Two tabs: Open Positions / Closed Positions
+   202→   202→· Open: symbol, segment badge, side, qty, avg price, LTP, unrealised P&L (coloured), SL, Target
+   203→   203→· Inline edit for SL/Target (modal with validation)
+   204→   204→· “Square Off” with confirmation (shows expected P&L)
+   205→   205→· Closed: same columns + exit price, exit reason, realised P&L
+   206→   206→· Empty state per tab
+   207→   207→
+   208→   208→3.9 /orders – OrdersPage
+   209→   209→
+   210→   210→· Table: order ID, symbol, segment, side, type, qty, price, status badge, timestamp
+   211→   211→· Filter by status / segment
+   212→   212→· “Cancel” button for PENDING orders
+   213→   213→· Click row → order detail drawer with lifecycle timeline
+   214→   214→
+   215→   215→3.10 /portfolio – PortfolioPage
+   216→   216→
+   217→   217→· Big balance card: available balance, margin used, total portfolio value
+   218→   218→· P&L summary: today’s, overall realised, overall unrealised
+   219→   219→· Allocation donut chart: Equity vs Futures vs Options
+   220→   220→· Transaction history (deposits, brokerage, realised P&L)
+   221→   221→· Equity curve line chart (portfolio value over time)
+   222→   222→
+   223→   223→3.11 /reports – ReportsPage
+   224→   224→
+   225→   225→· FREE: basic summary (win rate, total trades, total P&L)
+   226→   226→· PREMIUM: advanced per‑segment P&L, best/worst trades, avg holding time, monthly bar chart, trade journal with notes
+   227→   227→· Date range filter
+   228→   228→· Export CSV (Premium only)
+   229→   229→
+   230→   230→3.12 /learning – LearningPage
+   231→   231→
+   232→   232→· Learning Paths as cards (Equity Basics, Futures, Options, Advanced Strategies)
+   233→   233→· Each path expands into Modules with progress bar and lock icons (Premium modules locked after module 1 for FREE)
+   234→   234→· Module content: lesson text/video embed, “Mark Complete”, optional quiz
+   235→   235→· Trading Challenges tab: active challenges, leaderboard, “Join Challenge”
+   236→   236→· Progress persisted in UserProgress table
+   237→   237→
+   238→   238→3.13 /profile – ProfilePage
+   239→   239→
+   240→   240→· Avatar, name, email (read‑only if Google‑linked), edit‑profile form
+   241→   241→· Theme toggle (Dark/Light) synced to useAppStore
+   242→   242→· Subscription status card → link to /subscription
+   243→   243→· Change password section (email/password accounts only)
+   244→   244→· Logout button
+   245→   245→· Danger zone: “Reset virtual portfolio” (with confirmation)
+   246→   246→
+   247→   247→3.14 /subscription – SubscriptionPage
+   248→   248→
+   249→   249→· Side‑by‑side FREE vs PREMIUM comparison table (see §4.7)
+   250→   250→· “Upgrade Now — ₹299/mo” → Razorpay checkout modal
+   251→   251→· Current plan badge + renewal date (Premium)
+   252→   252→· Billing history table (Payment records)
+   253→   253→· Cancel subscription flow (downgrade at period end)
+   254→   254→
+   255→   255→3.15 /admin – AdminPage (role‑gated ADMIN)
+   256→   256→
+   257→   257→· Overview: total users, active today, MAU trend, tier split, trade volume
+   258→   258→· User management: search, view details, suspend/reactivate, adjust tier
+   259→   259→· Platform settings form: edit PlatformSetting values (brokerage %, market hours, feature flags)
+   260→   260→· Activity log viewer: filterable audit trail (ActivityLog)
+   261→   261→· Support tickets overview
+   262→   262→
+   263→   263→3.16 /support – SupportPage
+   264→   264→
+   265→   265→· “Create Ticket” button → form (subject, category, description, optional screenshot upload)
+   266→   266→· List of user’s tickets with status badges (OPEN/IN_PROGRESS/RESOLVED/CLOSED)
+   267→   267→· Ticket detail view: threaded messages, reply box, status display
+   268→   268→
+   269→   269→3.17 /disclaimer – DisclaimerPage
+   270→   270→
+   271→   271→· Static rendering of full legal disclaimer content (see §9)
+   272→   272→· Linked in footer on every page and shown as one‑time acceptance modal on first login
+   273→   273→
+   274→   274→---
+   275→   275→
+   276→   276→4. Business Logic Rules
+   277→   277→
+   278→   278→4.1 Registration
+   279→   279→
+   280→   280→· Password: min 8 chars; strength meter (weak/medium/strong)
+   281→   281→· Email uniqueness enforced at DB level → return 409 Conflict
+   282→   282→· On success: bcrypt hash (cost 12), create User with tier=FREE, create Portfolio with balance = FREE_TIER_VIRTUAL_CAPITAL
+   283→   283→· Issue JWT ({ userId, email, role, tier }, expiry) → store in localStorage
+   284→   284→
+   285→   285→4.2 Login
+   286→   286→
+   287→   287→· 404 if user not found; 401 if password mismatch; 403 if account disabled
+   288→   288→· On success: re‑issue JWT, return user profile; client opens WebSocket
+   289→   289→
+   290→   290→4.3 Google OAuth
+   291→   291→
+   292→   292→· GET /api/auth/google → builds Google consent URL
+   293→   293→· GET /api/auth/google/callback?code=... → exchange code, decode id_token for googleId/email/name/avatar
+   294→   294→· Find‑or‑create: existing user → update googleId + last login; new → create with tier=FREE and default balance
+   295→   295→· Error cases: access_denied → back to login; invalid code → 400; token exchange failure → 502
+   296→   296→
+   297→   297→4.4 Trade Placement Validation (client + server, server is final)
+   298→   298→
+   299→   299→· Quantity > 0 (integer; multiple of lot size for futures/options)
+   300→   300→· LIMIT/SL orders: price > 0
+   301→   301→· Sufficient balance/margin:
+   302→   302→  · Equity = full order value
+   303→   303→  · Futures = DEFAULT_FUTURES_MARGIN_PERCENT of contract value
+   304→   304→  · Options (buying) = premium × lot size
+   305→   305→· SL validation:
+   306→   306→  · BUY: SL < current price
+   307→   307→  · SELL: SL > current price
+   308→   308→· Target validation:
+   309→   309→  · BUY: Target > current price
+   310→   310→  · SELL: Target < current price
+   311→   311→· Tier check: FUTURES/OPTIONS require tier === PREMIUM → else 403 with upgrade prompt
+   312→   312→· Market hours check (if ENFORCE_MARKET_HOURS=true): reject outside MARKET_OPEN_TIME–MARKET_CLOSE_TIME IST
+   313→   313→· Brokerage: max(MIN_BROKERAGE, min(MAX_BROKERAGE, orderValue * BROKERAGE_PERCENT / 100))
+   314→   314→· MARKET orders fill immediately at current price → create Trade
+   315→   315→· LIMIT/SL orders stay PENDING until a tick triggers them
+   316→   316→
+   317→   317→4.5 Order Lifecycle State Machine
+   318→   318→
+   319→   319→```
+   320→   320→PLACED → PENDING → TRIGGERED → FILLED → EXECUTED
+   321→   321→                 ↘ EXPIRED
+   322→   322→PENDING → CANCELLED
+   323→   323→```
+   324→   324→
+   325→   325→4.6 Auto‑Exit Engine (GlobalSLMonitor)
+   326→   326→
+   327→   327→1. On app load, fetch all open positions with SL/Target set
+   328→   328→2. Socket.io subscribes to price ticks for those symbols
+   329→   329→3. On each tick:
+   330→   330→   · BUY position: price <= stopLoss → SL hit; price >= target → Target hit
+   331→   331→   · SELL position: price >= stopLoss → SL hit; price <= target → Target hit
+   332→   332→4. On hit: POST /api/trade/square-off { positionId, triggerPrice, reason }
+   333→   333→5. Server: close position, compute P&L, deduct brokerage, update Portfolio.balance, write Trade
+   334→   334→6. Client: remove from monitored set, update UI, show notification
+   335→   335→7. Edge cases:
+   336→   336→   · WebSocket disconnect → on reconnect, re‑fetch open positions and check current price immediately
+   337→   337→   · Market closed → pause monitoring, resume next open
+   338→   338→   · SL === Target → only one square‑off executes
+   339→   339→
+   340→   340→4.7 Subscription Tier Matrix (single source of truth for gating)
+   341→   341→
+   342→   342→Feature FREE (₹0) PREMIUM (₹299/mo)
+   343→   343→Equity Paper Trading ✅ ✅
+   344→   344→Futures Paper Trading ❌ ✅
+   345→   345→Options Paper Trading ❌ ✅
+   346→   346→Real‑Time Prices Delayed (Yahoo) Real‑time (Upstox)
+   347→   347→Option Chain ❌ ✅
+   348→   348→Auto‑Exit (SL/Target) ❌ ✅
+   349→   349→P&L Reports Basic Advanced
+   350→   350→Watchlist 10 stocks Unlimited
+   351→   351→Learning Paths Module 1 only All modules
+   352→   352→Trading Challenges ❌ ✅
+   353→   353→Market Breadth Data ❌ ✅
+   354→   354→Priority Support ❌ ✅
+   355→   355→Virtual Capital ₹1,00,000 ₹10,00,000
+   356→   356→
+   357→   357→· Implement hasFeature(user, featureKey) utility used both server‑side and client‑side
+   358→   358→· Razorpay checkout → webhook confirms payment → create Subscription + Payment, update tier to PREMIUM, top up balance
+   359→   359→· Expiry handling: scheduled job or lazy check downgrades tier if currentPeriodEnd passed
+   360→   360→
+   361→   361→---
+   362→   362→
+   363→   363→5. API Routes
+   364→   364→
+   365→   365→Build all of these. Every route must verify JWT (except register/login/google/webhook), validate with Zod, return { success, data?, error? }, and use correct HTTP status codes.
+   366→   366→
+   367→   367→Auth
+   368→   368→
+   369→   369→· POST /api/auth/register – body { email, password }
+   370→   370→· POST /api/auth/login – body { email, password }
+   371→   371→· GET /api/auth/google – redirects
+   372→   372→· GET /api/auth/google/callback – query code
+   373→   373→· POST /api/auth/logout
+   374→   374→· GET /api/auth/me – returns current user (JWT)
+   375→   375→
+   376→   376→Stocks & Market Data
+   377→   377→
+   378→   378→· GET /api/stocks – query search, filter, sort, page
+   379→   379→· GET /api/stocks/:symbol – detail + fundamentals
+   380→   380→· GET /api/stocks/:symbol/history – query range
+   381→   381→· GET /api/indices – NIFTY/SENSEX/BANKNIFTY snapshot
+   382→   382→· GET /api/market/breadth – advance/decline, sector performance (Premium)
+   383→   383→· GET /api/options/chain – query underlying, expiry
+   384→   384→· GET /api/futures – list of available contracts
+   385→   385→
+   386→   386→Trading
+   387→   387→
+   388→   388→· POST /api/trade/order – body symbol, segment, side, type, qty, price?, stopLoss?, target?
+   389→   389→· GET /api/trade/orders – list (filter by status/segment)
+   390→   390→· DELETE /api/trade/orders/:id – cancel PENDING
+   391→   391→· GET /api/trade/positions – list open/closed
+   392→   392→· PATCH /api/trade/positions/:id – edit SL/Target
+   393→   393→· POST /api/trade/square-off – body positionId, triggerPrice?, reason
+   394→   394→
+   395→   395→Portfolio
+   396→   396→
+   397→   397→· GET /api/portfolio – balance, margin, total
+   398→   398→· GET /api/portfolio/transactions – history
+   399→   399→· GET /api/portfolio/pnl – aggregated (basic/advanced based on tier)
+   400→   400→
+   401→   401→Watchlist
+   402→   402→
+   403→   403→· GET /api/watchlist
+   404→   404→· POST /api/watchlist – body { symbol } (enforce FREE 10‑limit)
+   405→   405→· DELETE /api/watchlist/:symbol
+   406→   406→
+   407→   407→Learning
+   408→   408→
+   409→   409→· GET /api/learning/paths
+   410→   410→· GET /api/learning/paths/:id/modules
+   411→   411→· POST /api/learning/modules/:id/complete
+   412→   412→· GET /api/learning/challenges
+   413→   413→· POST /api/learning/challenges/:id/join
+   414→   414→· GET /api/learning/challenges/:id/leaderboard
+   415→   415→
+   416→   416→Subscription & Payments
+   417→   417→
+   418→   418→· POST /api/subscription/checkout – creates Razorpay order
+   419→   419→· POST /api/subscription/webhook – Razorpay webhook (verify signature!)
+   420→   420→· GET /api/subscription/status
+   421→   421→· POST /api/subscription/cancel
+   422→   422→
+   423→   423→Support
+   424→   424→
+   425→   425→· GET /api/support/tickets
+   426→   426→· POST /api/support/tickets
+   427→   427→· GET /api/support/tickets/:id
+   428→   428→· POST /api/support/tickets/:id/messages
+   429→   429→
+   430→   430→Admin (role=ADMIN only)
+   431→   431→
+   432→   432→· GET /api/admin/users – search/paginate
+   433→   433→· PATCH /api/admin/users/:id – suspend/reactivate/change tier
+   434→   434→· GET /api/admin/analytics – MAU, tier split, trade volume
+   435→   435→· GET /api/admin/settings / PATCH /api/admin/settings
+   436→   436→· GET /api/admin/activity-log
+   437→   437→
+   438→   438→Notifications
+   439→   439→
+   440→   440→· GET /api/notifications
+   441→   441→· PATCH /api/notifications/:id/read
+   442→   442→
+   443→   443→---
+   444→   444→
+   445→   445→6. Database Schema (Prisma)
+   446→   446→
+   447→   447→Write this exact schema.prisma. All enums and models are listed below.
+   448→   448→
+   449→   449→```prisma
+   450→   450→enum Role { USER ADMIN }
+   451→   451→enum Tier { FREE PREMIUM }
+   452→   452→enum Segment { EQUITY FUTURES OPTIONS }
+   453→   453→enum Side { BUY SELL }
+   454→   454→enum OrderType { MARKET LIMIT SL }
+   455→   455→enum OrderStatus { PLACED PENDING TRIGGERED FILLED EXECUTED EXPIRED CANCELLED }
+   456→   456→enum PositionStatus { OPEN CLOSED }
+   457→   457→enum ExitReason { MANUAL STOP_LOSS TARGET EXPIRY }
+   458→   458→enum OptionType { CE PE }
+   459→   459→enum SubscriptionStatus { ACTIVE CANCELLED EXPIRED }
+   460→   460→enum PaymentStatus { PENDING SUCCESS FAILED REFUNDED }
+   461→   461→enum TicketStatus { OPEN IN_PROGRESS RESOLVED CLOSED }
+   462→   462→enum NotificationType { ORDER_FILLED SL_HIT TARGET_HIT SUBSCRIPTION SYSTEM }
+   463→   463→
+   464→   464→model User {
+   465→   465→  id            String   @id @default(cuid())
+   466→   466→  email         String   @unique
+   467→   467→  passwordHash  String?
+   468→   468→  googleId      String?  @unique
+   469→   469→  name          String?
+   470→   470→  avatarUrl     String?
+   471→   471→  role          Role     @default(USER)
+   472→   472→  tier          Tier     @default(FREE)
+   473→   473→  isActive      Boolean  @default(true)
+   474→   474→  disclaimerAcceptedAt DateTime?
+   475→   475→  createdAt     DateTime @default(now())
+   476→   476→  updatedAt     DateTime @updatedAt
+   477→   477→
+   478→   478→  portfolio       Portfolio?
+   479→   479→  orders          Order[]
+   480→   480→  positions       Position[]
+   481→   481→  watchlist       Watchlist[]
+   482→   482→  subscriptions   Subscription[]
+   483→   483→  userProgress    UserProgress[]
+   484→   484→  supportTickets  SupportTicket[]
+   485→   485→  activeDevices   ActiveDevice[]
+   486→   486→  notifications   Notification[]
+   487→   487→  activityLogs    ActivityLog[]
+   488→   488→}
+   489→   489→
+   490→   490→model ActiveDevice {
+   491→   491→  id        String   @id @default(cuid())
+   492→   492→  userId    String
+   493→   493→  user      User     @relation(fields: [userId], references: [id])
+   494→   494→  deviceInfo String
+   495→   495→  lastSeenAt DateTime @default(now())
+   496→   496→  createdAt  DateTime @default(now())
+   497→   497→}
+   498→   498→
+   499→   499→model Stock {
+   500→   500→  id        String   @id @default(cuid())
+   501→   501→  symbol    String   @unique
+   502→   502→  name      String
+   503→   503→  sectorId  String?
+   504→   504→  sector    Sector?  @relation(fields: [sectorId], references: [id])
+   505→   505→  lotSize   Int      @default(1)
+   506→   506→  isActive  Boolean  @default(true)
+   507→   507→
+   508→   508→  options   Option[]
+   509→   509→  futures   Future[]
+   510→   510→  watchlist Watchlist[]
+   511→   511→  orders    Order[]
+   512→   512→  positions Position[]
+   513→   513→}
+   514→   514→
+   515→   515→model Index {
+   516→   516→  id     String @id @default(cuid())
+   517→   517→  symbol String @unique
+   518→   518→  name   String
+   519→   519→}
+   520→   520→
+   521→   521→model Sector {
+   522→   522→  id     String  @id @default(cuid())
+   523→   523→  name   String  @unique
+   524→   524→  stocks Stock[]
+   525→   525→}
+   526→   526→
+   527→   527→model Option {
+   528→   528→  id          String     @id @default(cuid())
+   529→   529→  stockId     String
+   530→   530→  stock       Stock      @relation(fields: [stockId], references: [id])
+   531→   531→  strike      Decimal
+   532→   532→  expiry      DateTime
+   533→   533→  optionType  OptionType
+   534→   534→  lotSize     Int
+   535→   535→  premium     Decimal
+   536→   536→  openInterest Int       @default(0)
+   537→   537→
+   538→   538→  optionChains OptionChain[]
+   539→   539→}
+   540→   540→
+   541→   541→model Future {
+   542→   542→  id       String   @id @default(cuid())
+   543→   543→  stockId  String
+   544→   544→  stock    Stock    @relation(fields: [stockId], references: [id])
+   545→   545→  expiry   DateTime
+   546→   546→  lotSize  Int
+   547→   547→  marginPercent Decimal
+   548→   548→}
+   549→   549→
+   550→   550→model OptionChain {
+   551→   551→  id        String   @id @default(cuid())
+   552→   552→  optionId  String
+   553→   553→  option    Option   @relation(fields: [optionId], references: [id])
+   554→   554→  timestamp DateTime @default(now())
+   555→   555→  ltp       Decimal
+   556→   556→  oiChange  Int
+   557→   557→  volume    Int
+   558→   558→}
+   559→   559→
+   560→   560→model Order {
+   561→   561→  id           String      @id @default(cuid())
+   562→   562→  userId       String
+   563→   563→  user         User        @relation(fields: [userId], references: [id])
+   564→   564→  stockId      String
+   565→   565→  stock        Stock       @relation(fields: [stockId], references: [id])
+   566→   566→  segment      Segment
+   567→   567→  side         Side
+   568→   568→  type         OrderType
+   569→   569→  quantity     Int
+   570→   570→  price        Decimal?
+   571→   571→  stopLoss     Decimal?
+   572→   572→  target       Decimal?
+   573→   573→  status       OrderStatus @default(PLACED)
+   574→   574→  brokerage    Decimal
+   575→   575→  fillPrice    Decimal?
+   576→   576→  createdAt    DateTime    @default(now())
+   577→   577→  updatedAt    DateTime    @updatedAt
+   578→   578→
+   579→   579→  trades       Trade[]
+   580→   580→  position     Position?   @relation(fields: [positionId], references: [id])
+   581→   581→  positionId   String?
+   582→   582→}
+   583→   583→
+   584→   584→model Position {
+   585→   585→  id            String         @id @default(cuid())
+   586→   586→  userId        String
+   587→   587→  user          User           @relation(fields: [userId], references: [id])
+   588→   588→  stockId       String
+   589→   589→  stock         Stock          @relation(fields: [stockId], references: [id])
+   590→   590→  segment       Segment
+   591→   591→  side          Side
+   592→   592→  quantity      Int
+   593→   593→  avgPrice      Decimal
+   594→   594→  stopLoss      Decimal?
+   595→   595→  target        Decimal?
+   596→   596→  status        PositionStatus @default(OPEN)
+   597→   597→  exitPrice     Decimal?
+   598→   598→  exitReason    ExitReason?
+   599→   599→  realizedPnl   Decimal?
+   600→   600→  openedAt      DateTime       @default(now())
+   601→   601→  closedAt      DateTime?
+   602→   602→
+   603→   603→  orders        Order[]
+   604→   604→  trades        Trade[]
+   605→   605→}
+   606→   606→
+   607→   607→model Trade {
+   608→   608→  id          String   @id @default(cuid())
+   609→   609→  orderId     String?
+   610→   610→  order       Order?   @relation(fields: [orderId], references: [id])
+   611→   611→  positionId  String
+   612→   612→  position    Position @relation(fields: [positionId], references: [id])
+   613→   613→  price       Decimal
+   614→   614→  quantity    Int
+   615→   615→  brokerage   Decimal
+   616→   616→  executedAt  DateTime @default(now())
+   617→   617→}
+   618→   618→
+   619→   619→model Portfolio {
+   620→   620→  id           String   @id @default(cuid())
+   621→   621→  userId       String   @unique
+   622→   622→  user         User     @relation(fields: [userId], references: [id])
+   623→   623→  balance      Decimal
+   624→   624→  marginUsed   Decimal  @default(0)
+   625→   625→  updatedAt    DateTime @updatedAt
+   626→   626→
+   627→   627→  transactions Transaction[]
+   628→   628→}
+   629→   629→
+   630→   630→model Transaction {
+   631→   631→  id          String   @id @default(cuid())
+   632→   632→  portfolioId String
+   633→   633→  portfolio   Portfolio @relation(fields: [portfolioId], references: [id])
+   634→   634→  type        String
+   635→   635→  amount      Decimal
+   636→   636→  description String?
+   637→   637→  createdAt   DateTime  @default(now())
+   638→   638→}
+   639→   639→
+   640→   640→model LearningPath {
+   641→   641→  id          String   @id @default(cuid())
+   642→   642→  title       String
+   643→   643→  description String
+   644→   644→  order       Int
+   645→   645→  isPremium   Boolean  @default(false)
+   646→   646→
+   647→   647→  modules     Module[]
+   648→   648→}
+   649→   649→
+   650→   650→model Module {
+   651→   651→  id             String        @id @default(cuid())
+   652→   652→  learningPathId String
+   653→   653→  learningPath   LearningPath  @relation(fields: [learningPathId], references: [id])
+   654→   654→  title          String
+   655→   655→  content        String
+   656→   656→  order          Int
+   657→   657→  isPremium      Boolean       @default(false)
+   658→   658→
+   659→   659→  userProgress   UserProgress[]
+   660→   660→}
+   661→   661→
+   662→   662→model Challenge {
+   663→   663→  id          String   @id @default(cuid())
+   664→   664→  title       String
+   665→   665→  description String
+   666→   666→  startDate   DateTime
+   667→   667→  endDate     DateTime
+   668→   668→  isPremium   Boolean  @default(true)
+   669→   669→}
+   670→   670→
+   671→   671→model UserProgress {
+   672→   672→  id          String   @id @default(cuid())
+   673→   673→  userId      String
+   674→   674→  user        User     @relation(fields: [userId], references: [id])
+   675→   675→  moduleId    String
+   676→   676→  module      Module   @relation(fields: [moduleId], references: [id])
+   677→   677→  completedAt DateTime?
+   678→   678→
+   679→   679→  @@unique([userId, moduleId])
+   680→   680→}
+   681→   681→
+   682→   682→model Subscription {
+   683→   683→  id             String             @id @default(cuid())
+   684→   684→  userId         String
+   685→   685→  user           User               @relation(fields: [userId], references: [id])
+   686→   686→  status         SubscriptionStatus @default(ACTIVE)
+   687→   687→  currentPeriodEnd DateTime
+   688→   688→  createdAt      DateTime           @default(now())
+   689→   689→
+   690→   690→  payments       Payment[]
+   691→   691→}
+   692→   692→
+   693→   693→model Payment {
+   694→   694→  id              String        @id @default(cuid())
+   695→   695→  subscriptionId  String
+   696→   696→  subscription    Subscription  @relation(fields: [subscriptionId], references: [id])
+   697→   697→  razorpayOrderId String
+   698→   698→  razorpayPaymentId String?
+   699→   699→  amount          Decimal
+   700→   700→  status          PaymentStatus @default(PENDING)
+   701→   701→  createdAt       DateTime      @default(now())
+   702→   702→}
+   703→   703→
+   704→   704→model SupportTicket {
+   705→   705→  id          String       @id @default(cuid())
+   706→   706→  userId      String
+   707→   707→  user        User         @relation(fields: [userId], references: [id])
+   708→   708→  subject     String
+   709→   709→  category    String
+   710→   710→  status      TicketStatus @default(OPEN)
+   711→   711→  createdAt   DateTime     @default(now())
+   712→   712→  updatedAt   DateTime     @updatedAt
+   713→   713→
+   714→   714→  messages    TicketMessage[]
+   715→   715→}
+   716→   716→
+   717→   717→model TicketMessage {
+   718→   718→  id        String       @id @default(cuid())
+   719→   719→  ticketId  String
+   720→   720→  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+   721→   721→  senderRole Role
+   722→   722→  message   String
+   723→   723→  createdAt DateTime     @default(now())
+   724→   724→}
+   725→   725→
+   726→   726→model PlatformSetting {
+   727→   727→  id    String @id @default(cuid())
+   728→   728→  key   String @unique
+   729→   729→  value String
+   730→   730→}
+   731→   731→
+   732→   732→model ActivityLog {
+   733→   733→  id        String   @id @default(cuid())
+   734→   734→  userId    String?
+   735→   735→  user      User?    @relation(fields: [userId], references: [id])
+   736→   736→  action    String
+   737→   737→  metadata  Json?
+   738→   738→  createdAt DateTime @default(now())
+   739→   739→}
+   740→   740→
+   741→   741→model Notification {
+   742→   742→  id        String           @id @default(cuid())
+   743→   743→  userId    String
+   744→   744→  user      User             @relation(fields: [userId], references: [id])
+   745→   745→  type      NotificationType
+   746→   746→  title     String
+   747→   747→  body      String
+   748→   748→  isRead    Boolean          @default(false)
+   749→   749→  createdAt DateTime         @default(now())
+   750→   750→}
+   751→   751→
+   752→   752→model Watchlist {
+   753→   753→  id       String @id @default(cuid())
+   754→   754→  userId   String
+   755→   755→  user     User   @relation(fields: [userId], references: [id])
+   756→   756→  stockId  String
+   757→   757→  stock    Stock  @relation(fields: [stockId], references: [id])
+   758→   758→  addedAt  DateTime @default(now())
+   759→   759→
+   760→   760→  @@unique([userId, stockId])
+   761→   761→}
+   762→   762→```
+   763→   763→
+   764→   764→---
+   765→   765→
+   766→   766→7. Routing & Client Architecture
+   767→   767→
+   768→   768→· Single catch‑all route: app/[...slug]/page.tsx renders <AppShell />
+   769→   769→· AppShell reads URL slug → maps to page key → sets useAppStore.currentPage → conditionally renders matching page
+   770→   770→· Navigation updates URL via history.pushState (or Next router) for deep‑linking
+   771→   771→· Desktop: collapsible sidebar with icons + labels, active route highlighted
+   772→   772→· Mobile: fixed bottom nav bar (Dashboard, Stocks, Positions, Portfolio, More) + swipe gestures
+   773→   773→· Page transitions: instant; use skeleton loaders instead of spinners
+   774→   774→
+   775→   775→---
+   776→   776→
+   777→   777→8. Zustand Store Shapes
+   778→   778→
+   779→   779→```ts
+   780→   780→// useAuthStore
+   781→   781→{
+   782→   782→  user: User | null;
+   783→   783→  token: string | null;
+   784→   784→  isAuthenticated: boolean;
+   785→   785→  login: (email: string, password: string) => Promise<void>;
+   786→   786→  loginWithGoogle: () => void;
+   787→   787→  logout: () => void;
+   788→   788→}
+   789→   789→
+   790→   790→// useAppStore
+   791→   791→{
+   792→   792→  currentPage: string;
+   793→   793→  theme: 'light' | 'dark';
+   794→   794→  sidebarOpen: boolean;
+   795→   795→  navigate: (page: string) => void;
+   796→   796→  toggleTheme: () => void;
+   797→   797→}
+   798→   798→
+   799→   799→// useWatchlistStore
+   800→   800→{
+   801→   801→  watchlist: Stock[];
+   802→   802→  addStock: (stock: Stock) => Promise<void>;
+   803→   803→  removeStock: (symbol: string) => Promise<void>;
+   804→   804→}
+   805→   805→```
+   806→   806→
+   807→   807→Persist theme and token to localStorage; rehydrate on load.
+   808→   808→
+   809→   809→---
+   810→   810→
+   811→   811→9. Legal Disclaimer Content
+   812→   812→
+   813→   813→Display as:
+   814→   814→
+   815→   815→· One‑time modal on first login (must click “I Understand & Agree” → set disclaimerAcceptedAt)
+   816→   816→· Permanent /disclaimer page
+   817→   817→· Footer link on every page
+   818→   818→
+   819→   819→Content (verbatim):
+   820→   820→
+   821→   821→1. Paper trading only — virtual currency has no monetary value, cannot be withdrawn/converted; no real trades, brokerage, or money are involved.
+   822→   822→2. Not financial advice — content is educational only; not investment/tax/legal advice; always consult a SEBI‑registered advisor for real decisions.
+   823→   823→3. Data accuracy — Yahoo Finance may be delayed 15–20 min; Upstox is near real‑time but subject to latency; option chain/OI data may not match live NSE exactly.
+   824→   824→4. No liability — no liability for trading decisions, data inaccuracies, or real‑world losses from applying learnings elsewhere; simulated performance ≠ real performance guarantee.
+   825→   825→5. Virtual currency — cannot be bought/sold/transferred/redeemed; platform can reset balances anytime.
+   826→   826→6. Performance disclaimer — paper trading removes real psychological factors (fear/greed) and doesn't simulate slippage/liquidity; profitable‑on‑paper ≠ profitable‑in‑real‑markets.
+   827→   827→7. IP notice — UI, learning content, branding, code are Pepertect's IP.
+   828→   828→8. Third‑party services — Google, Upstox, Yahoo Finance, Razorpay, Supabase, Vercel, Render each have their own terms.
+   829→   829→9. User conduct — educational use only, no exploiting bugs, no multi‑accounting to bypass tier limits, no bots.
+   830→   830→10. Jurisdiction — governed by Indian law.
+   831→   831→
+   832→   832→---
+   833→   833→
+   834→   834→10. Non‑Functional Requirements
+   835→   835→
+   836→   836→· Page load < 3s; API response < 500ms; WebSocket latency < 200ms
+   837→   837→· 99.5% uptime; support 1,000+ concurrent WebSocket connections
+   838→   838→· Security: JWT auth, bcrypt hashing, Zod validation, parameterised queries, CSP headers, XSS‑safe rendering
+   839→   839→· Razorpay webhook signature MUST be verified before trusting payment status
+   840→   840→· Responsive: 375px–1920px; support Chrome 90+, Firefox 88+, Safari 14+, Edge 90+
+   841→   841→· Accessibility: WCAG 2.1 AA – proper labels, focus states, colour‑contrast (add +/- icons), keyboard navigation
+   842→   842→
+   843→   843→---
+   844→   844→
+   845→   845→11. Error Handling & Empty States (apply everywhere)
+   846→   846→
+   847→   847→· Every list: loading skeleton, empty state with CTA, error state with retry
+   848→   848→· Every form: inline field errors, disabled submit while pending, success toast, network‑error toast with retry
+   849→   849→· WebSocket disconnect: show subtle “Reconnecting...” banner; auto‑retry with backoff
+   850→   850→· 401 on any API call → clear auth, redirect to /login, preserve intended destination
+   851→   851→
+   852→   852→---
+   853→   853→
+   854→   854→12. Build Order Checklist (follow sequentially)
+   855→   855→
+   856→   856→1. Scaffold Next.js 16 + TS + Tailwind 4 + shadcn/ui
+   857→   857→2. Write full schema.prisma + seed script (sample stocks, indices, sectors, options, futures, learning paths)
+   858→   858→3. Auth: register/login, /api/auth/me, Google OAuth, disclaimer‑acceptance modal
+   859→   859→4. Zustand stores + AppShell + catch‑all routing + sidebar/bottom‑nav + theme
+   860→   860→5. /stocks, /stock/:symbol, /watchlist – equity trading end‑to‑end (FREE tier first)
+   861→   861→6. /orders, /positions, /portfolio wired to real data
+   862→   862→7. WebSocket service + Market Data Manager (Yahoo polling first, then Upstox)
+   863→   863→8. GlobalSLMonitor auto‑exit engine with notifications
+   864→   864→9. /futures, /option-chain + Premium tier gating (hasFeature)
+   865→   865→10. /subscription + Razorpay checkout + webhook + tier upgrade/downgrade
+   866→   866→11. /learning – paths, modules, progress, challenges, leaderboard
+   867→   867→12. /reports – basic then advanced analytics
+   868→   868→13. /support – tickets + threaded messages
+   869→   869→14. /admin – user management, analytics, settings, activity log
+   870→   870→15. /disclaimer static page + footer link
+   871→   871→16. Final polish: responsive, accessibility, loading/empty/error states, notification system, realistic demo data
+   872→   872→
+   873→   873→---
+   874→   874→
+   875→   875→13. Testing Checklist (minimum test cases)
+   876→   876→
+   877→   877→· Registration: duplicate email, weak password, success
+   878→   878→· Login: wrong password, nonexistent user, disabled account, success
+   879→   879→· Google OAuth: new user, existing user, denied consent
+   880→   880→· Trade placement: insufficient balance, invalid SL/Target direction, FREE tier futures/options → 403, MARKET fill, LIMIT pending
+   881→   881→· Auto‑exit: SL hit, Target hit, SL===Target, reconnect‑catch‑missed
+   882→   882→· Tier gating: watchlist limit, option‑chain paywall, Premium full access
+   883→   883→· Subscription: successful payment upgrades tier, webhook signature failure, expired subscription downgrade
+   884→   884→· Admin: non‑admin hitting /api/admin/* gets 403
+   885→   885→
+   886→   886→---
+   887→   887→
+   888→   888→How to Save as PDF
+   889→   889→
+   890→   890→1. Copy this entire text (including the code blocks).
+   891→   891→2. Paste into Google Docs, Microsoft Word, or any Markdown editor.
+   892→   892→3. Adjust headings and formatting if needed.
+   893→   893→4. File → Download → PDF (or use pandoc -o output.pdf input.md).
+   894→   894→
+   895→   895→Alternatively, if you prefer a directly downloadable PDF, I can’t generate files, but the above structure is PDF‑friendly — just one copy‑paste away.
+   896→   896→
+   897→   897→---
+   898→   898→
+   899→   899→Let me know if you need any section expanded or rephrased!
