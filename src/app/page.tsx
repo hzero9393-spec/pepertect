@@ -1,149 +1,124 @@
-'use client'
+'use client';
 
-import { useTheme } from "next-themes"
-import { useSyncExternalStore } from "react"
-import { Button } from "@/components/ui/button"
-import { Sun, Moon } from "lucide-react"
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useAuthStore } from '@/stores/useAuthStore';
+import { AppShell } from '@/components/layout/AppShell';
+import { DashboardPage } from '@/components/dashboard/DashboardPage';
+import { MarketPage } from '@/components/market/MarketPage';
+import { TradePage } from '@/components/trading/TradePage';
+import { PositionsPage } from '@/components/portfolio/PositionsPage';
+import { WatchlistPage } from '@/components/market/WatchlistPage';
+import { LearningPage } from '@/components/learning/LearningPage';
+import { SubscriptionPage } from '@/components/subscription/SubscriptionPage';
+import { SupportPage } from '@/components/support/SupportPage';
+import { ProfilePage } from '@/components/profile/ProfilePage';
+import { SettingsPage } from '@/components/profile/SettingsPage';
+import { NotificationsPage } from '@/components/shared/NotificationsPage';
+import { LandingPage } from '@/components/auth/LandingPage';
+import { LoginPage } from '@/components/auth/LoginPage';
+import { RegisterPage } from '@/components/auth/RegisterPage';
+import { StockDetailPage } from '@/components/market/StockDetailPage';
 
-const SWATCHES = [
-  { name: "bg-base", className: "bg-bg-base", border: true },
-  { name: "bg-surface", className: "bg-bg-surface", border: true },
-  { name: "bg-surface-alt", className: "bg-bg-surface-alt", border: true },
-  { name: "border-default", className: "bg-border-default" },
-  { name: "text-primary", className: "bg-text-primary" },
-  { name: "text-secondary", className: "bg-text-secondary" },
-  { name: "brand-primary", className: "bg-brand-primary" },
-  { name: "brand-primary-hover", className: "bg-brand-primary-hover" },
-  { name: "accent-gold", className: "bg-accent-gold" },
-  { name: "profit-green", className: "bg-profit-green" },
-  { name: "loss-red", className: "bg-loss-red" },
-  { name: "warning-amber", className: "bg-warning-amber" },
-]
+const PAGE_MAP: Record<string, React.ComponentType> = {
+  dashboard: DashboardPage,
+  market: MarketPage,
+  trade: TradePage,
+  positions: PositionsPage,
+  watchlist: WatchlistPage,
+  learning: LearningPage,
+  subscription: SubscriptionPage,
+  support: SupportPage,
+  profile: ProfilePage,
+  settings: SettingsPage,
+  notifications: NotificationsPage,
+  landing: LandingPage,
+  login: LoginPage,
+  register: RegisterPage,
+};
 
-export default function VerificationPage() {
-  const { theme, setTheme } = useTheme()
-  const mounted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  )
+function resolvePage(pathname: string): React.ComponentType | null {
+  if (pathname === '/') {
+    return LandingPage;
+  }
+  const segment = pathname.replace('/', '').split('/')[0];
+  if (segment === 'stock') return StockDetailPage;
+  return PAGE_MAP[segment] ?? null;
+}
+
+function subscribe(cb: () => void) {
+  window.addEventListener('popstate', cb);
+  window.addEventListener('app:navigate', cb);
+  return () => {
+    window.removeEventListener('popstate', cb);
+    window.removeEventListener('app:navigate', cb);
+  };
+}
+
+export default function HomePage() {
+  const pathname = useSyncExternalStore(subscribe, () => window.location.pathname, () => '/');
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const [ready, setReady] = useState(false);
+
+  // Mount + SPA click interceptor
+  useEffect(() => {
+    setReady(true);
+
+    const handler = (e: MouseEvent) => {
+      const anchor = (e.target as HTMLElement).closest('a');
+      if (!anchor) return;
+      const href = anchor.getAttribute('href');
+      if (!href || href.startsWith('http') || href.startsWith('/api/') || href.startsWith('#')) return;
+      e.preventDefault();
+      window.history.pushState({}, '', href);
+      window.dispatchEvent(new Event('app:navigate'));
+    };
+
+    document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, []);
+
+  // Also listen for popstate to update route
+  useEffect(() => {
+    const handler = () => window.dispatchEvent(new Event('app:navigate'));
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg-base">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-primary border-t-transparent" />
+          <p className="text-sm text-text-secondary">Loading Pepertect...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const Page = pathname === '/' && isAuthenticated ? DashboardPage : resolvePage(pathname);
+
+  if (!Page) {
+    return (
+      <AppShell>
+        <div className="flex flex-col items-center justify-center py-32">
+          <h1 className="font-heading text-4xl font-bold text-text-primary">404</h1>
+          <p className="mt-2 text-text-secondary">Page not found</p>
+          <a href="/" className="mt-4 text-brand-primary hover:underline">Go Home</a>
+        </div>
+      </AppShell>
+    );
+  }
+
+  const segment = pathname.replace('/', '').split('/')[0];
+  const isAuthPage = ['landing', 'login', 'register'].includes(segment);
+
+  if (isAuthPage) {
+    return <Page />;
+  }
 
   return (
-    <main className="min-h-screen bg-bg-base px-4 py-12 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-3xl space-y-10">
-        {/* Header */}
-        <header className="space-y-2">
-          <h1 className="font-heading text-4xl font-bold tracking-tight text-text-primary">
-            Pepertect
-          </h1>
-          <p className="text-text-secondary">
-            Part 1 — Design Token Verification
-          </p>
-        </header>
-
-        {/* Theme Toggle */}
-        <section className="space-y-2">
-          <h2 className="font-heading text-lg font-semibold text-text-primary">Theme</h2>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-text-secondary">
-              Current: {mounted ? (theme === "dark" ? "Dark" : "Light") : "—"}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              className="border-border-default text-text-primary"
-            >
-              {mounted && theme === "dark" ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
-              Toggle Theme
-            </Button>
-          </div>
-        </section>
-
-        {/* Color Swatches */}
-        <section className="space-y-3">
-          <h2 className="font-heading text-lg font-semibold text-text-primary">Design Token Swatches</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {SWATCHES.map((s) => (
-              <div
-                key={s.name}
-                className={`rounded-lg p-3 space-y-2 ${s.border ? "border border-border-default" : ""}`}
-              >
-                <div className={`h-10 w-full rounded ${s.className}`} />
-                <p className="text-xs font-mono text-text-secondary">{s.name}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Font Samples */}
-        <section className="space-y-4">
-          <h2 className="font-heading text-lg font-semibold text-text-primary">Typography Samples</h2>
-          <div className="rounded-lg border border-border-default bg-bg-surface p-5 space-y-4">
-            <div>
-              <p className="text-xs font-mono text-text-secondary mb-1">font-heading (Sora)</p>
-              <p className="font-heading text-xl font-semibold text-text-primary">
-                NIFTY 50 — 24,587.30 ↑ +1.2%
-              </p>
-            </div>
-            <div>
-              <p className="text-xs font-mono text-text-secondary mb-1">font-body (Inter)</p>
-              <p className="font-body text-sm text-text-secondary">
-                Your virtual portfolio gained ₹12,450 today across 3 active positions in the equity segment.
-              </p>
-            </div>
-            <div>
-              <p className="text-xs font-mono text-text-secondary mb-1">font-mono (IBM Plex Mono)</p>
-              <p className="font-mono text-sm text-text-primary">
-                LTP 2,458.30 | Chg +29.45 (1.21%) | Vol 12.4L | O 2,428.85 H 2,461.20 L 2,425.10 C 2,430.55
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Buy / Sell Buttons */}
-        <section className="space-y-3">
-          <h2 className="font-heading text-lg font-semibold text-text-primary">Trade Action Buttons</h2>
-          <div className="flex gap-4">
-            <Button className="bg-profit-green hover:bg-profit-green/90 text-white font-semibold px-8">
-              BUY
-            </Button>
-            <Button className="bg-loss-red hover:bg-loss-red/90 text-white font-semibold px-8">
-              SELL
-            </Button>
-          </div>
-        </section>
-
-        {/* Card Sample */}
-        <section className="space-y-3">
-          <h2 className="font-heading text-lg font-semibold text-text-primary">Card Sample</h2>
-          <div className="rounded-lg border border-border-default bg-bg-surface p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-heading font-semibold text-text-primary">RELIANCE</h3>
-              <span className="font-mono text-sm text-profit-green">+₹24.50 (1.32%)</span>
-            </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-text-secondary">LTP</span>
-              <span className="font-mono font-medium text-text-primary">₹1,882.75</span>
-            </div>
-            <div className="h-px bg-border-default" />
-            <div className="grid grid-cols-3 gap-4 text-xs">
-              <div>
-                <p className="text-text-secondary">Open</p>
-                <p className="font-mono text-text-primary">1,860.20</p>
-              </div>
-              <div>
-                <p className="text-text-secondary">High</p>
-                <p className="font-mono text-text-primary">1,891.40</p>
-              </div>
-              <div>
-                <p className="text-text-secondary">Low</p>
-                <p className="font-mono text-text-primary">1,855.80</p>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
-  )
+    <AppShell>
+      <Page />
+    </AppShell>
+  );
 }
