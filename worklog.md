@@ -636,3 +636,68 @@ Stage Summary:
 - Profile page: Account Summary section removed entirely
 - Profile page: "Remove from this device" (signs out current only) + "Logout All Devices" (removes from all devices including current, redirects to landing)
 - Production deployed at https://pepertect.vercel.app
+
+---
+Task ID: order-status-movers-tab-gap
+Agent: main
+Task: (1) Fix order status display — orders showing as "failed" when actually FILLED; user wants Pending/Executed/Closed labels. (2) Add Top Gainers/Losers page accessible from Dashboard. (3) Add more gap between the 3 Trade page tabs (Place Order / Basket / Orders).
+
+Work Log:
+- Read src/app/api/orders/route.ts (full file): confirmed MARKET orders get status='FILLED', LIMIT orders get status='PENDING', schema supports PENDING/FILLED/CANCELLED/REJECTED. The "failed" the user was seeing was actually "FILLED" being misread as "failed" (similar spelling).
+- Read src/components/trading/TradePage.tsx (739 lines): found status display using raw enum (`ord.status` -> "FILLED"/"PENDING"/"CANCELLED") and tab bar using gap-1.
+- Read src/components/dashboard/DashboardPage.tsx (425 lines): found similar raw status display in Recent Orders section.
+- Read src/components/portfolio/PositionsPage.tsx (300 lines): no order status display here (positions use OPEN/SQUAREDOFF).
+- Read src/lib/utils.ts: added formatOrderStatus() helper that maps raw enum → {label, color}:
+  * FILLED    → "Executed" (text-profit-green)
+  * PENDING   → "Pending"   (text-accent-gold)
+  * CANCELLED → "Closed"    (text-text-secondary, i.e. gray)
+  * REJECTED  → "Rejected"  (text-loss-red)
+  * fallback  → as-is, red
+- Modified src/lib/utils.ts: added formatOrderStatus() export.
+- Modified src/components/trading/TradePage.tsx:
+  * Imported formatOrderStatus
+  * handleOrder success message: was "Order FILLED — BUY 10 RELIANCE", now "Executed — BUY 10 RELIANCE" (uses friendly label)
+  * Top tab bar: changed from `gap-1` to `gap-6` (visible spacing between Place Order / Basket / Orders)
+  * OrdersList row status: replaced raw `ord.status` with formatOrderStatus(ord.status).label + .color
+- Modified src/components/dashboard/DashboardPage.tsx:
+  * Imported formatOrderStatus and Flame icon
+  * Recent Orders row status: replaced raw `ord.status` with formatOrderStatus(ord.status).label + .color
+  * Added "Top Gainers & Losers" banner above Quick Actions — gradient (green→surface→red) card with Flame icon, links to /movers
+- Created src/app/api/market/movers/route.ts:
+  * GET /api/market/movers → { success, data: { gainers, losers, asOf, totalScanned } }
+  * Builds movers from DEDUPED_STOCKS (430+ stocks) using deterministic daily changePct (stable across reloads within same day)
+  * Returns top 20 gainers (sorted desc by changePct) + top 20 losers (sorted asc)
+  * Falls back to in-memory seed list if DB has < 50 stocks with changePct
+  * Deterministic formula: changePct = ((sin(hash*0.0001 + dayBucket) - 0.45) * 12) → range ~ -5.4% to +6.6%
+- Created src/components/market/MoversPage.tsx:
+  * Header card with Flame icon + totalScanned count + last-updated time
+  * Seg-tab switch: Top Gainers | Top Losers (with count badges)
+  * Refresh button (auto-refreshes every 30s)
+  * Top Gainer / Top Loser summary cards (border-l-4 colored)
+  * Numbered rank list (1-20) with StockLogo, sector pill, price, %change with arrow icon
+  * Each row links to /stock/{symbol} for chart view
+  * "Trade" button on each row (desktop only) → /trade?symbol=X
+- Modified src/app/[...slug]/page.tsx: registered MoversPage in PAGE_MAP with slug 'movers' (route /movers).
+
+Build & deploy:
+- TypeScript: pre-existing errors only (auth, market/stocks, LandingPage) — no new errors from this task
+- Production build: ✓ 9.5s, 40 routes (added /api/market/movers)
+- Committed as 1 commit (0e6e4e0), pushed to GitHub main
+- Deployed to Vercel production in 48s
+- Production URL: https://pepertect.vercel.app
+
+API verification (curl on production):
+- POST /api/orders MARKET RELIANCE BUY 5 → success, status=FILLED, filledPrice=1882.75 ✓
+- POST /api/orders LIMIT TCS BUY 2 @ 3000 → success, status=PENDING ✓
+- GET /api/orders → 2 orders returned with correct statuses ✓
+- GET /api/market/movers → success, totalScanned=428, 20 gainers + 20 losers ✓
+  * Top gainer: PGHH +6.6%
+  * Top loser: TATASTEEL -5.38%
+- GET /movers, /dashboard, /trade → all return HTTP 200 OK ✓
+
+Stage Summary:
+- Order status now displays as "Executed" (green) / "Pending" (gold) / "Closed" (gray) instead of raw "FILLED"/"PENDING"/"CANCELLED" — fixes the user confusion where "FILLED" was being misread as "failed"
+- New /movers page shows top 20 gainers + top 20 losers from 428 stocks, with daily-stable ranking, rank badges, and quick-trade shortcuts
+- Dashboard now has a prominent gradient banner linking to /movers
+- Trade page tab bar has gap-6 spacing (was gap-1) — clear visible separation between Place Order / Basket / Orders
+- Production deployed at https://pepertect.vercel.app
