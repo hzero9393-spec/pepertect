@@ -298,3 +298,74 @@ Stage Summary:
 - 6 screenshots saved to /home/z/my-project/download/v2_*.png
 - VLM verified each page against the reference image checklist
 - Shared design system established: blue lightning logo, Trade FAB, card-soft pattern, colored icon tiles, sparklines, segmented tabs with blue underline, iOS-style toggle, hero gradient cards
+
+---
+Task ID: 7
+Agent: Main
+Task: Add Option Chain page for 4 indices (NIFTY/SENSEX/BANKNIFTY/FINNIFTY) — full-width on desktop, sidebar button, and "View Option Chain" button on each index's stock detail page
+
+Work Log:
+- Made `option_chain` feature available to FREE users (was PREMIUM) in src/lib/tier.ts — paper trading platform, user wants it open to all
+- Rewrote src/app/api/market/option-chain/route.ts to support all 4 indices:
+  * NIFTY (step 50, lot 50, NSE, base 24587.30)
+  * SENSEX (step 100, lot 10, BSE, base 80842.10)
+  * BANKNIFTY (step 100, lot 15, NSE, base 52134.55)
+  * FINNIFTY (step 50, lot 25, NSE, base 23156.80) — also accepts legacy symbol NIFTYFS
+  * Generates 4 weekly Thursday expiries (DTE-aware premium scaling)
+  * Seeded RNG so prices look stable within a day (deterministic per symbol+strike+expiry)
+  * Returns 15 strikes around ATM (7 ITM + ATM + 7 OTM) with full CE/PE OI/Vol/IV/LTP/Chg/ChgPct
+  * Returns ATM strike, spot price, lot size, step, days-to-expiry
+- Created src/components/trading/OptionChainPage.tsx:
+  * Header card: StockLogo (isIndex, xl), display name (NIFTY 50 / SENSEX / BANK NIFTY / FIN NIFTY), exchange + lot + step pills, large spot price, days-to-expiry
+  * Index switcher tabs (4 buttons in a horizontal row with blue underline on active)
+  * Summary strip: 4 cells (ATM Strike, Spot Price, Total Call OI, PCR ratio with bullish/bearish bias)
+  * Expiry date selector (dropdown with 4 weekly expiries)
+  * Full option chain table: CALLS (OI/Vol/IV/LTP) | STRIKE | PUTS (LTP/IV/Vol/OI)
+  * ITM rows highlighted with green/red tint; ATM strike row highlighted blue
+  * Up/down arrows next to LTP showing change direction
+  * Loading state with spinner, error state with retry button
+  * Listens for SPA navigation events to update symbol state when URL changes (handles in-page navigation)
+- Registered optionchain route in src/app/[...slug]/page.tsx
+- Added 'Option Chain' page title to Header.tsx
+- Added "Option Chain" nav button (ListTree icon) to Sidebar.tsx and MobileDrawer.tsx (placed between Trade and Positions in primary items)
+- Updated AppShell.tsx to use full-width container (max-w-full) on /optionchain route — gives the table maximum horizontal room on desktop while preserving the standard max-w-5xl reading width on other pages
+- Updated StockDetailPage.tsx:
+  * Added helper to detect if symbol is one of the 4 supported option-chain indices (NIFTY/SENSEX/BANKNIFTY/NIFTYFS/FINNIFTY)
+  * For supported indices: shows a prominent blue "View Option Chain" CTA button above the watchlist row
+  * For supported indices: also shows a sticky secondary "View {symbol} Option Chain" CTA at the bottom on mobile
+  * Hides BUY/SELL buttons for all index symbols (indices aren't tradable as equity)
+  * For unsupported indices (e.g. NIFTYIT): shows "Index — not tradable as equity" placeholder
+
+Build & deploy:
+- TypeScript check: no new errors in modified files (pre-existing errors unchanged)
+- Production build: succeeded (Compiled in 7.5s, 28 routes)
+- Committed as 1 commit (ded0f79), pushed to GitHub main
+- Deployed to Vercel production in 43s
+- Production URL: https://pepertect.vercel.app
+
+Verification (agent-browser on both desktop 1920×1080 and iPhone 14 viewport):
+- API: Tested all 4 indices (NIFTY/SENSEX/BANKNIFTY/FINNIFTY/NIFTYFS) return correct data — display name, exchange, spot, ATM, step, lotSize, 15 strikes each ✓
+- Desktop (1920×1080):
+  * Sidebar shows "Option Chain" button between Trade and Positions ✓
+  * Page header: "Option Chain" title + NIFTY 50 heading ✓
+  * Index tabs work — clicking SENSEX/BANK NIFTY/FIN NIFTY updates URL (?symbol=X) and heading ✓
+  * Expiry dropdown shows 4 weekly Thursdays (30 Jul, 06 Aug, 13 Aug, 20 Aug 2026) ✓
+  * Table renders 15 strikes with CE/PE columns (OI/Vol/IV/LTP) ✓
+  * Full-width layout: container 1616px / table 1614px (uses 99.9% of available width) ✓
+- Mobile (iPhone 14, 390×844):
+  * Hamburger drawer shows "Option Chain" between Trade and Positions ✓
+  * All index tabs visible and clickable ✓
+  * Expiry dropdown works ✓
+  * Table is 479px wide, scrolls horizontally inside 390px container — correct behavior for narrow viewports ✓
+- StockDetailPage (NIFTY): "View Option Chain" button visible, click navigates to /optionchain?symbol=NIFTY ✓
+- StockDetailPage (BANKNIFTY): "View BANKNIFTY Option Chain" sticky CTA at bottom + "View Option Chain" button in identity card ✓
+- BUY/SELL hidden for indices (since indices aren't tradable as equity) ✓
+
+Stage Summary:
+- Option Chain page live at https://pepertect.vercel.app/optionchain
+- Supports exactly 4 indices (NIFTY 50, SENSEX, BANK NIFTY, FIN NIFTY) per user request
+- Full-width on desktop, mobile-friendly horizontal-scroll table
+- Sidebar button (desktop + mobile drawer) added
+- Stock detail page for indices shows "View Option Chain" CTA linking to that specific index
+- Production deployed successfully
+- 5 verification screenshots saved to /home/z/my-project/download/optionchain_*.png and stockdetail_*.png
