@@ -39,8 +39,10 @@ export async function GET(req: NextRequest) {
       orderBy: { symbol: 'asc' },
     });
 
-    // If DB is empty, lazily seed the comprehensive 430+ stock universe
-    if (stocks.length === 0) {
+    // If DB is empty OR has fewer than 100 stocks, lazily seed the comprehensive
+    // 430+ stock universe. This handles both fresh DBs and partially-seeded ones
+    // (e.g. from older deployments that only had ~25 stocks).
+    if (stocks.length < 100) {
       try {
         // Use createMany for efficiency — single round-trip per batch
         const created = await Promise.all(
@@ -57,7 +59,12 @@ export async function GET(req: NextRequest) {
             }).catch(() => null) // ignore duplicate-key race conditions
           )
         );
-        stocks = created.filter(Boolean).sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
+        // Re-fetch all stocks after seeding (existing + newly created) so we
+        // return a complete sorted list to the caller.
+        stocks = await db.stock.findMany({
+          take: 1000,
+          orderBy: { symbol: 'asc' },
+        });
         // If seeding failed entirely, fall back to the minimal list
         if (stocks.length === 0) {
           stocks = await Promise.all(
