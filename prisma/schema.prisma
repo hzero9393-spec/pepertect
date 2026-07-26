@@ -11,8 +11,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  // directUrl intentionally omitted — `url` is used for both pooled and direct connections.
-  // This avoids the need for a separate DIRECT_URL env var on Vercel.
+  directUrl = env("DIRECT_URL")
 }
 
 // ============================================
