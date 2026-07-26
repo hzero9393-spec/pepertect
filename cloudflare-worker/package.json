@@ -1,0 +1,16 @@
+{
+  "name": "upstox-realtime",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260722.1",
+    "wrangler": "^4.0.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {}
+}

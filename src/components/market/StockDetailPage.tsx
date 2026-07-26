@@ -21,6 +21,16 @@ import {
 } from 'lucide-react';
 import type { Stock } from '@/types';
 import { StockLogo, isIndexSymbol } from '@/components/shared/StockLogo';
+import { useLiveQuote } from '@/hooks/useLiveQuote';
+
+// Map our internal symbols to Upstox instrument keys
+const SYMBOL_TO_UPSTOX_KEY: Record<string, string> = {
+  NIFTY: 'NSE_INDEX|Nifty 50',
+  SENSEX: 'BSE_INDEX|SENSEX',
+  BANKNIFTY: 'NSE_INDEX|Nifty Bank',
+  NIFTYFS: 'NSE_INDEX|Nifty Fin Service',
+  FINNIFTY: 'NSE_INDEX|Nifty Fin Service',
+};
 
 interface Candle {
   t: number;
@@ -78,6 +88,9 @@ export function StockDetailPage() {
   const [stock, setStock] = useState<Stock | null>(null);
   const [candles, setCandles] = useState<Candle[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>('1M');
+
+  // Live quote via WebSocket (Cloudflare Worker → Upstox)
+  const { quotes, subscribe } = useLiveQuote();
   const [loading, setLoading] = useState(true);
   const [chartLoading, setChartLoading] = useState(true);
   const [inWatchlist, setInWatchlist] = useState(false);
@@ -196,6 +209,15 @@ export function StockDetailPage() {
     fetchChart();
   }, [fetchChart]);
 
+  // Subscribe to live quotes for the current stock/index (if it has an Upstox mapping)
+  useEffect(() => {
+    if (!symbol) return;
+    const key = SYMBOL_TO_UPSTOX_KEY[symbol.toUpperCase()];
+    if (key) {
+      subscribe([key]);
+    }
+  }, [symbol, subscribe]);
+
   const toggleWatchlist = async () => {
     if (!symbol || !token) return;
     setWatchlistToggling(true);
@@ -249,9 +271,13 @@ export function StockDetailPage() {
     );
   }
 
-  const ltp = stock.ltp ?? 0;
-  const change = stock.change ?? 0;
-  const changePct = stock.changePct ?? 0;
+  // Try to use live LTP from Upstox WebSocket
+  const upstoxKey = stock?.symbol ? (SYMBOL_TO_UPSTOX_KEY[stock.symbol.toUpperCase()] || null) : null;
+  const liveTick = upstoxKey ? quotes[upstoxKey] : undefined;
+
+  const ltp = liveTick?.ltp ?? stock.ltp ?? 0;
+  const change = liveTick?.change ?? stock.change ?? 0;
+  const changePct = liveTick?.changePct ?? stock.changePct ?? 0;
   const isUp = changePct >= 0;
   const extra = getExtraStats(stock.symbol, ltp);
 

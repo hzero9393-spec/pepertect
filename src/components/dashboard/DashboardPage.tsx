@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatINR, formatNumber, cn, getInitials, formatOrderStatus } from '@/lib/utils';
 import { getVirtualCapitalForTier } from '@/lib/tier';
+import { useLiveQuote } from '@/hooks/useLiveQuote';
 import {
   Wallet, TrendingUp, TrendingDown, Activity, Trophy,
   BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame, History,
@@ -12,6 +13,15 @@ import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { Sparkline } from '@/components/shared/Sparkline';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
+
+// Map our internal index symbols to Upstox instrument keys
+const INDEX_TO_UPSTOX_KEY: Record<string, string> = {
+  NIFTY: 'NSE_INDEX|Nifty 50',
+  SENSEX: 'BSE_INDEX|SENSEX',
+  BANKNIFTY: 'NSE_INDEX|Nifty Bank',
+  FINNIFTY: 'NSE_INDEX|Nifty Fin Service',
+  NIFTYFS: 'NSE_INDEX|Nifty Fin Service',
+};
 
 // Deterministic mini-series for sparklines based on symbol
 function getMiniSeries(symbol: string, positive: boolean): number[] {
@@ -38,6 +48,21 @@ export function DashboardPage() {
 
   // Tier-based fallback capital — used only when portfolio fetch hasn't returned yet
   const tierFallback = user?.tier === 'PREMIUM' ? 100000 : 10000;
+
+  // Live quotes via WebSocket (Cloudflare Worker → Upstox)
+  const { quotes, subscribe, status: wsStatus } = useLiveQuote();
+
+  // Compute Upstox instrument keys for the loaded indices
+  const indexKeys = useMemo(() => {
+    return indices
+      .map((i) => INDEX_TO_UPSTOX_KEY[i.symbol])
+      .filter(Boolean) as string[];
+  }, [indices]);
+
+  // Subscribe to live quotes whenever the index list changes
+  useEffect(() => {
+    if (indexKeys.length > 0) subscribe(indexKeys);
+  }, [indexKeys, subscribe]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -204,7 +229,10 @@ export function DashboardPage() {
       {/* ============== MARKET INDICES ============== */}
       <div>
         <div className="flex items-center justify-between px-1 mb-2">
-          <h3 className="font-heading text-base font-semibold text-text-primary">Market Indices</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="font-heading text-base font-semibold text-text-primary">Market Indices</h3>
+            <LiveBadge connected={wsStatus === 'upstox_connected'} />
+          </div>
           <a href="/market" className="text-xs font-semibold text-brand-primary hover:underline">
             View All
           </a>
@@ -212,7 +240,11 @@ export function DashboardPage() {
         <div className="card-soft p-2">
           <div className="space-y-1">
             {indices.map((idx) => {
-              const positive = idx.change >= 0;
+              const upstoxKey = INDEX_TO_UPSTOX_KEY[idx.symbol];
+              const liveTick = upstoxKey ? quotes[upstoxKey] : undefined;
+              const livePrice = liveTick?.ltp ?? idx.lastPrice;
+              const liveChangePct = liveTick?.changePct ?? idx.changePct;
+              const positive = (liveTick?.change ?? idx.change) >= 0;
               return (
                 <a
                   key={idx.id}
@@ -227,7 +259,7 @@ export function DashboardPage() {
                   <Sparkline data={getMiniSeries(idx.symbol, positive)} positive={positive} />
                   <div className="text-right shrink-0 min-w-[78px]">
                     <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
-                      {formatNumber(idx.lastPrice, 2)}
+                      {formatNumber(livePrice, 2)}
                     </p>
                     <p
                       className={cn(
@@ -235,7 +267,7 @@ export function DashboardPage() {
                         positive ? 'text-profit-green' : 'text-loss-red'
                       )}
                     >
-                      {positive ? '+' : ''}{idx.changePct.toFixed(2)}%
+                      {positive ? '+' : ''}{liveChangePct.toFixed(2)}%
                     </p>
                   </div>
                 </a>
@@ -447,5 +479,27 @@ function QuickAction({
       </div>
       <span className="text-[11px] font-medium text-text-primary text-center leading-tight">{label}</span>
     </a>
+  );
+}
+
+// Live data badge — shows green dot when WebSocket is connected to Upstox
+function LiveBadge({ connected }: { connected: boolean }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide',
+        connected
+          ? 'bg-tint-green text-profit-green'
+          : 'bg-bg-surface-alt text-text-tertiary'
+      )}
+    >
+      <span
+        className={cn(
+          'w-1.5 h-1.5 rounded-full',
+          connected ? 'bg-profit-green animate-pulse' : 'bg-text-tertiary'
+        )}
+      />
+      {connected ? 'Live' : 'Off'}
+    </span>
   );
 }

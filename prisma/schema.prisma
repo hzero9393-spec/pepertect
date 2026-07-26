@@ -52,6 +52,7 @@ model User {
   notifications   Notification[]
   activityLogs   ActivityLog[]
   trades         Trade[]
+  upstoxToken    UpstoxToken?
 
   @@map("users")
 }
@@ -554,4 +555,28 @@ model Notification {
 
   @@index([userId, isRead])
   @@map("notifications")
+}
+
+// ============================================
+// 12. BROKER INTEGRATION — UPSTOX
+// ============================================
+
+model UpstoxToken {
+  id              String   @id @default(cuid())
+  userId          String   @unique              // 1 token per user
+  accessToken     String                        // JWT from Upstox OAuth
+  refreshToken    String?
+  expiresAt       DateTime                      // typically 24 hours from issue
+  scope           String?
+  tokenType       String   @default("Bearer")
+  userEmail       String?
+  userIdUpstox    String?                       // Upstox user_id (e.g. 5UC698)
+  broker          String   @default("UPSTOX")
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("upstox_tokens")
 }

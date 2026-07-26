@@ -10,4 +10,7 @@ export const db =
     log: ['query'],
   })
 
+// Backwards-compat alias — many files import { prisma }
+export const prisma = db
+
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db

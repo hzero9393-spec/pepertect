@@ -1,0 +1,22 @@
+name = "upstox-realtime"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Durable Objects for persistent WebSocket connection to Upstox
+[[durable_objects.bindings]]
+name = "UPSTOX_FEED"
+class_name = "UpstoxFeed"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["UpstoxFeed"]
+
+# Secrets (set via `wrangler secret put`):
+# - UPSTOX_API_KEY
+# - UPSTOX_API_SECRET
+# - UPSTOX_ACCESS_TOKEN
+
+# Allow CORS from the Next.js app
+[vars]
+ALLOWED_ORIGINS = "https://pepertect.vercel.app,https://pepertect-v4-dark-mode.vercel.app,http://localhost:3000"
