@@ -701,3 +701,131 @@ Stage Summary:
 - Dashboard now has a prominent gradient banner linking to /movers
 - Trade page tab bar has gap-6 spacing (was gap-1) — clear visible separation between Place Order / Basket / Orders
 - Production deployed at https://pepertect.vercel.app
+
+---
+Task ID: stock-detail-market-pagination-trade-options-legal
+Agent: main
+Task: (1) Stock overview page — remove duplicate top Buy/Sell (keep only bottom), add chart maximize button → opens same stock on official TradingView site, fix share button. (2) Market page — paginate 430 stocks (show 30, then +20 per click via "View More Stocks" button). (3) Trade page — clicking OPTIONS segment should redirect to option chain page; settings gear button should work. (4) Support page — add Terms/Privacy/other legal links at bottom. (5) Sign-up — show T&C and Privacy Policy, require acceptance before account creation.
+
+Work Log:
+- StockDetailPage.tsx (now 809 lines):
+  * Removed top Buy/Sell buttons from the watchlist row — only the bottom sticky bar has Buy/Sell now
+  * Watchlist button now spans full width with "Add to Watchlist" label
+  * Added Maximize2 icon button on chart card header → opens https://www.tradingview.com/chart/?symbol=NSE:SYMBOL in new tab
+  * Added "TradingView" pill link button next to maximize for direct access
+  * Built tradingViewUrl via useMemo: maps NIFTY→NSE:NIFTY, SENSEX→SENSEX, BANKNIFTY→NSE:BANKNIFTY, FINNIFTY→NSE:NIFTYFIN, regular stocks → NSE:SYMBOL or BSE:SYMBOL based on stock.exchange
+  * Share button (Share2 icon) now wired to handleShare(): uses navigator.share() on mobile (native share sheet), falls back to navigator.clipboard.writeText() on desktop, shows "Link copied!" / "Shared" toast for 2s
+  * Chart size reduced from h-56/h-72 to h-44/h-52 (compact) — full chart available via TradingView maximize button
+  * CandlestickChart SVG className also updated to h-44 sm:h-52
+  * Added imports: Maximize2, ExternalLink from lucide-react
+
+- MarketPage.tsx (now 218 lines):
+  * Added pagination state: visibleCount (default 30), loadingMore
+  * Added constants: INITIAL_PAGE_SIZE=30, PAGE_INCREMENT=20
+  * visibleStocks = search ? filtered : filtered.slice(0, visibleCount) — pagination bypassed during search
+  * hasMore = !search && filtered.length > visibleCount
+  * handleViewMore: shows loading state for 200ms then increments visibleCount by 20
+  * Added "View More Stocks" button at bottom of stocks grid with ChevronDown icon, shows "+N more" remaining count
+  * Added "Showing X of Y stocks" counter in card header
+  * Search results show "N matches" instead
+  * Added Loader2 spinner during loading more
+
+- TradePage.tsx (now 828 lines):
+  * Added state: settingsOpen, defaultOrderType, defaultQty, confirmBefore
+  * OPTIONS segment click handler: instead of setSegment('OPTIONS'), now does window.location.href = `/optionchain?symbol=${symbol || 'NIFTY'}` — redirects to option chain page
+  * Settings gear button: onClick toggles settingsOpen, icon rotates 90deg and turns blue when active
+  * Added settings panel (shown when settingsOpen) with 3 controls:
+    - Default order type selector (MARKET/LIMIT/SL) — applies immediately to orderType state
+    - Default quantity input — applies immediately to quantity state
+    - "Confirm before placing" toggle — when on, calls window.confirm() with order details before submission
+  * handleOrder now checks confirmBefore flag and shows confirm dialog if enabled
+
+- SupportPage.tsx (now 386 lines):
+  * Added "Legal & Policies" card at bottom of Support page
+  * 6 legal links in 2-column grid: Terms & Conditions, Privacy Policy, Disclaimer, Refund Policy, Cookie Policy, Grievance Officer
+  * Each link opens /legal/<doc> route
+  * Added copyright footer + SEBI-style risk disclaimer text
+  * Added LegalLink component (FileText icon + label + ChevronRight)
+
+- LegalPage.tsx (NEW, 80 lines):
+  * Reusable component for rendering any legal document
+  * Header with back-to-support link, document icon, title, effective date, intro
+  * Numbered sections with heading + body paragraphs
+  * Footer with copyright + support email
+
+- legal-docs.ts (NEW, 530 lines):
+  * 6 full legal documents exported as LegalDoc objects:
+    - TERMS_DOC: 10 sections (acceptance, paper trading, account, acceptable use, premium, IP, disclaimer, termination, governing law, changes)
+    - PRIVACY_DOC: 9 sections (collection, use, sharing, security, DPDP Act rights, retention, children, cookies, changes)
+    - DISCLAIMER_DOC: 6 sections (not advice, simulated data, no real money, market risk, third-party links, no warranty)
+    - REFUND_DOC: 5 sections (free trial, subscription refunds, auto-renewal, non-refundable cases, chargebacks)
+    - COOKIES_DOC: 6 sections (what are cookies, essential, analytics, cookies we don't use, managing, logo fetching)
+    - GRIEVANCE_DOC: 5 sections (contact, when to contact, how to file, response timeline, escalation)
+  * LEGAL_DOCS map for route lookup
+
+- [...slug]/page.tsx:
+  * Imported LegalPage + LEGAL_DOCS
+  * Added /legal/<doc> route handler in resolvePage() — returns () => <LegalPage doc={doc} /> for valid doc slugs
+
+- RegisterPage.tsx (now 235 lines):
+  * Added 2 required checkboxes: "I accept the Terms & Conditions" + "I accept the Privacy Policy"
+  * Custom checkbox UI (blue when checked, with Check icon)
+  * Each label links to /legal/<doc> with ExternalLink icon (opens in new tab via target=_blank)
+  * "Preview" toggle on each expands a 5-bullet summary of key points in a scrollable box (max-h-32)
+  * Submit button disabled until BOTH checkboxes are checked
+  * Helper text under button: "Please accept both Terms and Privacy Policy to enable account creation"
+  * Error handling for missing acceptance
+
+- /api/auth/register/route.ts:
+  * Added server-side enforcement: returns 400 if !acceptedTerms || !acceptedPrivacy
+  * Stores acceptance timestamps in user.notifSettings.legalAcceptance JSON field:
+    { terms: { accepted: true, at: ISOString }, privacy: { accepted: true, at: ISOString }, version: '2026-07-26' }
+
+- /api/market/stocks/route.ts:
+  * Increased take limit from 50 to 1000 (so all 430+ stocks are returned)
+  * Changed seeding trigger from `stocks.length === 0` to `stocks.length < 100` (handles partially-seeded DBs from older deployments)
+  * Replaced Promise.all of 428 individual db.stock.create() calls with batched db.stock.createMany():
+    - Filters out symbols already in DB (skipDuplicates would handle it but pre-filtering saves DB round-trips)
+    - Batch size: 50 stocks per createMany call
+    - Catches per-batch errors so partial seeding still succeeds
+  * Re-fetches all stocks after seeding to return complete sorted list
+
+DEPLOYMENT FIXES (during this task):
+- Initial deploy failed: "Environment variable not found: DIRECT_URL" — Vercel was building against the wrong project (my-project instead of pepertect)
+- Discovered the local .vercel/project.json was pointing to "my-project" project, but production URL is pepertect.vercel.app (different Vercel project)
+- Ran `vercel link --project pepertect` to fix the link
+- Verified pepertect project has DATABASE_URL + DIRECT_URL env vars configured (my-project had neither)
+- Restored postgresql provider + directUrl in schema.prisma (was briefly changed to sqlite during debugging)
+- After correct project link, deploy succeeded
+
+- Second issue: stocks API returned only 25-39 stocks instead of 428
+  * Root cause: DB was partially seeded from older deployment (had ~25 stocks)
+  * Old code only seeded when stocks.length === 0, so partial DBs were never topped up
+  * Fixed by changing trigger to stocks.length < 100 + filtering existing symbols + batched createMany
+
+Build & deploy:
+- TypeScript: 0 new errors (ignoreBuildErrors=true in next.config)
+- Production build: ✓ 8.2s, 40 routes
+- 3 commits: 1bc3b29 (main feature), dd2f8a2 (schema restore), cf9be47 (seed trigger), f043fbe (batched seeding)
+- Deployed to Vercel production (pepertect project) in 1m
+- Production URL: https://pepertect.vercel.app
+
+Production verification (curl):
+- All 6 /legal/* routes return HTTP 200 ✓
+- /movers, /market, /trade, /support, /register all return HTTP 200 ✓
+- POST /api/auth/register WITHOUT acceptedTerms/acceptedPrivacy → 400 "You must accept the Terms & Conditions and Privacy Policy to create an account" ✓
+- POST /api/auth/register WITH acceptedTerms=true & acceptedPrivacy=true → 201, user created with tier=FREE, virtualCapital=100000 ✓
+- GET /api/market/stocks → 433 stocks returned (was 25 before fix) ✓
+- First 5: AARTIIND, ABB, ABBOTINDIA, ABBPOWER, ABFRL
+- Last 5: YATRA, YESBANK, ZEEENT, ZOMATO, ZUARI
+
+Stage Summary:
+- Stock overview page now has Buy/Sell only at the bottom; chart has maximize button → TradingView; share button works (mobile=Web Share API, desktop=clipboard)
+- Market page paginates: 30 stocks initially, +20 per "View More Stocks" click; search bypasses pagination
+- Trade page: clicking OPTIONS redirects to /optionchain?symbol=X; Settings gear opens panel with default order type/qty/confirm-before-placing
+- Support page has 6 legal links at bottom + copyright + risk disclaimer
+- 6 full legal documents created (Terms, Privacy, Disclaimer, Refund, Cookies, Grievance) accessible at /legal/<doc>
+- Sign-up requires both Terms + Privacy acceptance (client-side checkbox + server-side 400 guard); acceptance timestamps recorded in user.notifSettings
+- Fixed Vercel project link (was my-project, now correctly pepertect)
+- Fixed stock seeding to handle partially-seeded DBs and use batched createMany for 428 stocks within 30s function timeout
+- Production deployed at https://pepertect.vercel.app
