@@ -53,3 +53,34 @@ Stage Summary:
 - Auto-seeded 20 popular NSE stocks with mock OHLC data
 - Trade flow verified: BUY 10 RELIANCE @ ₹1882.75 → position opened → portfolio margin deducted correctly
 - Project GitHub: https://github.com/developer-gen-z/pepertect
+
+---
+Task ID: 3
+Agent: Main
+Task: Fix "Network error. Please try again." on account creation + browser test
+
+Work Log:
+- Diagnosed: API works perfectly from server-side (curl register returned 200 with token)
+- Root cause #1: Frontend code in RegisterPage.tsx and LoginPage.tsx was reading `data.data.user` and `data.data.token` but the API returns `{ success, user, token }` at the top level — so `data.data` was undefined, throwing TypeError caught by the catch block, displayed as "Network error. Please try again."
+- Fixed both auth files to read `data.user` and `data.token` directly
+- Also fixed LoginPage's "Try Demo Account" flow which had the same bug
+- Also fixed /api/subscription/verify — was passing auth.userId as portfolioId (foreign key violation), now fetches actual portfolio id
+- Root cause #2 (browser test revealed): /register, /login, /dashboard all returned 404 because the SPA uses client-side routing via useSyncExternalStore but Next.js needs a server route for each path
+- Added src/app/[...slug]/page.tsx (catch-all route) — copy of original page.tsx
+- Updated src/app/page.tsx to re-export the catch-all for '/' path
+- Redeployed to Vercel
+
+Browser test (agent-browser):
+- Opened https://pepertect.vercel.app/register → form rendered correctly
+- Filled name, email, password → clicked "Create Account"
+- Redirected to /dashboard automatically (login worked!)
+- Dashboard showed "Welcome back, Trader" with full sidebar
+- Navigated to /trade → filled RELIANCE x10 → clicked "BUY Stock"
+- Order filled → /positions shows open RELIANCE position with Exit button
+- All screenshots saved to /home/z/my-project/download/
+
+Stage Summary:
+- Bug fix deployed: https://pepertect.vercel.app/register now works in browser
+- All 17 pages accessible via direct URL (no more 404s)
+- Full trade flow verified in real browser: register → login → trade → view position
+- Test account: browsertest_1785043240@pepertect.com / TestPass123!
