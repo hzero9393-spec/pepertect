@@ -13,6 +13,27 @@ import {
   Loader2,
 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
+import {
+  findExpiry,
+  type ExpiryIndex,
+} from '@/lib/expiry-calendar';
+
+/**
+ * Look up the human-readable label (e.g. "Jan W1", "Mar Monthly") for an
+ * expiry date across all 4 indices. Returns the first match or null.
+ *
+ * We try all 4 indices because the option-chain page can switch symbols
+ * dynamically — we don't want to thread the active symbol through every
+ * dropdown render.
+ */
+function getExpiryLabel(date: string): string | null {
+  const indices: ExpiryIndex[] = ['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'];
+  for (const idx of indices) {
+    const entry = findExpiry(idx, date);
+    if (entry) return entry.label ?? null;
+  }
+  return null;
+}
 
 // ---- Types ---------------------------------------------------------------
 
@@ -42,6 +63,8 @@ interface ChainResponse {
   step: number;
   lotSize: number;
   expiry: string;
+  expiryLabel?: string | null;
+  expiryType?: 'WEEKLY' | 'MONTHLY' | null;
   expiries: string[];
   dte: number;
   strikes: StrikeRow[];
@@ -281,8 +304,8 @@ export function OptionChainPage() {
       {/* ============== EXPIRY SELECTOR ============== */}
       {data && data.expiries.length > 0 && (
         <div className="card-soft p-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-medium text-text-secondary">Expiry:</span>
               <div className="relative">
                 <select
@@ -290,14 +313,36 @@ export function OptionChainPage() {
                   onChange={(e) => setExpiry(e.target.value)}
                   className="appearance-none bg-bg-surface-alt border border-border rounded-md pl-3 pr-8 py-1.5 text-xs font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
                 >
-                  {data.expiries.map((exp) => (
-                    <option key={exp} value={exp}>
-                      {formatExpiry(exp)}
-                    </option>
-                  ))}
+                  {data.expiries.map((exp) => {
+                    // Look up label via the calendar (mirrors API logic on client)
+                    const label = getExpiryLabel(exp);
+                    return (
+                      <option key={exp} value={exp}>
+                        {formatExpiry(exp)}{label ? ` · ${label}` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
                 <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
               </div>
+              {/* Current selection badge — WEEKLY / MONTHLY */}
+              {data.expiryType && (
+                <span
+                  className={cn(
+                    'pill text-[10px] font-bold',
+                    data.expiryType === 'MONTHLY'
+                      ? 'bg-tint-purple text-info-purple'
+                      : 'bg-tint-blue text-brand-primary'
+                  )}
+                >
+                  {data.expiryType === 'MONTHLY' ? 'MONTHLY' : 'WEEKLY'}
+                </span>
+              )}
+              {data.expiryLabel && (
+                <span className="text-[11px] text-text-tertiary hidden sm:inline">
+                  {data.expiryLabel}
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-text-tertiary hidden sm:block">
               {data.dte} day{data.dte === 1 ? '' : 's'} to expiry

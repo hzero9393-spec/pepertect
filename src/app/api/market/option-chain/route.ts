@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { hasFeature } from '@/lib/tier';
+import {
+  getUpcomingExpiries,
+  findExpiry,
+  type ExpiryIndex,
+} from '@/lib/expiry-calendar';
 
 // ---- Index configuration --------------------------------------------------
 // Only 4 indices are supported on the Option Chain page (per user request):
@@ -51,23 +56,16 @@ const INDICES: Record<string, IndexConfig> = {
   },
 };
 
-// Generate next N weekly expiry dates (Thursdays, skip to next working day if Thursday is a holiday).
-// For mock purposes, we just generate the next 4 Thursdays from "today".
-function generateExpiries(count: number): string[] {
-  const out: string[] = [];
-  const today = new Date();
-  // Find the next Thursday (day 4)
-  const day = today.getDay();
-  let daysUntilThursday = (4 - day + 7) % 7;
-  if (daysUntilThursday === 0) {
-    // Today is Thursday — include today as the 0-DTE expiry
-  }
-  for (let i = 0; i < count; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + daysUntilThursday + i * 7);
-    out.push(d.toISOString().split('T')[0]); // YYYY-MM-DD
-  }
-  return out;
+// Returns the next 4 upcoming expiry dates for the given index from the
+// 2026 NSE/BSE calendar. When one expires, it's automatically dropped
+// from this list — so the list always reflects the 4 next expiries.
+function getExpiriesForIndex(symbol: string): string[] {
+  // The calendar supports exactly these 4 indices; for anything else
+  // we fall back to NIFTY's schedule.
+  const idx: ExpiryIndex = (['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'].includes(symbol)
+    ? symbol
+    : 'NIFTY') as ExpiryIndex;
+  return getUpcomingExpiries(idx, 4).map((e) => e.date);
 }
 
 // Deterministic pseudo-random generator (seeded per symbol+strike+expiry)
@@ -104,8 +102,9 @@ export async function GET(req: NextRequest) {
     rawSymbol === 'NIFTYFS' || rawSymbol === 'FINNIFTY' ? 'FINNIFTY' : rawSymbol;
   const cfg = INDICES[normalized] ?? INDICES.NIFTY;
 
-  // Optional expiry date param. If not provided, default to nearest expiry.
-  const expiries = generateExpiries(4);
+  // Get the next 4 upcoming expiries for this index from the 2026 calendar.
+  // When an expiry passes, it's automatically excluded — list always rolls forward.
+  const expiries = getExpiriesForIndex(normalized);
   const requestedExpiry = sp.get('expiry');
   const expiry = requestedExpiry && expiries.includes(requestedExpiry)
     ? requestedExpiry
@@ -190,6 +189,12 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Look up the expiry label (e.g. "Jan W1", "Mar Monthly") from the calendar
+  const idx: ExpiryIndex = (['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'].includes(normalized)
+    ? normalized
+    : 'NIFTY') as ExpiryIndex;
+  const expiryEntry = findExpiry(idx, expiry);
+
   return NextResponse.json({
     success: true,
     data: {
@@ -201,6 +206,8 @@ export async function GET(req: NextRequest) {
       step: cfg.step,
       lotSize: cfg.lotSize,
       expiry,
+      expiryLabel: expiryEntry?.label ?? null,
+      expiryType: expiryEntry?.type ?? null, // 'WEEKLY' | 'MONTHLY'
       expiries,
       dte,
       strikes,

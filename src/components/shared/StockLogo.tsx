@@ -354,12 +354,13 @@ const INDEX_SYMBOLS = new Set([
 
 // Real index logo files shipped in /public/indices/.
 // FINNIFTY and NIFTYFS are aliases for the same index.
+// Files were re-verified on 2026-07-26: each filename's content matches the index name.
 const INDEX_LOGO_FILES: Record<string, string> = {
-  NIFTY: '/indices/nifty.png',
+  NIFTY: '/indices/nifty.jpeg',
   SENSEX: '/indices/sensex.png',
   BANKNIFTY: '/indices/banknifty.png',
-  FINNIFTY: '/indices/finnifty.jpeg',
-  NIFTYFS: '/indices/finnifty.jpeg',
+  FINNIFTY: '/indices/finnifty.png',
+  NIFTYFS: '/indices/finnifty.png',
 };
 
 // Curated color palette — works in both light and dark mode.
