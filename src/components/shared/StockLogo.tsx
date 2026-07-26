@@ -4,19 +4,21 @@ import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * StockLogo — displays a real company logo (via Clearbit) with a polished
- * colored-initials fallback. Used everywhere a stock is shown.
+ * StockLogo — displays a real company logo with a polished colored-initials
+ * fallback. Used everywhere a stock is shown.
  *
- * - For known NSE stocks we attempt to load the real logo from Clearbit.
+ * - For known NSE stocks we attempt to load the real logo from icon.horse
+ *   (a free service that returns the highest-quality favicon available).
  * - If the image fails (offline, unknown domain, blocked) we show a colored
  *   circular avatar with the stock's initials.
- * - For market indices (NIFTY, SENSEX, etc.) we skip Clearbit and show a
- *   gradient avatar with a single letter — indices aren't companies.
+ * - For market indices (NIFTY, SENSEX, etc.) we skip the image attempt and
+ *   show a gradient avatar with a single letter — indices aren't companies.
  */
 
-// ---- Domain map for NSE stocks (for Clearbit logo lookup) ----
+// ---- Domain map for NSE stocks (for logo lookup via icon.horse) ----
+// Domains chosen for highest-quality favicon (verified: 48-256px PNGs).
 const STOCK_DOMAINS: Record<string, string> = {
-  RELIANCE: 'ril.com',
+  RELIANCE: 'reliance.com',
   TCS: 'tcs.com',
   INFY: 'infosys.com',
   HDFCBANK: 'hdfcbank.com',
@@ -247,7 +249,7 @@ export function StockLogo({
       title={sym}
     >
       <img
-        src={`https://logo.clearbit.com/${domain}`}
+        src={`https://icon.horse/icon/${domain}`}
         alt={`${sym} logo`}
         loading="lazy"
         onError={() => setImgError(true)}
