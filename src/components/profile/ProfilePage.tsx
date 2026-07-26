@@ -167,25 +167,27 @@ export function ProfilePage() {
     }
   };
 
-  // ---- Logout All ----
+  // ---- Logout All (removes account from ALL devices including current) ----
   const handleLogoutAll = async () => {
     setLogoutAllSubmitting(true);
     setLogoutAllResult(null);
     try {
-      const res = await fetch('/api/user/logout-all', {
+      // includeCurrent=true → deletes ALL sessions (including this one),
+      // then we redirect to the landing page.
+      const res = await fetch('/api/user/logout-all?includeCurrent=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
       if (data.success) {
-        setLogoutAllResult({ success: true, message: data.message || 'Other sessions ended.' });
-        // Close modal after a brief pause so user can read the success message
+        setLogoutAllResult({ success: true, message: data.message || 'Account removed from all devices.' });
+        // Clear local auth state and redirect to landing page after brief pause
         setTimeout(() => {
-          setLogoutAllOpen(false);
-          setLogoutAllResult(null);
-        }, 1800);
+          logout();
+          window.location.href = '/';
+        }, 1500);
       } else {
-        setLogoutAllResult({ success: false, message: data.error || 'Failed to logout other sessions' });
+        setLogoutAllResult({ success: false, message: data.error || 'Failed to remove account from devices' });
       }
     } catch {
       setLogoutAllResult({ success: false, message: 'Network error' });
@@ -369,57 +371,6 @@ export function ProfilePage() {
         )}
       </div>
 
-      {/* ============== ACCOUNT SUMMARY 2x3 ============== */}
-      <div>
-        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Account Summary</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <SummaryMini
-            icon={Wallet}
-            tint="bg-tint-green"
-            color="text-profit-green"
-            label="Virtual Capital"
-            value={formatINR(user?.virtualCapital ?? 100000)}
-          />
-          <SummaryMini
-            icon={PieChart}
-            tint="bg-tint-red"
-            color="text-loss-red"
-            label="Used Margin"
-            value={formatINR(usedMargin)}
-          />
-          <SummaryMini
-            icon={Activity}
-            tint="bg-tint-purple"
-            color="text-info-purple"
-            label="Available Margin"
-            value={formatINR(availableMargin)}
-          />
-          <SummaryMini
-            icon={TrendingUp}
-            tint="bg-tint-cyan"
-            color={totalPnl >= 0 ? 'text-profit-green' : 'text-loss-red'}
-            label="Total P&L"
-            value={`${totalPnl >= 0 ? '+' : ''}${formatINR(totalPnl)}`}
-            subtext={`${totalPnl >= 0 ? '+' : ''}${totalPnlPct.toFixed(2)}%`}
-          />
-          <SummaryMini
-            icon={Trophy}
-            tint="bg-tint-yellow"
-            color="text-accent-gold"
-            label="Total Trades"
-            value={String(totalTrades)}
-          />
-          <SummaryMini
-            icon={Target}
-            tint="bg-tint-cyan"
-            color="text-info-cyan"
-            label="Win Rate"
-            value={<span className="text-brand-primary">{winRate}%</span>}
-            subtext={`${wins} Wins • ${losses} Losses`}
-          />
-        </div>
-      </div>
-
       {/* ============== ACCOUNT DETAILS ============== */}
       <div>
         <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Account Details</h3>
@@ -461,7 +412,7 @@ export function ProfilePage() {
           />
           <QuickActionButton
             icon={LogOut}
-            label="Logout All"
+            label="Logout All Devices"
             tint="bg-tint-red"
             color="text-loss-red"
             onClick={() => setLogoutAllOpen(true)}
@@ -491,11 +442,19 @@ export function ProfilePage() {
             href="/settings/language"
           />
           <PreferenceRow
-            icon={LogOut}
-            label="Logout"
+            icon={Monitor}
+            label="Remove from this device"
+            value="Sign out only here"
             href="#"
             danger
             onClick={logout}
+          />
+          <PreferenceRow
+            icon={LogOut}
+            label="Logout All Devices"
+            href="#"
+            danger
+            onClick={() => setLogoutAllOpen(true)}
             last
           />
         </div>
@@ -529,8 +488,9 @@ export function ProfilePage() {
               </button>
             </div>
             <p className="text-sm text-text-secondary mb-4">
-              This will sign out every device except your current one.
-              You&rsquo;ll need to log in again on those devices.
+              This will sign out <strong className="text-text-primary">every device</strong> that&rsquo;s
+              currently logged into your account — including this one. You&rsquo;ll need to log in again
+              on each device to access your account.
             </p>
             {logoutAllResult && (
               <div

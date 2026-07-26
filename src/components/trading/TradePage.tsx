@@ -7,10 +7,11 @@ import { hasFeature } from '@/lib/tier';
 import {
   ArrowUp, ArrowDown, Search, Settings, Check,
   LineChart as LineChartIcon, Layers, BarChart3,
-  ChevronDown, Plus, Minus, Wallet, FileSearch,
+  ChevronDown, Plus, Minus, Wallet, FileSearch, Loader2,
 } from 'lucide-react';
 import type { Order, Trade, Stock } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
+import { BasketPage } from '@/components/trading/BasketPage';
 
 const POPULAR_STOCKS = [
   'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN',
@@ -35,7 +36,10 @@ export function TradePage() {
   const [activeTab, setActiveTab] = useState<'orders' | 'trades'>('orders');
   const [liveStock, setLiveStock] = useState<Stock | null>(null);
   const [showMarginBreakdown, setShowMarginBreakdown] = useState(false);
-  const [mainTab, setMainTab] = useState<'place' | 'basket'>('place');
+  /* 3-way tab: place | basket | orders */
+  const [mainTab, setMainTab] = useState<'place' | 'basket' | 'orders'>('place');
+  /* Redirect state — when set, will redirect to /positions after delay */
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -117,6 +121,16 @@ export function TradePage() {
         const oRes = await fetch('/api/orders', { headers: { Authorization: `Bearer ${token}` } });
         const oData = await oRes.json();
         if (oData.success) setOrders(oData.data);
+
+        /* ---------- Post-order flow ----------
+           1. Switch to "Orders" tab so user sees their order at the top
+           2. After 1.5s, redirect to /positions page to see the new position */
+        setMainTab('orders');
+        setActiveTab('orders');
+        setRedirecting(true);
+        setTimeout(() => {
+          window.location.href = '/positions';
+        }, 1500);
       } else {
         setMessage(data.error || 'Order failed');
       }
@@ -143,28 +157,57 @@ export function TradePage() {
   const refPrice = liveStock?.ltp ?? (parseFloat(price) || 0);
   const orderValue = qty * refPrice;
   const availableBalance = user?.virtualCapital ?? 100000;
+  const pendingCount = orders.filter((o) => o.status === 'PENDING').length;
 
   return (
     <div className="space-y-4">
-      {/* ============== TOP TABS: Place Order | Basket (link) | Settings ============== */}
+      {/* ============== REDIRECTING OVERLAY ============== */}
+      {redirecting && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="card-soft p-6 flex flex-col items-center gap-3 max-w-xs">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-tint-blue">
+              <Loader2 className="h-6 w-6 text-brand-primary animate-spin" />
+            </div>
+            <p className="font-heading text-sm font-bold text-text-primary">Order Placed!</p>
+            <p className="text-xs text-text-secondary text-center">
+              Taking you to your positions in a moment…
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ============== TOP TABS: Place Order | Basket | Orders ============== */}
       <div className="flex items-center gap-1 border-b border-border">
         <button
           onClick={() => setMainTab('place')}
-          className={cn('seg-tab', mainTab === 'place' && '[data-active=true]')}
+          className="seg-tab"
           data-active={mainTab === 'place'}
         >
           Place Order
         </button>
-        <a
-          href="/basket"
-          className={cn('seg-tab relative', mainTab === 'basket' && '[data-active=true]')}
+        <button
+          onClick={() => setMainTab('basket')}
+          className="seg-tab"
           data-active={mainTab === 'basket'}
         >
           Basket
-          <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-primary px-1 text-[10px] font-bold text-white">
-            →
+          <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+            Multi
           </span>
-        </a>
+        </button>
+        <button
+          onClick={() => setMainTab('orders')}
+          className="seg-tab"
+          data-active={mainTab === 'orders'}
+        >
+          Orders
+          <span className={cn(
+            'ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold',
+            pendingCount > 0 ? 'bg-accent-gold/20 text-accent-gold' : 'bg-bg-surface-alt text-text-secondary'
+          )}>
+            {orders.length}
+          </span>
+        </button>
         <div className="flex-1" />
         <button
           className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-bg-surface-alt"
@@ -173,6 +216,16 @@ export function TradePage() {
           <Settings className="h-4 w-4" />
         </button>
       </div>
+
+      {/* 24h retention notice — only on Orders tab */}
+      {mainTab === 'orders' && (
+        <div className="rounded-lg bg-tint-blue/60 border border-brand-primary/20 px-3 py-2 text-xs text-text-secondary flex items-center gap-2">
+          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-brand-primary animate-pulse" />
+          Orders from the last 24 hours are shown. Older orders are automatically removed.
+        </div>
+      )}
+
+      {mainTab === 'basket' && <BasketPage />}
 
       {mainTab === 'place' && (
         <>
@@ -443,155 +496,243 @@ export function TradePage() {
               </p>
             )}
           </div>
-
-          {/* ============== ORDERS / TRADE HISTORY ============== */}
-          <div className="card-soft">
-            {/* Sub-tabs */}
-            <div className="flex items-center gap-1 border-b border-border px-3">
-              <button
-                onClick={() => setActiveTab('orders')}
-                className="seg-tab"
-                data-active={activeTab === 'orders'}
-              >
-                Orders
-                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
-                  {orders.length}
-                </span>
-              </button>
-              <button
-                onClick={() => setActiveTab('trades')}
-                className="seg-tab"
-                data-active={activeTab === 'trades'}
-              >
-                Trade History
-                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
-                  {trades.length}
-                </span>
-              </button>
-              <div className="flex-1" />
-              <button className="flex items-center gap-1 text-xs text-text-secondary py-2 px-2 hover:text-text-primary">
-                <span>All</span>
-                <ChevronDown className="h-3 w-3" />
-              </button>
-            </div>
-
-            <div className="p-3">
-              {activeTab === 'orders' ? (
-                loading ? (
-                  <div className="space-y-2">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div key={i} className="h-14 animate-pulse rounded-lg bg-bg-surface-alt" />
-                    ))}
-                  </div>
-                ) : orders.length === 0 ? (
-                  <div className="py-10 flex flex-col items-center text-center">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-blue mb-3">
-                      <FileSearch className="h-7 w-7 text-brand-primary" />
-                    </div>
-                    <p className="font-heading text-sm font-semibold text-text-primary">No open orders</p>
-                    <p className="text-xs text-text-secondary mt-0.5">Place an order to get started</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {orders.slice(0, 8).map((ord) => (
-                      <div
-                        key={ord.id}
-                        className="flex items-center gap-3 rounded-xl border border-border p-2.5"
-                      >
-                        <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</p>
-                            <span
-                              className={cn(
-                                'pill',
-                                ord.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
-                              )}
-                            >
-                              {ord.side}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-text-secondary mt-0.5">{ord.orderType} · {ord.quantity} qty</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
-                            ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
-                          </p>
-                          <p
-                            className={cn(
-                              'text-[11px] font-medium',
-                              ord.status === 'FILLED'
-                                ? 'text-profit-green'
-                                : ord.status === 'PENDING'
-                                ? 'text-accent-gold'
-                                : 'text-loss-red'
-                            )}
-                          >
-                            {ord.status}
-                          </p>
-                        </div>
-                        {ord.status === 'PENDING' && (
-                          <button
-                            onClick={() => handleCancel(ord.id)}
-                            className="ml-2 text-[11px] font-medium text-loss-red hover:underline"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )
-              ) : loading ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="h-14 animate-pulse rounded-lg bg-bg-surface-alt" />
-                  ))}
-                </div>
-              ) : trades.length === 0 ? (
-                <div className="py-10 flex flex-col items-center text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-purple mb-3">
-                    <BarChart3 className="h-7 w-7 text-info-purple" />
-                  </div>
-                  <p className="font-heading text-sm font-semibold text-text-primary">No trades yet</p>
-                  <p className="text-xs text-text-secondary mt-0.5">Your completed trades will appear here</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {trades.slice(0, 8).map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center gap-3 rounded-xl border border-border p-2.5"
-                    >
-                      <StockLogo symbol={t.symbol} size="sm" rounded="sm" />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-mono text-sm font-semibold text-text-primary">{t.symbol}</p>
-                          <span
-                            className={cn(
-                              'pill',
-                              t.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
-                            )}
-                          >
-                            {t.side}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-text-secondary mt-0.5">{t.quantity} qty @ ₹{formatNumber(t.price, 2)}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className={cn('font-mono text-sm font-semibold tabular-nums', getPnlColor(t.pnl))}>
-                          {t.pnl >= 0 ? '+' : ''}₹{formatNumber(t.pnl, 2)}
-                        </p>
-                        <p className="text-[11px] text-text-secondary">{t.type}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
         </>
       )}
+
+      {/* ============== ORDERS TAB — full 24h order & trade history ============== */}
+      {mainTab === 'orders' && (
+        <div className="card-soft">
+          {/* Sub-tabs: Orders | Trade History */}
+          <div className="flex items-center gap-1 border-b border-border px-3">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className="seg-tab"
+              data-active={activeTab === 'orders'}
+            >
+              Orders
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+                {orders.length}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab('trades')}
+              className="seg-tab"
+              data-active={activeTab === 'trades'}
+            >
+              Trade History
+              <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+                {trades.length}
+              </span>
+            </button>
+          </div>
+
+          <div className="p-3">
+            {activeTab === 'orders' ? (
+              <OrdersList
+                orders={orders}
+                loading={loading}
+                onCancel={handleCancel}
+              />
+            ) : (
+              <TradesList trades={trades} loading={loading} />
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================
+   OrdersList — status filter pills (All/Pending/Filled/Cancelled) + 24h list
+   ============================================================ */
+function OrdersList({
+  orders,
+  loading,
+  onCancel,
+}: {
+  orders: Order[];
+  loading: boolean;
+  onCancel: (id: string) => void;
+}) {
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'FILLED' | 'CANCELLED'>('ALL');
+
+  const filtered = statusFilter === 'ALL' ? orders : orders.filter((o) => o.status === statusFilter);
+
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-14 animate-pulse rounded-lg bg-bg-surface-alt" />
+        ))}
+      </div>
+    );
+  }
+
+  if (orders.length === 0) {
+    return (
+      <div className="py-10 flex flex-col items-center text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-blue mb-3">
+          <FileSearch className="h-7 w-7 text-brand-primary" />
+        </div>
+        <p className="font-heading text-sm font-semibold text-text-primary">No orders in the last 24h</p>
+        <p className="text-xs text-text-secondary mt-0.5">Place an order to get started</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {/* Status filter pills */}
+      <div className="flex items-center gap-1.5 mb-3">
+        {(['ALL', 'PENDING', 'FILLED', 'CANCELLED'] as const).map((s) => {
+          const count = s === 'ALL' ? orders.length : orders.filter((o) => o.status === s).length;
+          return (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className={cn(
+                'rounded-full px-3 py-1 text-[11px] font-semibold transition-colors border',
+                statusFilter === s
+                  ? 'border-brand-primary bg-tint-blue text-brand-primary'
+                  : 'border-border bg-bg-surface text-text-secondary hover:bg-bg-surface-alt'
+              )}
+            >
+              {s === 'ALL' ? 'All' : s.charAt(0) + s.slice(1).toLowerCase()}
+              <span className="ml-1 opacity-70">({count})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="py-8 text-center text-xs text-text-secondary">
+          No {statusFilter.toLowerCase()} orders in the last 24h
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((ord) => (
+            <div
+              key={ord.id}
+              className="flex items-center gap-3 rounded-xl border border-border p-2.5"
+            >
+              <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</p>
+                  <span
+                    className={cn(
+                      'pill',
+                      ord.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
+                    )}
+                  >
+                    {ord.side}
+                  </span>
+                  <span className="pill bg-bg-surface-alt text-text-secondary">{ord.segment}</span>
+                </div>
+                <p className="text-[11px] text-text-secondary mt-0.5">
+                  {ord.orderType} · {ord.quantity} qty
+                  {ord.createdAt && (
+                    <span className="ml-2 text-text-tertiary">
+                      {new Date(ord.createdAt).toLocaleString('en-IN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        day: '2-digit',
+                        month: 'short',
+                      })}
+                    </span>
+                  )}
+                </p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
+                  ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
+                </p>
+                <p
+                  className={cn(
+                    'text-[11px] font-medium',
+                    ord.status === 'FILLED'
+                      ? 'text-profit-green'
+                      : ord.status === 'PENDING'
+                      ? 'text-accent-gold'
+                      : 'text-loss-red'
+                  )}
+                >
+                  {ord.status}
+                </p>
+              </div>
+              {ord.status === 'PENDING' && (
+                <button
+                  onClick={() => onCancel(ord.id)}
+                  className="ml-2 text-[11px] font-medium text-loss-red hover:underline"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* ============================================================
+   TradesList — closed/executed trades in the last 24h
+   ============================================================ */
+function TradesList({ trades, loading }: { trades: Trade[]; loading: boolean }) {
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-14 animate-pulse rounded-lg bg-bg-surface-alt" />
+        ))}
+      </div>
+    );
+  }
+
+  if (trades.length === 0) {
+    return (
+      <div className="py-10 flex flex-col items-center text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-purple mb-3">
+          <BarChart3 className="h-7 w-7 text-info-purple" />
+        </div>
+        <p className="font-heading text-sm font-semibold text-text-primary">No trades yet</p>
+        <p className="text-xs text-text-secondary mt-0.5">Your completed trades will appear here</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {trades.map((t) => (
+        <div
+          key={t.id}
+          className="flex items-center gap-3 rounded-xl border border-border p-2.5"
+        >
+          <StockLogo symbol={t.symbol} size="sm" rounded="sm" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="font-mono text-sm font-semibold text-text-primary">{t.symbol}</p>
+              <span
+                className={cn(
+                  'pill',
+                  t.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
+                )}
+              >
+                {t.side}
+              </span>
+              <span className="pill bg-bg-surface-alt text-text-secondary">{t.type}</span>
+            </div>
+            <p className="text-[11px] text-text-secondary mt-0.5">{t.quantity} qty @ ₹{formatNumber(t.price, 2)}</p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className={cn('font-mono text-sm font-semibold tabular-nums', getPnlColor(t.pnl))}>
+              {t.pnl >= 0 ? '+' : ''}₹{formatNumber(t.pnl, 2)}
+            </p>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

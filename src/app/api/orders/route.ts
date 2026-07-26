@@ -12,11 +12,25 @@ const MOCK_LTP: Record<string, number> = {
   HCLTECH: 1712.40, SUNPHARMA: 1824.15, TITAN: 3568.90, ADANIENT: 2890.45,
 };
 
+const ORDER_RETENTION_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (auth instanceof NextResponse) return auth;
 
   try {
+    const cutoff = new Date(Date.now() - ORDER_RETENTION_MS);
+
+    /* ---------- 24h retention: delete orders older than 24h ----------
+       Also auto-cancel any PENDING order older than 24h before deletion. */
+    await db.order.updateMany({
+      where: { userId: auth.userId, status: 'PENDING', createdAt: { lt: cutoff } },
+      data: { status: 'CANCELLED', reason: 'AUTO_EXPIRED_24H' },
+    });
+    await db.order.deleteMany({
+      where: { userId: auth.userId, createdAt: { lt: cutoff } },
+    });
+
     const orders = await db.order.findMany({
       where: { userId: auth.userId },
       orderBy: { createdAt: 'desc' },

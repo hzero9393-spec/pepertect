@@ -4,10 +4,13 @@ import { db } from '@/lib/db';
 import { logActivity } from '@/lib/activity';
 
 /**
- * POST /api/user/logout-all
- * Deletes every active session for this user except the one making the
- * request (so the caller stays logged in to confirm the action took effect).
- * Also expires all ActiveDevice records.
+ * POST /api/user/logout-all?includeCurrent=true
+ *
+ * Default (no query param): deletes every active session for this user EXCEPT
+ * the one making the request (so the caller stays logged in to confirm).
+ *
+ * With ?includeCurrent=true: deletes ALL sessions including the current one.
+ * The client should redirect to the landing page after this call.
  */
 export async function POST(req: NextRequest) {
   const auth = await authenticateRequest(req);
@@ -15,15 +18,19 @@ export async function POST(req: NextRequest) {
 
   try {
     const token = req.headers.get('authorization')?.replace('Bearer ', '');
+    const url = new URL(req.url);
+    const includeCurrent = url.searchParams.get('includeCurrent') === 'true';
 
-    // Delete all sessions except the current one (matching token), and any
-    // that have already expired.
-    const deletedSessions = await db.session.deleteMany({
-      where: {
-        userId: auth.userId,
-        NOT: token ? { token } : undefined,
-      },
-    });
+    // If includeCurrent=true, delete ALL sessions (including current).
+    // Otherwise, delete all sessions EXCEPT the current one.
+    const where = includeCurrent
+      ? { userId: auth.userId }
+      : {
+          userId: auth.userId,
+          NOT: token ? { token } : undefined,
+        };
+
+    const deletedSessions = await db.session.deleteMany({ where });
 
     // Touch active_devices so they show as logged out
     await db.activeDevice.deleteMany({
@@ -35,13 +42,15 @@ export async function POST(req: NextRequest) {
       action: 'LOGOUT_ALL',
       ip: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null,
       userAgent: req.headers.get('user-agent') || null,
-      details: { sessionsEnded: deletedSessions.count },
+      details: { sessionsEnded: deletedSessions.count, includeCurrent },
     });
 
     return NextResponse.json({
       success: true,
-      message: `Ended ${deletedSessions.count} other session(s).`,
-      data: { sessionsEnded: deletedSessions.count },
+      message: includeCurrent
+        ? `Removed account from all ${deletedSessions.count} device(s).`
+        : `Ended ${deletedSessions.count} other session(s).`,
+      data: { sessionsEnded: deletedSessions.count, includeCurrent },
     });
   } catch (error) {
     console.error('Logout all error:', error);
@@ -51,3 +60,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
