@@ -10,18 +10,15 @@ import {
   ArrowUp,
   ArrowDown,
   BarChart3,
-  Eye,
-  EyeOff,
   Star,
-  StarOff,
   TrendingUp,
-  TrendingDown,
   Activity,
   Layers,
   DollarSign,
   Clock,
 } from 'lucide-react';
 import type { Stock } from '@/types';
+import { StockLogo } from '@/components/shared/StockLogo';
 
 interface Candle {
   t: number;
@@ -188,18 +185,12 @@ export function StockDetailPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-3 min-w-0">
-          <div
-            className={cn(
-              'flex h-12 w-12 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-xl',
-              isUp ? 'bg-profit-green/10' : 'bg-loss-red/10'
-            )}
-          >
-            {isUp ? (
-              <TrendingUp className="h-6 w-6 sm:h-7 sm:w-7 text-profit-green" />
-            ) : (
-              <TrendingDown className="h-6 w-6 sm:h-7 sm:w-7 text-loss-red" />
-            )}
-          </div>
+          <StockLogo
+            symbol={stock.symbol}
+            size="xl"
+            rounded="lg"
+            className="ring-1 ring-border-default"
+          />
           <div className="min-w-0">
             <h1 className="font-heading text-2xl sm:text-3xl font-bold text-text-primary tracking-tight">
               {stock.symbol}
@@ -218,6 +209,12 @@ export function StockDetailPage() {
               )}
               <span className="rounded-md bg-brand-primary/10 px-2 py-0.5 text-[10px] font-medium text-brand-primary">
                 {stock.segment || 'EQUITY'}
+              </span>
+              <span className={cn(
+                'rounded-md px-2 py-0.5 text-[10px] font-medium',
+                isUp ? 'bg-profit-green/10 text-profit-green' : 'bg-loss-red/10 text-loss-red'
+              )}>
+                {isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
               </span>
             </div>
           </div>

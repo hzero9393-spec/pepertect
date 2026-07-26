@@ -4,9 +4,10 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { LiveDot, EmptyState } from '@/components/shared/common';
+import { EmptyState } from '@/components/shared/common';
 import { formatNumber } from '@/lib/utils';
 import { Search, TrendingUp, TrendingDown } from 'lucide-react';
+import { StockLogo } from '@/components/shared/StockLogo';
 import type { Stock, IndexData } from '@/types';
 
 export function MarketPage() {
@@ -50,8 +51,12 @@ export function MarketPage() {
       {/* Indices strip — horizontal scroll on mobile */}
       <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 no-scrollbar -mx-3 px-3 md:mx-0 md:px-0">
         {indices.map((idx) => (
-          <div key={idx.id} className="flex shrink-0 items-center gap-2 sm:gap-3 rounded-lg border border-border-default bg-bg-surface px-3 sm:px-4 py-2.5 sm:py-3">
-            <LiveDot isLive={idx.change >= 0} />
+          <a
+            key={idx.id}
+            href={`/stock/${idx.symbol}`}
+            className="flex shrink-0 items-center gap-2 sm:gap-3 rounded-lg border border-border-default bg-bg-surface px-3 sm:px-4 py-2.5 sm:py-3 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
+          >
+            <StockLogo symbol={idx.symbol} size="sm" isIndex rounded="md" />
             <div>
               <p className="font-heading text-xs sm:text-sm font-semibold text-text-primary">{idx.symbol}</p>
               <p className="font-mono text-base sm:text-lg font-bold tabular-nums text-text-primary">
@@ -61,7 +66,7 @@ export function MarketPage() {
                 {idx.change >= 0 ? '▲' : '▼'} {Math.abs(idx.change).toFixed(2)} ({idx.changePct >= 0 ? '+' : ''}{idx.changePct.toFixed(2)}%)
               </p>
             </div>
-          </div>
+          </a>
         ))}
       </div>
 
@@ -100,19 +105,22 @@ export function MarketPage() {
                 <a
                   key={stock.id}
                   href={`/stock/${stock.symbol}`}
-                  className="rounded-lg border border-border-default bg-bg-base p-3 sm:p-4 transition-colors hover:bg-bg-surface-alt"
+                  className="rounded-lg border border-border-default bg-bg-base p-3 sm:p-4 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-heading text-sm font-semibold text-text-primary">{stock.symbol}</p>
-                      <p className="text-xs text-text-secondary truncate clamp-1">{stock.name}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <StockLogo symbol={stock.symbol} size="md" rounded="md" />
+                      <div className="min-w-0">
+                        <p className="font-heading text-sm font-semibold text-text-primary">{stock.symbol}</p>
+                        <p className="text-xs text-text-secondary truncate clamp-1">{stock.name}</p>
+                      </div>
                     </div>
                     {stock.changePct !== undefined && stock.changePct !== 0 && (
-                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${stock.changePct >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10'}`}>
+                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${stock.changePct >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10'}`}>
                         {stock.changePct >= 0 ? (
-                          <TrendingUp className="h-4 w-4 text-profit-green" />
+                          <TrendingUp className="h-3.5 w-3.5 text-profit-green" />
                         ) : (
-                          <TrendingDown className="h-4 w-4 text-loss-red" />
+                          <TrendingDown className="h-3.5 w-3.5 text-loss-red" />
                         )}
                       </div>
                     )}

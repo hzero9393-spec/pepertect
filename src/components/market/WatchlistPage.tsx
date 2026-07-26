@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label';
 import { EmptyState, PremiumBadge } from '@/components/shared/common';
 import { formatINR, formatNumber, getPnlColor } from '@/lib/utils';
 import { hasFeature } from '@/lib/tier';
-import { Search, Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
+import { Search, Plus, Trash2 } from 'lucide-react';
+import { StockLogo } from '@/components/shared/StockLogo';
 import type { WatchlistItem } from '@/types';
 
 export function WatchlistPage() {
@@ -107,11 +108,14 @@ export function WatchlistPage() {
                   className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-bg-surface-alt"
                   onClick={() => handleAdd(s.symbol)}
                 >
-                  <div>
-                    <span className="font-medium text-text-primary">{s.symbol}</span>
-                    <span className="ml-2 text-text-secondary">{s.name}</span>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <StockLogo symbol={s.symbol} size="sm" rounded="md" />
+                    <div className="min-w-0">
+                      <span className="font-medium text-text-primary">{s.symbol}</span>
+                      <span className="ml-2 text-text-secondary text-xs truncate">{s.name}</span>
+                    </div>
                   </div>
-                  <Plus className="h-4 w-4 text-brand-primary" />
+                  <Plus className="h-4 w-4 text-brand-primary shrink-0" />
                 </button>
               ))}
             </div>
@@ -142,18 +146,15 @@ export function WatchlistPage() {
           ) : (
             <div className="space-y-2">
               {items.map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-lg border border-border-default p-3 gap-2">
-                  <a href={`/stock/${item.symbol}`} className="flex flex-1 items-center gap-2 sm:gap-3 min-w-0">
-                    <div className={`flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-md ${item.changePct >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10'}`}>
-                      {item.changePct >= 0 ? (
-                        <TrendingUp className="h-4 w-4 text-profit-green" />
-                      ) : (
-                        <TrendingDown className="h-4 w-4 text-loss-red" />
-                      )}
-                    </div>
+                <div key={item.id} className="flex items-center justify-between rounded-lg border border-border-default p-3 gap-2 hover:bg-bg-surface-alt/50 transition-colors">
+                  <a href={`/stock/${item.symbol}`} className="flex flex-1 items-center gap-2.5 sm:gap-3 min-w-0">
+                    <StockLogo symbol={item.symbol} size="md" rounded="md" />
                     <div className="min-w-0">
                       <p className="font-heading text-sm font-semibold text-text-primary truncate">{item.symbol}</p>
                       <p className="text-xs text-text-secondary truncate clamp-1">{item.name}</p>
+                      <p className={`mt-0.5 font-mono text-[10px] tabular-nums ${getPnlColor(item.changePct)}`}>
+                        {item.changePct >= 0 ? '▲' : '▼'} {Math.abs(item.changePct).toFixed(2)}%
+                      </p>
                     </div>
                   </a>
                   <div className="flex items-center gap-2 sm:gap-4 shrink-0">
@@ -167,7 +168,7 @@ export function WatchlistPage() {
                     </div>
                     <button
                       onClick={() => handleRemove(item.symbol)}
-                      className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-loss-red/10 hover:text-loss-red"
+                      className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-loss-red/10 hover:text-loss-red transition-colors"
                       aria-label={`Remove ${item.symbol} from watchlist`}
                     >
                       <Trash2 className="h-4 w-4" />

@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/shared/common';
 import { formatNumber, formatINR, getPnlColor } from '@/lib/utils';
 import { Briefcase, XCircle } from 'lucide-react';
 import type { Position } from '@/types';
+import { StockLogo } from '@/components/shared/StockLogo';
 
 export function PositionsPage() {
   const { token } = useAuthStore();
@@ -100,16 +101,19 @@ export function PositionsPage() {
               {positions.map((pos) => (
                 <div key={pos.id} className="rounded-lg border border-border-default bg-bg-base p-3 sm:p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <a href={`/stock/${pos.symbol}`} className="font-heading text-sm sm:text-base font-semibold text-text-primary hover:text-brand-primary">{pos.symbol}</a>
-                        <span className="rounded bg-bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">{pos.segment}</span>
-                        {pos.optionType && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${pos.optionType === 'CE' ? 'bg-profit-green/10 text-profit-green' : 'bg-loss-red/10 text-loss-red'}`}>{pos.optionType}</span>}
-                      </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
-                        <span>{pos.side} · {pos.quantity} qty</span>
-                        <span>Avg: ₹{formatNumber(pos.avgPrice)}</span>
-                        {pos.currentPrice > 0 && <span>LTP: ₹{formatNumber(pos.currentPrice)}</span>}
+                    <div className="flex items-start gap-3 min-w-0">
+                      <StockLogo symbol={pos.symbol} size="md" rounded="md" />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <a href={`/stock/${pos.symbol}`} className="font-heading text-sm sm:text-base font-semibold text-text-primary hover:text-brand-primary">{pos.symbol}</a>
+                          <span className="rounded bg-bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">{pos.segment}</span>
+                          {pos.optionType && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${pos.optionType === 'CE' ? 'bg-profit-green/10 text-profit-green' : 'bg-loss-red/10 text-loss-red'}`}>{pos.optionType}</span>}
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
+                          <span>{pos.side} · {pos.quantity} qty</span>
+                          <span>Avg: ₹{formatNumber(pos.avgPrice)}</span>
+                          {pos.currentPrice > 0 && <span>LTP: ₹{formatNumber(pos.currentPrice)}</span>}
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center justify-between gap-3 sm:gap-4">

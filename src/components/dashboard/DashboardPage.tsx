@@ -10,6 +10,7 @@ import {
   BarChart3, Target, Trophy,
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order } from '@/types';
+import { StockLogo } from '@/components/shared/StockLogo';
 
 export function DashboardPage() {
   const { user, token } = useAuthStore();
@@ -128,11 +129,14 @@ export function DashboardPage() {
                   href={`/stock/${idx.symbol}`}
                   className="group flex items-center justify-between rounded-lg border border-border-default p-3 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
                 >
-                  <div className="min-w-0">
-                    <p className="font-heading text-sm font-semibold text-text-primary group-hover:text-brand-primary">{idx.name}</p>
-                    <p className="text-xs text-text-secondary">{idx.exchange}</p>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <StockLogo symbol={idx.symbol} size="sm" isIndex rounded="md" />
+                    <div className="min-w-0">
+                      <p className="font-heading text-sm font-semibold text-text-primary group-hover:text-brand-primary truncate">{idx.name}</p>
+                      <p className="text-xs text-text-secondary">{idx.exchange}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <p className="font-mono text-sm font-medium tabular-nums text-text-primary">
                       {formatNumber(idx.lastPrice)}
                     </p>
@@ -169,11 +173,14 @@ export function DashboardPage() {
                     href={`/stock/${pos.symbol}`}
                     className="flex items-center justify-between rounded-md border border-border-default p-2.5 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
                   >
-                    <div className="min-w-0">
-                      <p className="font-mono text-sm font-medium text-text-primary">{pos.symbol}</p>
-                      <p className="text-xs text-text-secondary">{pos.quantity} @ {formatNumber(pos.avgPrice)}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <StockLogo symbol={pos.symbol} size="sm" rounded="md" />
+                      <div className="min-w-0">
+                        <p className="font-mono text-sm font-medium text-text-primary">{pos.symbol}</p>
+                        <p className="text-xs text-text-secondary">{pos.quantity} @ {formatNumber(pos.avgPrice)}</p>
+                      </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <p className={`font-mono text-sm tabular-nums ${pos.pnl >= 0 ? 'text-profit-green' : 'text-loss-red'}`}>
                         {pos.pnl >= 0 ? '+' : ''}{formatNumber(pos.pnl)}
                       </p>
@@ -219,7 +226,8 @@ export function DashboardPage() {
                     {recentOrders.map((ord) => (
                       <tr key={ord.id} className="border-b border-border-default/50 hover:bg-bg-surface-alt/50">
                         <td className="py-2">
-                          <a href={`/stock/${ord.symbol}`} className="font-mono font-medium text-text-primary hover:text-brand-primary">
+                          <a href={`/stock/${ord.symbol}`} className="flex items-center gap-2 font-mono font-medium text-text-primary hover:text-brand-primary">
+                            <StockLogo symbol={ord.symbol} size="xs" rounded="sm" />
                             {ord.symbol}
                           </a>
                         </td>
@@ -256,6 +264,7 @@ export function DashboardPage() {
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
+                        <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
                         <span className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</span>
                         <span className={
                           ord.side === 'BUY'

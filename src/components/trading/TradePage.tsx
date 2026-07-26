@@ -9,8 +9,9 @@ import { Label } from '@/components/ui/label';
 import { EmptyState, PremiumBadge, LiveDot } from '@/components/shared/common';
 import { formatNumber, getPnlColor, cn } from '@/lib/utils';
 import { hasFeature } from '@/lib/tier';
-import { BarChart3, ArrowUp, ArrowDown, TrendingUp, TrendingDown } from 'lucide-react';
+import { BarChart3, ArrowUp, ArrowDown } from 'lucide-react';
 import type { Order, Trade, Stock } from '@/types';
+import { StockLogo } from '@/components/shared/StockLogo';
 
 const POPULAR_STOCKS = [
   'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN',
@@ -192,19 +193,24 @@ export function TradePage() {
                       View overview →
                     </a>
                   </div>
-                  <div className="mt-1.5 flex items-end justify-between">
-                    <p className="font-mono text-2xl font-bold tabular-nums text-text-primary">
-                      ₹{formatNumber(liveStock.ltp ?? 0)}
-                    </p>
-                    <p
-                      className={cn(
-                        'font-mono text-sm font-semibold tabular-nums',
-                        getPnlColor(liveStock.changePct ?? 0)
-                      )}
-                    >
-                      {(liveStock.change ?? 0) >= 0 ? '+' : ''}
-                      {formatNumber(liveStock.change ?? 0)} ({(liveStock.changePct ?? 0) >= 0 ? '+' : ''}{(liveStock.changePct ?? 0).toFixed(2)}%)
-                    </p>
+                  <div className="mt-1.5 flex items-end justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <StockLogo symbol={liveStock.symbol} size="md" rounded="md" />
+                      <div className="min-w-0">
+                        <p className="font-mono text-2xl font-bold tabular-nums text-text-primary">
+                          ₹{formatNumber(liveStock.ltp ?? 0)}
+                        </p>
+                        <p
+                          className={cn(
+                            'font-mono text-sm font-semibold tabular-nums',
+                            getPnlColor(liveStock.changePct ?? 0)
+                          )}
+                        >
+                          {(liveStock.change ?? 0) >= 0 ? '+' : ''}
+                          {formatNumber(liveStock.change ?? 0)} ({(liveStock.changePct ?? 0) >= 0 ? '+' : ''}{(liveStock.changePct ?? 0).toFixed(2)}%)
+                        </p>
+                      </div>
+                    </div>
                   </div>
                   <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
                     <div>
@@ -438,8 +444,9 @@ export function TradePage() {
                             <td className="py-2">
                               <a
                                 href={`/stock/${ord.symbol}`}
-                                className="font-mono font-medium text-text-primary hover:text-brand-primary"
+                                className="flex items-center gap-2 font-mono font-medium text-text-primary hover:text-brand-primary"
                               >
+                                <StockLogo symbol={ord.symbol} size="xs" rounded="sm" />
                                 {ord.symbol}
                               </a>
                             </td>
@@ -482,6 +489,7 @@ export function TradePage() {
                       <div key={ord.id} className="rounded-lg border border-border-default p-3">
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
+                            <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
                             <a
                               href={`/stock/${ord.symbol}`}
                               className="font-mono text-sm font-semibold text-text-primary"
@@ -562,8 +570,9 @@ export function TradePage() {
                           <td className="py-2">
                             <a
                               href={`/stock/${t.symbol}`}
-                              className="font-mono font-medium text-text-primary hover:text-brand-primary"
+                              className="flex items-center gap-2 font-mono font-medium text-text-primary hover:text-brand-primary"
                             >
+                              <StockLogo symbol={t.symbol} size="xs" rounded="sm" />
                               {t.symbol}
                             </a>
                           </td>
@@ -588,6 +597,7 @@ export function TradePage() {
                     <div key={t.id} className="rounded-lg border border-border-default p-3">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
+                          <StockLogo symbol={t.symbol} size="sm" rounded="sm" />
                           <a
                             href={`/stock/${t.symbol}`}
                             className="font-mono text-sm font-semibold text-text-primary"
