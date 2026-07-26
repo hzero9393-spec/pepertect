@@ -42,7 +42,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { symbol, segment, side, type: orderType, quantity, price, stopLoss, target, optionType, strikePrice, expiry } = body;
+    const { symbol, segment, side, type, orderType: orderTypeRaw, quantity, price, stopLoss, target, optionType, strikePrice, expiry } = body;
+    const orderType = orderTypeRaw ?? type; // accept both `orderType` and `type`
 
     // Feature check
     if (segment === 'FUTURES' && !hasFeature(auth.tier as 'FREE' | 'PREMIUM', 'futures_trading')) {
