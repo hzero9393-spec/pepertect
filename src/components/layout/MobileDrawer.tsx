@@ -99,7 +99,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
       {/* Backdrop */}
       <div
         className={cn(
-          'fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-opacity md:hidden',
+          'fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-opacity duration-300 md:hidden',
           open ? 'opacity-100' : 'pointer-events-none opacity-0'
         )}
         onClick={onClose}
@@ -109,9 +109,10 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
       {/* Drawer */}
       <aside
         className={cn(
-          'fixed left-0 top-0 z-50 h-full w-[85vw] max-w-xs transform flex flex-col',
+          'fixed left-0 top-0 z-[60] h-full w-[85vw] max-w-xs flex flex-col',
           'bg-bg-surface border-r border-border-default transition-transform duration-300 ease-out',
-          'md:hidden'
+          'md:hidden will-change-transform',
+          open ? 'translate-x-0' : '-translate-x-full pointer-events-none'
         )}
         style={{ paddingTop: 'var(--safe-top)' }}
         aria-hidden={!open}
@@ -124,10 +125,11 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
           </div>
           <button
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-bg-surface-alt"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-text-secondary hover:bg-bg-surface-alt active:bg-bg-surface-alt/80 transition-colors touch-manipulation"
             aria-label="Close menu"
+            type="button"
           >
-            <X className="h-5 w-5" />
+            <X className="h-6 w-6" />
           </button>
         </div>
 
