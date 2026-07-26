@@ -864,3 +864,66 @@ Stage Summary:
 - Single maximize icon on stock overview (the TradingView external-link button is gone).
 - Signup T&C/Privacy acceptance UI is now compact and unobtrusive.
 - All changes are committed locally; no deployment performed per user's explicit instruction.
+
+---
+Task ID: 5
+Agent: main
+Task: 4 fixes + redeploy — (1) dashboard real plan-based capital, (2) balance not deducting after trades, (3) basket success message too verbose, (4) support page 3 buttons broken. Then redeploy.
+
+Work Log:
+- Updated `src/lib/tier.ts`:
+  - FREE_VIRTUAL_CAPITAL 100000 → 10000
+  - PREMIUM_VIRTUAL_CAPITAL 1000000 → 100000
+  - Added getVirtualCapitalForTier() helper.
+- Updated `src/app/api/portfolio/route.ts`:
+  - New portfolio now initialized with plan-based capital via getVirtualCapitalForTier(auth.tier).
+- Updated `src/app/api/subscription/verify/route.ts`:
+  - Premium upgrade now boosts totalBalance to ₹1,00,000 (was ₹10,00,000).
+  - Preserves realized P&L across the upgrade by snapshotting prevBalance + prevInvested.
+  - User.virtualCapital updated to PREMIUM_VIRTUAL_CAPITAL (1L).
+  - Transaction description updated to "Capital boosted to ₹1,00,000".
+- Fixed balance deduction bug in `src/app/api/orders/route.ts`:
+  - BUY: now decrements totalBalance alongside availableMargin (was only updating availableMargin).
+  - SELL: now increments totalBalance alongside availableMargin.
+- Same fix applied to `src/app/api/orders/basket/route.ts` (per-leg portfolio update).
+- Rewrote basket success UI in `src/components/trading/BasketPage.tsx`:
+  - Removed verbose per-leg "BUY RELIANCE — FILLED" list.
+  - Now shows a professional banner: large check icon, "5/5 leg(s) placed successfully" heading,
+    subtext, BUY/SELL/Filled count chips, "View Orders →" CTA, decorative gradient wash.
+  - Failed legs still listed in a compact red sub-card (only when failures exist).
+- Created 3 dedicated support sub-pages:
+  - `src/components/support/NewTicketPage.tsx`: form with Subject / Category (7 options) /
+    Priority (Low/Medium/High) / Description / Attachments placeholder + success confirmation
+    screen showing Ticket ID.
+  - `src/components/support/HelpCenterPage.tsx`: searchable FAQ with 13 Q&As across 5
+    categories, category pills, 4 getting-started guide cards, expand-on-click answers.
+  - `src/components/support/LiveChatPage.tsx`: chat interface with bot auto-replies (keyword
+    matching for capital/reset/premium/options/balance), typing indicator, quick-reply chips,
+    "agent joined" simulation after 4s, message timestamps.
+- Registered the 3 new routes in `src/app/[...slug]/page.tsx`:
+  - Added imports for NewTicketPage, HelpCenterPage, LiveChatPage.
+  - resolvePage() now handles /support/new-ticket, /support/help-center, /support/live-chat.
+- Updated `src/components/support/SupportPage.tsx`:
+  - "Create your first ticket" empty-state button → now an <a> linking to /support/new-ticket
+    (was a <button> trying to focus a non-existent #subject-input).
+  - "Help Center" resource row → /support/help-center (was /learning).
+  - "Live Chat" resource row → /support/live-chat (was "#", broken).
+  - Added "Open full page →" link next to inline Create Ticket card.
+  - Added new "Need more help?" section with 3 prominent cards: Create a Ticket / Help Center /
+    Live Chat.
+- Typecheck: zero errors in modified files. Pre-existing errors in unrelated files remain.
+- Committed: 7d5f11c
+- Pushed to origin/main.
+- Deployed to Vercel production: https://pepertect.vercel.app (Ready in 2m).
+- Verified on production:
+  - New free user gets ₹10,000 capital (was ₹1,00,000).
+  - BUY 5 RELIANCE: totalBalance ₹10,000 → ₹566.25 (correctly deducted ₹9,413.75 + brokerage).
+  - SELL 5 RELIANCE: totalBalance → ₹9,960 (credited back, minus brokerage).
+  - investedAmount tracks open position cost correctly.
+
+Stage Summary:
+- Free plan: ₹10,000 virtual capital. Premium (₹299): ₹1,00,000 virtual capital.
+- Balance now visibly deducts on BUY and credits on SELL — the "20 trades but balance same" bug is fixed.
+- Basket order success banner is now a professional "5/5 leg(s) placed successfully" message with summary chips.
+- All 3 support buttons work and route to dedicated pages: /support/new-ticket, /support/help-center, /support/live-chat.
+- Deployed and verified end-to-end on production.
