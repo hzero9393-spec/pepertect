@@ -30,7 +30,7 @@ export function LoginPage() {
       const data = await res.json();
 
       if (data.success) {
-        login(data.data.user, data.data.token);
+        login(data.user, data.token);
         window.history.pushState({}, '', '/dashboard');
         window.dispatchEvent(new PopStateEvent('popstate'));
       } else {
@@ -56,7 +56,7 @@ export function LoginPage() {
       const data = await res.json();
 
       if (data.success) {
-        login(data.data.user, data.data.token);
+        login(data.user, data.token);
         window.history.pushState({}, '', '/dashboard');
         window.dispatchEvent(new PopStateEvent('popstate'));
       } else {
@@ -68,7 +68,7 @@ export function LoginPage() {
         });
         const regData = await regRes.json();
         if (regData.success) {
-          login(regData.data.user, regData.data.token);
+          login(regData.user, regData.token);
           window.history.pushState({}, '', '/dashboard');
           window.dispatchEvent(new PopStateEvent('popstate'));
         } else {

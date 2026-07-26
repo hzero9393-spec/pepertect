@@ -41,7 +41,7 @@ export function RegisterPage() {
       const data = await res.json();
 
       if (data.success) {
-        login(data.data.user, data.data.token);
+        login(data.user, data.token);
         window.history.pushState({}, '', '/dashboard');
         window.dispatchEvent(new PopStateEvent('popstate'));
       } else {

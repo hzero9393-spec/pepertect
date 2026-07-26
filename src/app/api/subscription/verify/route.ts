@@ -58,16 +58,19 @@ export async function POST(req: NextRequest) {
     });
 
     // Create transaction
-    await db.transaction.create({
-      data: {
-        portfolioId: auth.userId,
-        type: 'CREDIT',
-        amount: 900000,
-        balance: 1000000,
-        description: 'Premium upgrade - Capital boosted to ₹10L',
-        reference: subscription.id,
-      },
-    });
+    const portfolio = await db.portfolio.findUnique({ where: { userId: auth.userId } });
+    if (portfolio) {
+      await db.transaction.create({
+        data: {
+          portfolioId: portfolio.id,
+          type: 'CREDIT',
+          amount: 900000,
+          balance: 1000000,
+          description: 'Premium upgrade - Capital boosted to ₹10L',
+          reference: subscription.id,
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, data: subscription });
   } catch (error) {
