@@ -21,9 +21,11 @@ import {
   Sigma,
   Crosshair,
   DollarSign,
+  Star,
 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { findExpiry, type ExpiryIndex } from '@/lib/expiry-calendar';
+import { addOptionStrikeToGroup } from '@/lib/multi-watchlist';
 
 // ---- Types (mirror OptionChainPage) ----------------------------------------
 
@@ -152,7 +154,7 @@ function estimateGreeks(leg: OptionLeg, strike: number, spot: number, dte: numbe
 // ---- Component -------------------------------------------------------------
 
 export function OptionStrikeOverviewPage() {
-  const { token } = useAuthStore();
+  const { token, user } = useAuthStore();
 
   // Read ?symbol=, ?expiry=, ?strike= from URL once on mount
   const [initialParams] = useState(() => {
@@ -276,7 +278,12 @@ export function OptionStrikeOverviewPage() {
   const orderValue = (activeLeg?.lastPrice ?? 0) * orderQty;
   const insufficientMargin = portfolioBalance != null && orderValue > portfolioBalance;
 
-  /* ---------- Inline order placement (no redirect to /trade) ---------- */
+  /* ---------- Inline order placement (no redirect to /trade) ----------
+     IMPORTANT: we pass `price: activeLeg.lastPrice` so the server fills the
+     order at the actual option premium. Without this, the orders API would
+     fall back to MOCK_LTP[symbol]=1000 (NIFTY isn't in the mock map),
+     inflating the orderValue 50x and wrongly rejecting it as insufficient
+     margin. */
   const placeOrder = async (orderSide: 'BUY' | 'SELL') => {
     if (!activeLeg || !strikeRow || !data) return;
     if (insufficientMargin && orderSide === 'BUY') {
@@ -295,6 +302,7 @@ export function OptionStrikeOverviewPage() {
           side: orderSide,
           type: 'MARKET',
           quantity: orderQty,
+          price: activeLeg.lastPrice, // option premium — required for OPTIONS
           optionType: side,
           strikePrice: strikeRow.strikePrice,
           expiry: data.expiry,
@@ -316,6 +324,22 @@ export function OptionStrikeOverviewPage() {
     } finally {
       setPlacing(false);
     }
+  };
+
+  /* ---------- Add to watchlist (saves into the default "Option Strikes" group) ---------- */
+  const [watchlistAdded, setWatchlistAdded] = useState(false);
+  const handleAddToWatchlist = () => {
+    if (!user?.id || !strikeRow || !data) return;
+    const ok = addOptionStrikeToGroup(
+      user.id,
+      'option-strikes',
+      symbol,
+      strikeRow.strikePrice,
+      side,
+      data.expiry,
+    );
+    setWatchlistAdded(ok);
+    setTimeout(() => setWatchlistAdded(false), 2000);
   };
 
   return (
@@ -358,19 +382,22 @@ export function OptionStrikeOverviewPage() {
             </div>
             <div className="flex items-center gap-2 mt-1 text-[10px] text-text-tertiary">
               {data?.expiry && (
-                <span className="inline-flex items-center gap-0.5">
+                <span className="inline-flex items-center gap-0.5 rounded-md bg-tint-purple/40 px-1.5 py-0.5 text-[10px] font-bold text-info-purple">
                   <Clock className="h-2.5 w-2.5" />
-                  {formatExpiry(data.expiry)}
+                  EXP {formatExpiry(data.expiry)}
                 </span>
               )}
+              {data?.expiryLabel && (
+                <span className="text-[10px] font-medium text-text-tertiary">{data.expiryLabel}</span>
+              )}
               {data && (
-                <span className="inline-flex items-center gap-0.5">
+                <span className="inline-flex items-center gap-0.5 text-text-tertiary">
                   <Layers className="h-2.5 w-2.5" />
                   Lot {data.lotSize}
                 </span>
               )}
               {data && (
-                <span>· {data.dte}d to expiry</span>
+                <span className="text-text-tertiary">· {data.dte}d to expiry</span>
               )}
             </div>
           </div>
@@ -379,6 +406,19 @@ export function OptionStrikeOverviewPage() {
             <p className="font-mono text-base font-bold tabular-nums text-text-primary">
               {formatNumber(spot, 2)}
             </p>
+            <button
+              onClick={handleAddToWatchlist}
+              className={cn(
+                'mt-1 inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold transition-colors',
+                watchlistAdded
+                  ? 'bg-profit-green/15 text-profit-green'
+                  : 'bg-bg-surface-alt text-text-secondary hover:bg-bg-surface hover:text-text-primary'
+              )}
+              title="Save this strike to your Option Strikes watchlist"
+            >
+              <Star className={cn('h-3 w-3', watchlistAdded && 'fill-current')} />
+              {watchlistAdded ? 'Added' : 'Watchlist'}
+            </button>
           </div>
         </div>
       </div>
@@ -582,13 +622,30 @@ export function OptionStrikeOverviewPage() {
             </div>
           )}
 
-          {/* ============== CE vs PE COMPARISON (compact) ============== */}
+          {/* ============== CE vs PE COMPARISON (compact) — clickable to switch side ============== */}
           {strikeRow && (
             <div className="card-soft p-3">
-              <h3 className="font-heading text-xs font-semibold text-text-primary mb-2">CE vs PE Snapshot</h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="font-heading text-xs font-semibold text-text-primary">CE vs PE Snapshot</h3>
+                <span className="text-[10px] text-text-tertiary">Tap a side to switch</span>
+              </div>
               <div className="grid grid-cols-2 gap-2">
-                <CompactLeg title="CALL" leg={strikeRow.ce} isItm={strikeRow.itm === 'CE'} accent="profit-green" />
-                <CompactLeg title="PUT" leg={strikeRow.pe} isItm={strikeRow.itm === 'PE'} accent="loss-red" />
+                <CompactLeg
+                  title="CALL"
+                  leg={strikeRow.ce}
+                  isItm={strikeRow.itm === 'CE'}
+                  accent="profit-green"
+                  isActive={side === 'CE'}
+                  onClick={() => setSide('CE')}
+                />
+                <CompactLeg
+                  title="PUT"
+                  leg={strikeRow.pe}
+                  isItm={strikeRow.itm === 'PE'}
+                  accent="loss-red"
+                  isActive={side === 'PE'}
+                  onClick={() => setSide('PE')}
+                />
               </div>
             </div>
           )}
@@ -785,20 +842,40 @@ function CompactLeg({
   leg,
   isItm,
   accent,
+  isActive = false,
+  onClick,
 }: {
   title: string;
   leg: OptionLeg;
   isItm: boolean;
   accent: 'profit-green' | 'loss-red';
+  isActive?: boolean;
+  onClick?: () => void;
 }) {
   const up = leg.change >= 0;
   const accentText = accent === 'profit-green' ? 'text-profit-green' : 'text-loss-red';
   const accentBg = accent === 'profit-green' ? 'bg-profit-green/[0.06]' : 'bg-loss-red/[0.06]';
   return (
-    <div className={cn('rounded-md border p-2', isItm ? `border-${accent}/30 ${accentBg}` : 'border-border bg-bg-surface')}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded-md border p-2 text-left transition-all',
+        isItm ? `border-${accent}/30 ${accentBg}` : 'border-border bg-bg-surface',
+        isActive && `ring-2 ring-${accent}/40 shadow-sm`,
+        onClick && 'cursor-pointer hover:border-brand-primary/40'
+      )}
+    >
       <div className="flex items-center justify-between">
         <p className={cn('text-[10px] font-bold', accentText)}>{title}</p>
-        {isItm && <span className={cn('pill text-[8px] font-bold px-1 py-0', accent === 'profit-green' ? 'bg-profit-green/20 text-profit-green' : 'bg-loss-red/20 text-loss-red')}>ITM</span>}
+        <div className="flex items-center gap-1">
+          {isActive && (
+            <span className="pill bg-brand-primary/15 text-brand-primary text-[8px] font-bold px-1 py-0">
+              VIEWING
+            </span>
+          )}
+          {isItm && <span className={cn('pill text-[8px] font-bold px-1 py-0', accent === 'profit-green' ? 'bg-profit-green/20 text-profit-green' : 'bg-loss-red/20 text-loss-red')}>ITM</span>}
+        </div>
       </div>
       <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-text-primary">₹{formatNumber(leg.lastPrice, 2)}</p>
       <p className={cn('text-[10px] font-semibold', up ? 'text-profit-green' : 'text-loss-red')}>
@@ -814,7 +891,7 @@ function CompactLeg({
           <span className="font-mono text-text-secondary">{leg.iv.toFixed(1)}%</span>
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 

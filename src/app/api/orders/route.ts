@@ -75,9 +75,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Get fill price
+    // Get fill price.
+    // IMPORTANT for OPTIONS: the client must pass `price` = the option's live LTP
+    // (premium). The indices NIFTY/SENSEX/BANKNIFTY/FINNIFTY are NOT in MOCK_LTP,
+    // so without `price` they would default to 1000 — which inflates orderValue
+    // 50x (e.g. ₹1000 × 50 qty = ₹50,000) and wrongly fails with "Insufficient
+    // margin". We therefore prefer the client-supplied `price` for MARKET option
+    // orders too.
     const ltp = MOCK_LTP[symbol] ?? 1000;
-    const fillPrice = orderType === 'MARKET' ? ltp : (price ?? ltp);
+    const fillPrice = price ?? ltp;
     const orderValue = fillPrice * quantity;
 
     // Check balance
@@ -199,12 +205,32 @@ export async function POST(req: NextRequest) {
         }
       } else {
         // SELL: find open position and square off.
+        // For OPTIONS we must match optionType + strikePrice + expiry as well,
+        // otherwise selling a CE 24600 could wrongly close a CE 24500 position
+        // that happens to share the same underlying symbol row.
         // IMPORTANT: brokerage is NOT charged on exit — it was already paid on the
         // buy side. This ensures that a round-trip trade with no P&L restores the
         // balance to exactly its pre-trade value (paper trading expectation).
-        const pos = await db.position.findFirst({
-          where: { userId: auth.userId, stockId: stock.id, symbol, status: 'OPEN' },
-        });
+        const posWhere: Record<string, unknown> = {
+          userId: auth.userId,
+          stockId: stock.id,
+          symbol,
+          status: 'OPEN',
+        };
+        if (segment === 'OPTIONS') {
+          posWhere.optionType = optionType ?? undefined;
+          posWhere.strikePrice = strikePrice ?? undefined;
+          if (expiry) {
+            // Match by calendar date (ignore time portion)
+            const expDate = new Date(expiry);
+            const dayStart = new Date(expDate);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(dayStart);
+            dayEnd.setDate(dayEnd.getDate() + 1);
+            posWhere.expiry = { gte: dayStart, lt: dayEnd };
+          }
+        }
+        const pos = await db.position.findFirst({ where: posWhere as never });
         if (pos) {
           const pnl = (fillPrice - pos.avgPrice) * quantity;
           await db.position.update({

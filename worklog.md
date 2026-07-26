@@ -963,3 +963,30 @@ Stage Summary:
 - Positions page shows Today's P&L prominently at top, per tab
 - Dashboard no longer shows fake ₹1L for FREE users
 - Production deploy confirmed: https://pepertect.vercel.app returns 200, /api/transactions responds
+
+---
+Task ID: C
+Agent: Main
+Task: Strike overview CE/PE toggle + strike search bar + multi-watchlist + fix option trade execution
+
+Work Log:
+- Investigated why option trades from strike overview were failing: orders API used MOCK_LTP[symbol] which doesn't include NIFTY/SENSEX/BANKNIFTY/FINNIFTY, so fillPrice defaulted to 1000. With lotSize 50, orderValue became ₹50,000 — exceeding free user's ₹10,000 balance → "Insufficient margin" rejection.
+- Fixed orders API route.ts: changed `fillPrice = orderType === 'MARKET' ? ltp : (price ?? ltp)` to `fillPrice = price ?? ltp` so the client-supplied option premium is honoured for MARKET option orders too.
+- Fixed SELL flow in orders API: was matching positions by (userId, stockId, symbol) only — for OPTIONS that meant selling CE 24600 could wrongly close a CE 24500 position. Now matches by optionType + strikePrice + expiry (calendar date range) for OPTIONS segment.
+- Strike overview: now passes `price: activeLeg.lastPrice` in the order body so the server fills at the actual option premium.
+- Strike overview: CE vs PE Snapshot cards are now clickable buttons — clicking CALL switches the page to CE view, clicking PUT switches to PE view. Active card shows a "VIEWING" pill + ring highlight.
+- Strike overview: added a prominent purple "EXP 28 Jul 2026" expiry badge in the header, plus the expiryLabel (e.g. "Jul W4") next to it.
+- Strike overview: added a "Watchlist" button next to the Spot price — one-click save the strike into the default "Option Strikes" watchlist group.
+- Option chain page: added a strike search bar above the index header. Parses queries like "24500 CE", "24500 PE", "24500 CALL", "NIFTY 24500 PE", "24400 CE 2026-07-30". Without an explicit expiry date, shows a dropdown listing all 4 upcoming expiries for that strike+side. Clicking a row navigates to the strike overview page.
+- Created new lib/multi-watchlist.ts: localStorage-backed multi-watchlist system with two default groups ("Stocks" and "Option Strikes"). Supports any number of additional named groups, rename, delete, add/remove items. Items are either stocks (symbol) or option strikes (symbol + strike + side + expiry).
+- Rewrote WatchlistPage.tsx with tabbed UI: switch between watchlist groups, add stocks via search, add option strikes via index/strike/side/expiry form, rename/delete groups (default groups are protected), each item row links to the right detail page.
+- TypeScript check: all edited files compile cleanly (no new errors introduced).
+
+Stage Summary:
+- Option chain BUY/SELL from strike overview now works correctly (passes real option LTP, not MOCK_LTP=1000)
+- SELL no longer closes the wrong option position (matches by optionType+strike+expiry)
+- CE/PE Snapshot cards are clickable to switch sides (no need to scroll up to the top toggle)
+- Strike overview shows expiry date prominently as a purple badge in the header
+- Searching "24500 CE" on option chain page lists all 4 expiries' strikes in a dropdown — click to open overview
+- Multi-watchlist feature live at /watchlist: separate lists for stocks and option strikes, with rename/delete/create support
+- One-click "Watchlist" button on strike overview saves the current strike to the default Option Strikes list

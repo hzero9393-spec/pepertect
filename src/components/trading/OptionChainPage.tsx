@@ -11,10 +11,13 @@ import {
   Clock,
   ChevronDown,
   Loader2,
+  Search,
+  X,
 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
 import {
   findExpiry,
+  getUpcomingExpiries,
   type ExpiryIndex,
 } from '@/lib/expiry-calendar';
 
@@ -104,6 +107,63 @@ function formatOi(oi: number): string {
   return String(oi);
 }
 
+// ---- Strike search parser --------------------------------------------------
+// Parses inputs like:
+//   "24500 CE"            → { strike: 24500, side: 'CE' }
+//   "24500 PE"            → { strike: 24500, side: 'PE' }
+//   "24500 CALL"          → { strike: 24500, side: 'CE' }
+//   "24500 PUT"           → { strike: 24500, side: 'PE' }
+//   "NIFTY 24500 CE"      → { symbol: 'NIFTY', strike: 24500, side: 'CE' }
+//   "24400"               → { strike: 24400, side: null } (show both CE+PE for all expiries)
+//   "24400 CE 2026-07-30" → { strike: 24400, side: 'CE', expiry: '2026-07-30' } (open directly)
+interface ParsedStrikeQuery {
+  symbol?: string;
+  strike: number;
+  side: 'CE' | 'PE' | null;
+  expiry?: string;
+}
+function parseStrikeQuery(input: string, activeSymbol: string): ParsedStrikeQuery | null {
+  const raw = input.trim().toUpperCase();
+  if (!raw) return null;
+
+  // Detect optional explicit symbol prefix (NIFTY/SENSEX/BANKNIFTY/FINNIFTY)
+  let working = raw;
+  let symbol: string | undefined;
+  for (const idx of ['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'] as const) {
+    if (working.startsWith(idx + ' ')) {
+      symbol = idx;
+      working = working.slice(idx.length).trim();
+      break;
+    }
+  }
+
+  // Extract optional explicit expiry date (YYYY-MM-DD)
+  let expiry: string | undefined;
+  const dateMatch = working.match(/(\d{4}-\d{2}-\d{2})/);
+  if (dateMatch) {
+    expiry = dateMatch[1];
+    working = working.replace(dateMatch[1], '').trim();
+  }
+
+  // Extract side keyword (CE/PE/CALL/PUT)
+  let side: 'CE' | 'PE' | null = null;
+  if (/\b(CE|CALL)\b/.test(working)) {
+    side = 'CE';
+    working = working.replace(/\b(CE|CALL)\b/, '').trim();
+  } else if (/\b(PE|PUT)\b/.test(working)) {
+    side = 'PE';
+    working = working.replace(/\b(PE|PUT)\b/, '').trim();
+  }
+
+  // Whatever remains should be the strike price
+  const strikeMatch = working.match(/\d{3,6}/);
+  if (!strikeMatch) return null;
+  const strike = parseInt(strikeMatch[0], 10);
+  if (strike < 50 || strike > 200000) return null;
+
+  return { symbol: symbol ?? activeSymbol, strike, side, expiry };
+}
+
 // ---- Component -----------------------------------------------------------
 
 export function OptionChainPage() {
@@ -121,6 +181,19 @@ export function OptionChainPage() {
   const [data, setData] = useState<ChainResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /* ---------- Strike search state ----------
+     When the user types e.g. "24500 CE" (without an explicit expiry date),
+     we show a dropdown listing all 4 upcoming expiries for that strike+side.
+     Clicking an expiry navigates to the strike overview page. */
+  const [strikeQuery, setStrikeQuery] = useState('');
+  const [strikeDropdown, setStrikeDropdown] = useState<
+    Array<{ expiry: string; label: string | null; symbol: string; strike: number; side: 'CE' | 'PE' }>
+  >([]);
+  const parsed = useMemo(
+    () => parseStrikeQuery(strikeQuery, symbol),
+    [strikeQuery, symbol]
+  );
 
   // Listen for SPA navigation events — if user clicks an <a href="/optionchain?symbol=X">
   // while already on this page, pathname stays the same but query string changes,
@@ -179,6 +252,47 @@ export function OptionChainPage() {
     window.history.replaceState({}, '', url.toString());
   }, [symbol]);
 
+  /* ---------- Strike search dropdown logic ----------
+     When the user types a recognisable strike + side (e.g. "24500 CE"),
+     we compute all 4 upcoming expiries for the (symbol, strike, side) tuple
+     and show them as a dropdown. If the user includes an explicit expiry
+     date in the query, we navigate directly. */
+  useEffect(() => {
+    if (!parsed) {
+      setStrikeDropdown([]);
+      return;
+    }
+    // If query already pins an expiry date, jump straight to the overview page.
+    if (parsed.expiry && parsed.side) {
+      const url = `/optionchain/strike?symbol=${encodeURIComponent(parsed.symbol!)}&expiry=${encodeURIComponent(parsed.expiry)}&strike=${parsed.strike}`;
+      window.location.href = url;
+      setStrikeQuery('');
+      return;
+    }
+    // If no side is specified, list both CE and PE for each expiry.
+    const idx: ExpiryIndex = (['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'].includes(parsed.symbol!)
+      ? parsed.symbol!
+      : 'NIFTY') as ExpiryIndex;
+    const upcoming = getUpcomingExpiries(idx, 4);
+    const sides: Array<'CE' | 'PE'> = parsed.side ? [parsed.side] : ['CE', 'PE'];
+    const rows = [] as Array<{ expiry: string; label: string | null; symbol: string; strike: number; side: 'CE' | 'PE' }>;
+    for (const exp of upcoming) {
+      for (const side of sides) {
+        rows.push({
+          expiry: exp.date,
+          label: exp.label ?? null,
+          symbol: parsed.symbol!,
+          strike: parsed.strike,
+          side,
+        });
+      }
+    }
+    setStrikeDropdown(rows);
+  }, [parsed]);
+
+  const strikeOverviewHref = (s: string, exp: string, strike: number) =>
+    `/optionchain/strike?symbol=${encodeURIComponent(s)}&expiry=${encodeURIComponent(exp)}&strike=${strike}`;
+
   const spot = data?.spot ?? 0;
   const atm = data?.atm ?? 0;
   const spotPositive = (data?.spot ?? 0) >= (data?.spot ?? 0); // placeholder, real change shown below
@@ -200,6 +314,70 @@ export function OptionChainPage() {
 
   return (
     <div className="space-y-4">
+      {/* ============== STRIKE SEARCH BAR ============== */}
+      <div className="card-soft p-3 relative">
+        <div className="flex items-center gap-2">
+          <Search className="h-4 w-4 text-text-secondary shrink-0" />
+          <input
+            type="text"
+            value={strikeQuery}
+            onChange={(e) => setStrikeQuery(e.target.value)}
+            placeholder={`Search any strike e.g. "24500 CE" or "24500 PE" — shows all 4 expiries`}
+            className="flex-1 bg-transparent text-sm font-medium text-text-primary placeholder:text-text-tertiary focus:outline-none"
+          />
+          {strikeQuery && (
+            <button
+              onClick={() => setStrikeQuery('')}
+              className="text-text-tertiary hover:text-text-primary shrink-0"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <p className="mt-1 text-[10px] text-text-tertiary">
+          Tip: type strike + side (e.g. <span className="font-mono font-semibold text-text-secondary">24600 CE</span>) — without an expiry we list all 4 upcoming expiries for that strike.
+        </p>
+
+        {/* Dropdown of matching strikes across all expiries */}
+        {strikeDropdown.length > 0 && (
+          <div className="mt-2 rounded-lg border border-border bg-bg-surface max-h-72 overflow-y-auto custom-scrollbar">
+            <div className="px-3 py-1.5 bg-bg-surface-alt text-[10px] uppercase tracking-wide font-semibold text-text-tertiary sticky top-0">
+              {parsed?.side
+                ? `${parsed.strike} ${parsed.side} · ${parsed.symbol} · ${strikeDropdown.length} expiries`
+                : `${parsed?.strike} · ${parsed?.symbol} · CE + PE · ${strikeDropdown.length} rows`}
+            </div>
+            {strikeDropdown.map((row) => (
+              <a
+                key={`${row.expiry}-${row.side}`}
+                href={strikeOverviewHref(row.symbol, row.expiry, row.strike)}
+                className="flex items-center justify-between gap-3 px-3 py-2 hover:bg-bg-surface-alt transition-colors border-b border-border/50 last:border-0"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={cn(
+                    'pill text-[10px] font-bold px-1.5 py-0.5',
+                    row.side === 'CE'
+                      ? 'bg-profit-green/15 text-profit-green'
+                      : 'bg-loss-red/15 text-loss-red'
+                  )}>
+                    {row.side === 'CE' ? 'CALL' : 'PUT'} {row.strike}
+                  </span>
+                  <span className="text-xs font-semibold text-text-primary">
+                    {formatExpiry(row.expiry)}
+                  </span>
+                  {row.label && (
+                    <span className="text-[10px] text-text-tertiary">· {row.label}</span>
+                  )}
+                </div>
+                <span className="text-[10px] font-medium text-brand-primary shrink-0">
+                  Open →
+                </span>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* ============== HEADER ============== */}
       <div className="card-soft p-4">
         <div className="flex items-start gap-3">
