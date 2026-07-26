@@ -146,7 +146,7 @@ export function TradePage() {
 
   return (
     <div className="space-y-4">
-      {/* ============== TOP TABS: Place Order | Basket | Settings ============== */}
+      {/* ============== TOP TABS: Place Order | Basket (link) | Settings ============== */}
       <div className="flex items-center gap-1 border-b border-border">
         <button
           onClick={() => setMainTab('place')}
@@ -155,16 +155,16 @@ export function TradePage() {
         >
           Place Order
         </button>
-        <button
-          onClick={() => setMainTab('basket')}
+        <a
+          href="/basket"
           className={cn('seg-tab relative', mainTab === 'basket' && '[data-active=true]')}
           data-active={mainTab === 'basket'}
         >
           Basket
-          <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-loss-red px-1 text-[10px] font-bold text-white">
-            2
+          <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-primary px-1 text-[10px] font-bold text-white">
+            →
           </span>
-        </button>
+        </a>
         <div className="flex-1" />
         <button
           className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-bg-surface-alt"
@@ -173,22 +173,6 @@ export function TradePage() {
           <Settings className="h-4 w-4" />
         </button>
       </div>
-
-      {mainTab === 'basket' && (
-        <div className="card-soft p-6 flex flex-col items-center text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-purple mb-3">
-            <Layers className="h-7 w-7 text-info-purple" />
-          </div>
-          <h3 className="font-heading text-base font-semibold text-text-primary">Basket trading coming soon</h3>
-          <p className="text-sm text-text-secondary mt-1">Place multiple orders in a single click.</p>
-          <button
-            onClick={() => setMainTab('place')}
-            className="mt-4 rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:bg-brand-primary-hover"
-          >
-            Back to Place Order
-          </button>
-        </div>
-      )}
 
       {mainTab === 'place' && (
         <>

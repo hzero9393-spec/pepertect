@@ -24,12 +24,14 @@ export function Header() {
   if (!isAuthenticated) return null;
 
   const getPageTitle = () => {
-    const path = pathname === '/' ? 'dashboard' : pathname.replace('/', '').split('/')[0];
+    const parts = pathname === '/' ? ['dashboard'] : pathname.replace('/', '').split('/');
+    const segment = parts[0];
     const titles: Record<string, string> = {
       dashboard: 'Dashboard',
       market: 'Markets',
       trade: 'Trade',
       optionchain: 'Option Chain',
+      basket: 'Basket Order',
       positions: 'Positions',
       watchlist: 'Watchlist',
       learning: 'Learning',
@@ -40,7 +42,18 @@ export function Header() {
       notifications: 'Notifications',
       stock: 'Stock',
     };
-    return titles[path] || 'Pepertect';
+    // Settings sub-pages — show specific title
+    if (segment === 'settings' && parts.length > 1) {
+      const subTitles: Record<string, string> = {
+        'change-password': 'Change Password',
+        '2fa': 'Two-Factor Auth',
+        'login-activity': 'Login Activity',
+        'language': 'Language',
+        'notifications': 'Notification Settings',
+      };
+      if (subTitles[parts[1]]) return subTitles[parts[1]];
+    }
+    return titles[segment] || 'Pepertect';
   };
 
   // Mobile search overlay

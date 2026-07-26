@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { extractBearerToken } from '@/lib/auth';
+import { extractBearerToken, verifyToken } from '@/lib/auth';
+import { logActivity } from '@/lib/activity';
 
 export async function POST(req: NextRequest) {
   try {
-    // Extract Bearer token
     const token = extractBearerToken(req.headers.get('authorization'));
     if (!token) {
       return NextResponse.json(
@@ -13,8 +13,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Identify the user before deleting the session so we can log the event
+    const payload = verifyToken(token);
+    const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || null;
+    const userAgent = req.headers.get('user-agent') || null;
+
     // Delete session from DB where token matches
     await db.session.deleteMany({ where: { token } });
+
+    if (payload?.userId) {
+      await logActivity({
+        userId: payload.userId,
+        action: 'LOGOUT',
+        ip,
+        userAgent,
+      });
+    }
 
     return NextResponse.json({
       success: true,

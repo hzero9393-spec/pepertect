@@ -1,15 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useTheme } from 'next-themes';
-import { getInitials, formatINR, formatNumber, cn } from '@/lib/utils';
+import { getInitials, formatINR, cn } from '@/lib/utils';
 import {
   Mail, Phone, Calendar, Shield, Wallet, PieChart, Activity,
   Trophy, Target, Lock, Bell, Globe, LogOut, ChevronRight,
   Camera, Copy, Check, Monitor, ShieldCheck, BadgeCheck,
-  MapPin, Clock, Store, Grid as GridIcon,
-  TrendingUp, Moon, Sun,
+  Clock, Store, Grid as GridIcon,
+  TrendingUp, Moon, Sun, X, Loader2, AlertTriangle,
 } from 'lucide-react';
 import type { Portfolio } from '@/types';
 
@@ -23,6 +23,20 @@ export function ProfilePage() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [language, setLanguage] = useState('en');
+
+  // Avatar upload state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(user?.avatar ?? null);
+
+  // Logout All modal state
+  const [logoutAllOpen, setLogoutAllOpen] = useState(false);
+  const [logoutAllSubmitting, setLogoutAllSubmitting] = useState(false);
+  const [logoutAllResult, setLogoutAllResult] = useState<{ success: boolean; message: string } | null>(null);
+
   const mounted = typeof window !== 'undefined';
 
   useEffect(() => {
@@ -31,7 +45,22 @@ export function ProfilePage() {
       .then((r) => r.json())
       .then((d) => { if (d.success) setPortfolio(d.data); })
       .catch(() => {});
+    // Fetch preferences for 2FA status + language display
+    fetch('/api/user/preferences', { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) {
+          setTwoFactorEnabled(d.data.twoFactorEnabled);
+          setLanguage(d.data.language);
+        }
+      })
+      .catch(() => {});
   }, [token]);
+
+  // Sync avatar URL from user store when user changes
+  useEffect(() => {
+    setAvatarUrl(user?.avatar ?? null);
+  }, [user?.avatar]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -62,6 +91,109 @@ export function ProfilePage() {
     }
   };
 
+  // ---- Avatar upload ----
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAvatarError(null);
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setAvatarError('Please select an image file');
+      return;
+    }
+    // Validate size (max 500KB to stay under data URL column limit)
+    if (file.size > 500 * 1024) {
+      setAvatarError('Image must be under 500KB. Please use a smaller image.');
+      return;
+    }
+
+    setAvatarUploading(true);
+    try {
+      // Convert to base64 data URL
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const res = await fetch('/api/user/avatar', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ avatar: dataUrl }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Optimistic local update + sync to auth store
+        setAvatarUrl(dataUrl);
+        if (user) login({ ...user, avatar: dataUrl }, token!);
+      } else {
+        setAvatarError(data.error || 'Failed to upload avatar');
+      }
+    } catch (err) {
+      console.error('Avatar upload error:', err);
+      setAvatarError('Network error during upload');
+    } finally {
+      setAvatarUploading(false);
+      // Reset input so the same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setAvatarUploading(true);
+    setAvatarError(null);
+    try {
+      const res = await fetch('/api/user/avatar', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAvatarUrl(null);
+        if (user) login({ ...user, avatar: null }, token!);
+      } else {
+        setAvatarError(data.error || 'Failed to remove avatar');
+      }
+    } catch {
+      setAvatarError('Network error');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  // ---- Logout All ----
+  const handleLogoutAll = async () => {
+    setLogoutAllSubmitting(true);
+    setLogoutAllResult(null);
+    try {
+      const res = await fetch('/api/user/logout-all', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setLogoutAllResult({ success: true, message: data.message || 'Other sessions ended.' });
+        // Close modal after a brief pause so user can read the success message
+        setTimeout(() => {
+          setLogoutAllOpen(false);
+          setLogoutAllResult(null);
+        }, 1800);
+      } else {
+        setLogoutAllResult({ success: false, message: data.error || 'Failed to logout other sessions' });
+      }
+    } catch {
+      setLogoutAllResult({ success: false, message: 'Network error' });
+    } finally {
+      setLogoutAllSubmitting(false);
+    }
+  };
+
   const userId = user?.id ? `TRD${String(user.id).slice(-6).padStart(6, '0')}` : 'TRD000000';
   const memberSince = user?.createdAt
     ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
@@ -77,22 +209,54 @@ export function ProfilePage() {
   const winRate = portfolio?.winRate ?? 0;
   const totalPnlPct = usedMargin > 0 ? (totalPnl / usedMargin) * 100 : 0;
 
+  const languageLabel = (() => {
+    const map: Record<string, string> = {
+      en: 'English', hi: 'हिन्दी', mr: 'मराठी', ta: 'தமிழ்',
+      te: 'తెలుగు', bn: 'বাংলা', gu: 'ગુજરાતી', kn: 'ಕನ್ನಡ',
+    };
+    return map[language] || 'English';
+  })();
+
   return (
     <div className="space-y-4">
       {/* ============== PROFILE HEADER CARD ============== */}
       <div className="card-soft p-4">
         <div className="flex items-start gap-4">
-          {/* Avatar with camera overlay */}
+          {/* Avatar with camera overlay (now functional) */}
           <div className="relative shrink-0">
-            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-primary text-white text-2xl font-bold">
-              {getInitials(user?.name || user?.email || 'U')}
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-primary text-white text-2xl font-bold overflow-hidden">
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarUrl}
+                  alt={user?.name || 'avatar'}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                getInitials(user?.name || user?.email || 'U')
+              )}
             </div>
             <button
-              className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-white border-2 border-border shadow-sm"
-              aria-label="Change photo"
+              onClick={handleAvatarClick}
+              disabled={avatarUploading}
+              className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-white border-2 border-border shadow-sm hover:bg-bg-surface-alt transition-colors disabled:opacity-50"
+              aria-label="Change profile picture"
+              type="button"
             >
-              <Camera className="h-3.5 w-3.5 text-text-secondary" />
+              {avatarUploading ? (
+                <Loader2 className="h-3.5 w-3.5 text-brand-primary animate-spin" />
+              ) : (
+                <Camera className="h-3.5 w-3.5 text-text-secondary" />
+              )}
             </button>
+            {/* Hidden file input — triggered by camera button */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
+            />
           </div>
 
           <div className="min-w-0 flex-1">
@@ -101,6 +265,11 @@ export function ProfilePage() {
                 {user?.name || 'Demo User'}
               </h2>
               <BadgeCheck className="h-5 w-5 text-profit-green shrink-0" />
+              {twoFactorEnabled && (
+                <span title="2FA enabled">
+                  <ShieldCheck className="h-4 w-4 text-profit-green shrink-0" />
+                </span>
+              )}
             </div>
 
             {/* Email + copy */}
@@ -149,6 +318,19 @@ export function ProfilePage() {
             Edit Profile
           </button>
         </div>
+
+        {/* Avatar error / remove link */}
+        {avatarError && (
+          <p className="mt-2 text-xs text-loss-red font-medium">{avatarError}</p>
+        )}
+        {avatarUrl && !avatarUploading && (
+          <button
+            onClick={handleAvatarRemove}
+            className="mt-2 text-[11px] text-text-tertiary hover:text-loss-red font-medium"
+          >
+            Remove photo
+          </button>
+        )}
 
         {/* Edit form (collapsible) */}
         {editOpen && (
@@ -251,14 +433,39 @@ export function ProfilePage() {
         </div>
       </div>
 
-      {/* ============== QUICK ACTIONS ============== */}
+      {/* ============== QUICK ACTIONS (all wired to real pages) ============== */}
       <div>
         <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Quick Actions</h3>
         <div className="grid grid-cols-4 gap-2">
-          <QuickAction icon={Lock} label="Change Password" href="/settings" tint="bg-tint-blue" color="text-brand-primary" />
-          <QuickAction icon={Shield} label="Enable 2FA" href="/settings" tint="bg-tint-green" color="text-profit-green" badge="Recommended" />
-          <QuickAction icon={Monitor} label="Login Activity" href="/settings" tint="bg-tint-purple" color="text-info-purple" />
-          <QuickAction icon={LogOut} label="Logout All" href="#" tint="bg-tint-red" color="text-loss-red" />
+          <QuickAction
+            icon={Lock}
+            label="Change Password"
+            href="/settings/change-password"
+            tint="bg-tint-blue"
+            color="text-brand-primary"
+          />
+          <QuickAction
+            icon={Shield}
+            label={twoFactorEnabled ? '2FA Enabled' : 'Enable 2FA'}
+            href="/settings/2fa"
+            tint={twoFactorEnabled ? 'bg-tint-green' : 'bg-tint-green'}
+            color="text-profit-green"
+            badge={twoFactorEnabled ? 'Active' : 'Recommended'}
+          />
+          <QuickAction
+            icon={Monitor}
+            label="Login Activity"
+            href="/settings/login-activity"
+            tint="bg-tint-purple"
+            color="text-info-purple"
+          />
+          <QuickActionButton
+            icon={LogOut}
+            label="Logout All"
+            tint="bg-tint-red"
+            color="text-loss-red"
+            onClick={() => setLogoutAllOpen(true)}
+          />
         </div>
       </div>
 
@@ -272,11 +479,105 @@ export function ProfilePage() {
             on={theme === 'dark'}
             onToggle={() => mounted && setTheme(theme === 'dark' ? 'light' : 'dark')}
           />
-          <PreferenceRow icon={Bell} label="Notification Settings" href="/notifications" />
-          <PreferenceRow icon={Globe} label="Language" value="English" href="/settings" />
-          <PreferenceRow icon={LogOut} label="Logout" href="#" danger onClick={logout} last />
+          <PreferenceRow
+            icon={Bell}
+            label="Notification Settings"
+            href="/settings/notifications"
+          />
+          <PreferenceRow
+            icon={Globe}
+            label="Language"
+            value={languageLabel}
+            href="/settings/language"
+          />
+          <PreferenceRow
+            icon={LogOut}
+            label="Logout"
+            href="#"
+            danger
+            onClick={logout}
+            last
+          />
         </div>
       </div>
+
+      {/* ============== LOGOUT ALL MODAL ============== */}
+      {logoutAllOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => !logoutAllSubmitting && setLogoutAllOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm card-soft p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="icon-tile-sm bg-tint-red">
+                  <AlertTriangle className="h-4 w-4 text-loss-red" />
+                </div>
+                <h3 className="font-heading text-base font-bold text-text-primary">
+                  Logout All Sessions?
+                </h3>
+              </div>
+              <button
+                onClick={() => !logoutAllSubmitting && setLogoutAllOpen(false)}
+                className="text-text-tertiary hover:text-text-primary"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-text-secondary mb-4">
+              This will sign out every device except your current one.
+              You&rsquo;ll need to log in again on those devices.
+            </p>
+            {logoutAllResult && (
+              <div
+                className={cn(
+                  'mb-3 rounded-lg p-2.5 text-xs font-medium',
+                  logoutAllResult.success
+                    ? 'bg-tint-green text-profit-green'
+                    : 'bg-tint-red text-loss-red'
+                )}
+              >
+                {logoutAllResult.message}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setLogoutAllOpen(false)}
+                disabled={logoutAllSubmitting}
+                className="flex-1 h-10 rounded-lg border border-border text-sm font-semibold text-text-secondary hover:bg-bg-surface-alt"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleLogoutAll}
+                disabled={logoutAllSubmitting}
+                className={cn(
+                  'flex-1 h-10 rounded-lg text-white text-sm font-bold flex items-center justify-center gap-1.5',
+                  logoutAllSubmitting
+                    ? 'bg-loss-red/50 cursor-not-allowed'
+                    : 'bg-loss-red hover:bg-loss-red/90'
+                )}
+              >
+                {logoutAllSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Logging out...
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="h-4 w-4" />
+                    Logout All
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -358,6 +659,34 @@ function QuickAction({
   );
 }
 
+// Same shape as QuickAction but rendered as a <button> (for actions that don't navigate).
+function QuickActionButton({
+  icon: Icon,
+  label,
+  tint,
+  color,
+  onClick,
+}: {
+  icon: React.ElementType;
+  label: string;
+  tint: string;
+  color: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="card-soft p-3 flex flex-col items-center gap-2 hover:shadow-md transition-shadow"
+      type="button"
+    >
+      <div className={cn('icon-tile', tint)}>
+        <Icon className={cn('h-5 w-5', color)} />
+      </div>
+      <span className="text-[11px] font-medium text-text-primary text-center leading-tight">{label}</span>
+    </button>
+  );
+}
+
 function PreferenceToggle({
   icon: Icon,
   label,
@@ -424,5 +753,3 @@ function PreferenceRow({
     </a>
   );
 }
-
-// Local helpers to avoid extra imports

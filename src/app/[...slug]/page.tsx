@@ -7,6 +7,7 @@ import { DashboardPage } from '@/components/dashboard/DashboardPage';
 import { MarketPage } from '@/components/market/MarketPage';
 import { TradePage } from '@/components/trading/TradePage';
 import { OptionChainPage } from '@/components/trading/OptionChainPage';
+import { BasketPage } from '@/components/trading/BasketPage';
 import { PositionsPage } from '@/components/portfolio/PositionsPage';
 import { WatchlistPage } from '@/components/market/WatchlistPage';
 import { LearningPage } from '@/components/learning/LearningPage';
@@ -15,6 +16,11 @@ import { SupportPage } from '@/components/support/SupportPage';
 import { ProfilePage } from '@/components/profile/ProfilePage';
 import { SettingsPage } from '@/components/profile/SettingsPage';
 import { NotificationsPage } from '@/components/shared/NotificationsPage';
+import { ChangePasswordPage } from '@/components/settings/ChangePasswordPage';
+import { TwoFactorPage } from '@/components/settings/TwoFactorPage';
+import { LoginActivityPage } from '@/components/settings/LoginActivityPage';
+import { NotificationSettingsPage } from '@/components/settings/NotificationSettingsPage';
+import { LanguagePage } from '@/components/settings/LanguagePage';
 import { LandingPage } from '@/components/auth/LandingPage';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { RegisterPage } from '@/components/auth/RegisterPage';
@@ -25,6 +31,7 @@ const PAGE_MAP: Record<string, React.ComponentType> = {
   market: MarketPage,
   trade: TradePage,
   optionchain: OptionChainPage,
+  basket: BasketPage,
   positions: PositionsPage,
   watchlist: WatchlistPage,
   learning: LearningPage,
@@ -38,12 +45,27 @@ const PAGE_MAP: Record<string, React.ComponentType> = {
   register: RegisterPage,
 };
 
+// Settings sub-pages — handle /settings/change-password, /settings/2fa, etc.
+const SETTINGS_PAGE_MAP: Record<string, React.ComponentType> = {
+  'change-password': ChangePasswordPage,
+  '2fa': TwoFactorPage,
+  'login-activity': LoginActivityPage,
+  'notifications': NotificationSettingsPage,
+  'language': LanguagePage,
+};
+
 function resolvePage(pathname: string): React.ComponentType | null {
   if (pathname === '/') {
     return LandingPage;
   }
-  const segment = pathname.replace('/', '').split('/')[0];
+  const parts = pathname.replace('/', '').split('/');
+  const segment = parts[0];
   if (segment === 'stock') return StockDetailPage;
+  // Handle /settings/<sub-page> routes
+  if (segment === 'settings' && parts.length > 1 && parts[1]) {
+    const subPage = SETTINGS_PAGE_MAP[parts[1]];
+    if (subPage) return subPage;
+  }
   return PAGE_MAP[segment] ?? null;
 }
 

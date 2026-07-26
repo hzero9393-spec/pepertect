@@ -30,6 +30,12 @@ model User {
   virtualCapital Decimal   @default(100000)     // Virtual trading balance
   isActive      Boolean   @default(true)
   googleId      String?   @unique
+  // Security & preferences
+  twoFactorEnabled  Boolean @default(false)
+  twoFactorSecret   String?                        // TOTP secret (base32)
+  language          String  @default("en")         // en, hi, mr, ta, te, bn, gu, kn
+  // Notification preferences (JSON-encoded map of type→bool)
+  notifSettings     Json?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
