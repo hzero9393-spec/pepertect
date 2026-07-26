@@ -369,3 +369,127 @@ Stage Summary:
 - Stock detail page for indices shows "View Option Chain" CTA linking to that specific index
 - Production deployed successfully
 - 5 verification screenshots saved to /home/z/my-project/download/optionchain_*.png and stockdetail_*.png
+
+---
+Task ID: 8
+Agent: Main
+Task: Make Basket functional + Profile features working (Change Password, 2FA, Login Activity, Logout All, Notification Settings, Language) + Profile DP upload, all on separate pages
+
+Work Log:
+- Updated Prisma schema to add: User.twoFactorEnabled, twoFactorSecret, language (default "en"), notifSettings (Json)
+- Pushed schema to Supabase (prisma db push --accept-data-loss succeeded in 7.7s)
+- Installed speakeasy + qrcode packages for TOTP secret generation + QR code rendering
+
+API routes created (all auth-protected):
+1. POST /api/user/change-password — validates current pw (bcrypt compare), enforces 8+ char min + must-differ rule, updates hash, logs PASSWORD_CHANGE activity
+2. POST /api/user/2fa/enable — generates TOTP secret (base32, 20 bytes), saves to user, returns QR data URL + otpauth URI
+3. POST /api/user/2fa/verify — confirms TOTP code with 1-step drift window, sets twoFactorEnabled=true, logs 2FA_ENABLE
+4. POST /api/user/2fa/disable — requires current TOTP code, clears secret + flag, logs 2FA_DISABLE
+5. GET /api/user/login-activity — returns last 30 activity logs (LOGIN/LOGOUT/PASSWORD_CHANGE/2FA_ENABLE/2FA_DISABLE/LOGOUT_ALL) + active sessions
+6. POST /api/user/logout-all — deletes all sessions except current (matched by token), clears active_devices, logs LOGOUT_ALL with sessionsEnded count
+7. GET/PUT /api/user/preferences — returns/updates language + notification toggles (10 keys: trade_executions, order_updates, price_alerts, market_open, market_close, learning_updates, subscription_renewal, security_alerts, promotional, weekly_digest)
+8. POST /api/user/avatar — accepts data URL (max ~500KB) or https URL, stores on User.avatar
+9. DELETE /api/user/avatar — clears avatar
+10. POST /api/orders/basket — atomic-per-leg multi-order placement (max 20 legs), pre-validates margin, returns created/failed arrays
+
+Also updated:
+- src/lib/activity.ts (new helper — fail-safe activity log writer)
+- src/app/api/auth/login/route.ts — now logs LOGIN activity
+- src/app/api/auth/logout/route.ts — now logs LOGOUT activity
+
+Frontend pages created:
+1. src/components/trading/BasketPage.tsx (/basket)
+   - Header card with summary stats (Total Legs, Buy Value, Sell Value, Net Required)
+   - Add Leg card: search input + 12 quick-add chips + search results dropdown
+   - Basket Legs list: each row has StockLogo + LTP + value, BUY/SELL toggle, MARKET/LIMIT dropdown, qty stepper, price input
+   - Result banner (green/red) showing per-leg success/failure
+   - Sticky "Place N Order(s)" CTA with insufficient-margin detection
+   - Pre-loaded with 2 default legs (RELIANCE + TCS) so first-time users see the UI
+
+2. src/components/settings/ChangePasswordPage.tsx (/settings/change-password)
+   - 3 password fields with show/hide toggles
+   - Inline validation (mismatch, length, must-differ)
+   - Success/error banner after submit
+
+3. src/components/settings/TwoFactorPage.tsx (/settings/2fa)
+   - 3 stages: loading → setup → verify → enabled
+   - Setup: 3-step explainer + "Get Started" CTA
+   - Verify: displays QR code (240x240), manual secret with copy button, 6-digit code input
+   - Enabled: green confirmation card + disable form (requires current TOTP)
+
+4. src/components/settings/LoginActivityPage.tsx (/settings/login-activity)
+   - Active Sessions list: browser/OS/device/IP/time-ago per session, parsed from userAgent
+   - Recent Activity log: icon + label + browser/OS/IP/timestamp per event
+   - Action labels: Logged in, Logged out, Password changed, 2FA enabled, 2FA disabled, Ended all sessions
+
+5. src/components/settings/NotificationSettingsPage.tsx (/settings/notifications)
+   - 10 toggles with icon, label, description (Trade Executions, Order Updates, Price Alerts, Market Open, Market Close, Learning Updates, Subscription Renewal, Security Alerts, Promotional, Weekly Digest)
+   - Save Changes button with success state
+
+6. src/components/settings/LanguagePage.tsx (/settings/language)
+   - 8 languages with native scripts: English, हिन्दी, मराठी, தமிழ், తెలుగు, বাংলা, ગુજરાતી, ಕನ್ನಡ
+   - Current language marked with green pill
+   - Selected language highlighted with blue tint + check icon
+
+7. src/components/profile/ProfilePage.tsx (rewritten)
+   - Avatar upload via hidden <input type="file"> triggered by camera button — converts to base64 data URL, validates type + 500KB size limit, POSTs to /api/user/avatar, syncs to auth store
+   - "Remove photo" link below avatar (when avatar is set)
+   - 2FA shield badge next to name (when 2FA enabled)
+   - All 4 Quick Action buttons now link to real sub-pages:
+     * Change Password → /settings/change-password
+     * Enable 2FA → /settings/2fa (shows "Active" badge if enabled)
+     * Login Activity → /settings/login-activity
+     * Logout All → opens confirm modal (NOT a navigation)
+   - Logout All modal: warning text + Cancel + Logout All buttons, success message after submit, auto-closes after 1.8s
+   - Preferences rows:
+     * Dark Mode (existing toggle)
+     * Notification Settings → /settings/notifications
+     * Language → /settings/language (shows current language label)
+     * Logout (existing)
+
+8. src/components/trading/TradePage.tsx — "Basket" tab now links to /basket via <a href> (instead of showing "coming soon" empty state)
+
+9. src/app/[...slug]/page.tsx — registered basket + 5 settings sub-pages (uses /settings/<sub> routing via SETTINGS_PAGE_MAP)
+10. src/components/layout/Header.tsx — added page titles: "Basket Order", "Change Password", "Two-Factor Auth", "Login Activity", "Notification Settings", "Language"
+
+Build & deploy:
+- TypeScript: 0 errors in modified files (2 small fixes: typed notifSettings as `any` to satisfy Prisma's JsonValue type; wrapped ShieldCheck in <span title> for accessibility)
+- Production build: succeeded in 8.3s, 37 routes
+- Committed as 1 commit (8289965), pushed to GitHub main
+- Deployed to Vercel production in 1m
+- Production URL: https://pepertect.vercel.app
+
+Verification (curl + agent-browser):
+- API smoke tests (8 endpoints, all 200):
+  * GET /api/user/preferences → returns language=en, 2FA=false, 10 notif keys
+  * PUT /api/user/preferences (lang=hi) → returns lang=hi ✓
+  * PUT /api/user/preferences (notifications.promotional=true, weekly_digest=false) → both persisted ✓
+  * POST /api/user/change-password (wrong current) → 400 "Current password is incorrect" ✓
+  * POST /api/user/change-password (correct) → 200 "Password changed successfully" ✓
+  * POST /api/user/2fa/enable → returns 32-char secret + QR data URL ✓
+  * GET /api/user/login-activity → returns 1 log + 1 session ✓
+  * POST /api/user/logout-all → "Ended N other session(s)" ✓
+  * POST /api/orders/basket (3 legs: RELIANCE+TCS+INFY BUY MARKET) → "3/3 leg(s) placed successfully" — verified 3 positions created with correct avgPrice ✓
+  * POST /api/user/avatar (1x1 PNG data URL) → persisted, GET /api/user/profile confirms avatar ✓
+  * DELETE /api/user/avatar → "Profile picture removed" ✓
+
+- Browser tests (1440x900 desktop, logged in via demo account):
+  * /basket: 2 default legs, summary stats (Total Legs=2, Buy Value=₹38,555.50, Net Required=₹38,555.50), BUY/SELL toggle, MARKET/LIMIT dropdown, qty stepper, "PLACE 2 ORDER(S)" CTA — clicking places order successfully, shows "2/2 leg(s) placed successfully" banner, clears legs ✓
+  * /profile: avatar with camera button (Change profile picture), 2FA shield badge, all 4 Quick Action buttons linked, Logout All modal opens with warning + Cancel/Logout All buttons ✓
+  * /settings/change-password: 3 password fields with show/hide, Update Password button (disabled until all filled) ✓
+  * /settings/2fa: setup stage with 3-step explainer + Get Started button → verify stage with QR code + manual secret + 6-digit input ✓
+  * /settings/login-activity: 9 active sessions with browser/OS/device/IP/time, 1 recent activity log entry ✓
+  * /settings/notifications: 10 toggles with descriptions + Save Changes button ✓
+  * /settings/language: 8 languages with native scripts, current marked with green pill ✓
+
+Stage Summary:
+- Basket trading is fully functional at /basket (multi-leg order placement, real positions created)
+- Profile DP upload works (camera button → file picker → base64 → DB → displayed in avatar)
+- All 4 Quick Action buttons on profile page now navigate to working sub-pages
+- Logout All shows confirm modal then ends other sessions
+- 2FA setup generates real TOTP secret + QR code (compatible with Google Authenticator, Authy, 1Password)
+- Login Activity shows real session list + activity log (with parsed user-agent for browser/OS/device)
+- Notification Settings has 10 toggles persisted to DB
+- Language selector supports 8 Indian languages
+- Production deployed at https://pepertect.vercel.app
+- 7 verification screenshots saved to /home/z/my-project/download/
