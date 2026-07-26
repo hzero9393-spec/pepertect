@@ -9,7 +9,6 @@ import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
 import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
 import type { Position } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
-import { StockSearch } from '@/components/shared/StockSearch';
 
 /* Index symbols — used to classify positions as Index vs Stock */
 const INDEX_SYMBOLS = new Set(['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY']);
@@ -112,9 +111,6 @@ export function PositionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Universal stock search — click → stock detail / option chain overview */}
-      <StockSearch placeholder="Search any stock / index — click to view option chain" />
-
       {/* ============== TAB SWITCHER: Stock | Index ============== */}
       <div className="flex items-center gap-1 border-b border-border">
         <button

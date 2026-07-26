@@ -12,7 +12,6 @@ import { formatINR, formatNumber, getPnlColor } from '@/lib/utils';
 import { hasFeature } from '@/lib/tier';
 import { Search, Plus, Trash2 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
-import { StockSearch } from '@/components/shared/StockSearch';
 import type { WatchlistItem } from '@/types';
 
 export function WatchlistPage() {
@@ -83,9 +82,6 @@ export function WatchlistPage() {
 
   return (
     <div className="space-y-6">
-      {/* Universal stock search — click → stock detail / option chain overview */}
-      <StockSearch placeholder="Search any stock / index — click to view option chain" />
-
       {/* Add to watchlist */}
       <Card>
         <CardHeader className="pb-3">

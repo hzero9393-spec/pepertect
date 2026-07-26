@@ -10,7 +10,6 @@ import {
 import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { Sparkline } from '@/components/shared/Sparkline';
-import { StockSearch } from '@/components/shared/StockSearch';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 
 // Deterministic mini-series for sparklines based on symbol
@@ -89,9 +88,6 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* ============== UNIVERSAL SEARCH BAR ============== */}
-      <StockSearch placeholder="Search any stock / index — click to see option chain & overview" />
-
       {/* ============== FREE TRIAL WIDGET ============== */}
       <FreeTrialWidget variant="card" />
 

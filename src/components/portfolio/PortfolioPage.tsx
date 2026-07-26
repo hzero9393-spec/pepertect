@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order, Trade } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
-import { StockSearch } from '@/components/shared/StockSearch';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 import { Sparkline } from '@/components/shared/Sparkline';
 
@@ -141,7 +140,7 @@ export function PortfolioPage() {
 
   return (
     <div className="space-y-5">
-      {/* ============== HEADER + SEARCH ============== */}
+      {/* ============== HEADER ============== */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="font-heading text-2xl font-bold text-text-primary">Portfolio Analytics</h1>
@@ -149,11 +148,6 @@ export function PortfolioPage() {
             Track holdings, P&L, sector exposure & performance
           </p>
         </div>
-        <StockSearch
-          variant="compact"
-          placeholder="Search to analyse any stock..."
-          className="sm:w-64"
-        />
       </div>
 
       {/* ============== FREE TRIAL BANNER ============== */}

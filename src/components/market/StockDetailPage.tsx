@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import type { Stock } from '@/types';
 import { StockLogo, isIndexSymbol } from '@/components/shared/StockLogo';
-import { StockSearch } from '@/components/shared/StockSearch';
 
 interface Candle {
   t: number;
@@ -208,12 +207,6 @@ export function StockDetailPage() {
 
   return (
     <div className="space-y-4">
-      {/* Universal stock search — quick-jump to any other stock / index */}
-      <StockSearch
-        placeholder="Search any stock / index — click to switch"
-        variant="compact"
-      />
-
       {/* ============== BACK BUTTON (mobile) ============== */}
       <a
         href="/market"

@@ -1,19 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { useAppStore } from '@/stores/useAppStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useTheme } from 'next-themes';
 import { usePathname } from 'next/navigation';
 import {
-  Search, Sun, Moon, Bell, Menu, Zap, X, ArrowLeft,
+  Search, Sun, Moon, Bell, Zap, ArrowLeft,
 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { cn, getInitials } from '@/lib/utils';
+import { getInitials } from '@/lib/utils';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
+import { StockSearch } from '@/components/shared/StockSearch';
 
 export function Header() {
-  const { setSearchQuery, searchQuery } = useAppStore();
   const { isAuthenticated, user } = useAuthStore();
   const { theme, setTheme } = useTheme();
   const pathname = usePathname();
@@ -41,6 +39,7 @@ export function Header() {
       settings: 'Settings',
       notifications: 'Notifications',
       stock: 'Stock',
+      portfolio: 'Portfolio',
     };
     // Settings sub-pages — show specific title
     if (segment === 'settings' && parts.length > 1) {
@@ -56,45 +55,28 @@ export function Header() {
     return titles[segment] || 'Pepertect';
   };
 
-  // Mobile search overlay
+  // Mobile search overlay — uses universal StockSearch
   if (mobileSearchOpen) {
     return (
-      <>
-        <header
-          className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-bg-surface px-3 safe-pt"
-          style={{ paddingTop: 'var(--safe-top)', height: 'calc(3.5rem + var(--safe-top))' }}
+      <header
+        className="sticky top-0 z-30 flex items-center gap-2 border-b border-border bg-bg-surface px-3 safe-pt"
+        style={{ paddingTop: 'var(--safe-top)', height: 'calc(3.5rem + var(--safe-top))' }}
+      >
+        <button
+          onClick={() => setMobileSearchOpen(false)}
+          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-bg-surface-alt shrink-0"
+          aria-label="Close search"
         >
-          <button
-            onClick={() => {
-              setMobileSearchOpen(false);
-              setSearchQuery('');
-            }}
-            className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-bg-surface-alt"
-            aria-label="Close search"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="flex flex-1 items-center relative">
-            <Search className="absolute left-3 h-4 w-4 text-text-secondary pointer-events-none" />
-            <Input
-              autoFocus
-              placeholder="Search stocks..."
-              className="h-10 w-full pl-9 pr-9 bg-bg-surface-alt border-border text-base"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2 flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-bg-surface-alt"
-                aria-label="Clear search"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </header>
-      </>
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <div className="flex-1 min-w-0">
+          <StockSearch
+            autoFocus
+            placeholder="Search any stock / index…"
+            className="w-full"
+          />
+        </div>
+      </header>
     );
   }
 
@@ -131,14 +113,11 @@ export function Header() {
 
         <div className="flex-1" />
 
-        {/* Desktop search */}
-        <div className="hidden sm:flex items-center relative max-w-xs">
-          <Search className="absolute left-3 h-4 w-4 text-text-secondary pointer-events-none" />
-          <Input
-            placeholder="Search stocks..."
-            className="h-9 w-full pl-9 bg-bg-surface-alt border-border text-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+        {/* Universal desktop search — appears in header on every page */}
+        <div className="hidden sm:block w-64 lg:w-80">
+          <StockSearch
+            placeholder="Search any stock / index…"
+            className="w-full"
           />
         </div>
 

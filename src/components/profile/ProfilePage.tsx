@@ -13,7 +13,6 @@ import {
   RotateCcw, Trash2, Gift,
 } from 'lucide-react';
 import type { Portfolio } from '@/types';
-import { StockSearch } from '@/components/shared/StockSearch';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 
 export function ProfilePage() {
@@ -263,9 +262,6 @@ export function ProfilePage() {
 
   return (
     <div className="space-y-4">
-      {/* ============== UNIVERSAL SEARCH ============== */}
-      <StockSearch placeholder="Search any stock / index — click to view option chain" />
-
       {/* ============== FREE TRIAL WIDGET ============== */}
       <FreeTrialWidget variant="card" />
 

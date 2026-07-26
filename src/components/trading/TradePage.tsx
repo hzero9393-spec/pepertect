@@ -11,7 +11,6 @@ import {
 } from 'lucide-react';
 import type { Order, Trade, Stock } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
-import { StockSearch } from '@/components/shared/StockSearch';
 import { BasketPage } from '@/components/trading/BasketPage';
 
 const POPULAR_STOCKS = [
@@ -230,12 +229,6 @@ export function TradePage() {
 
       {mainTab === 'place' && (
         <>
-          {/* Universal stock search — quick-jump to any stock's option chain overview */}
-          <StockSearch
-            placeholder="Search any stock / index — click to view option chain & place trade"
-            variant="compact"
-          />
-
           {/* ============== ORDER ENTRY CARD ============== */}
           <div className="card-soft p-4 space-y-4">
             {/* Symbol search */}
