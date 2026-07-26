@@ -191,6 +191,33 @@ export async function GET(req: NextRequest) {
     upstoxChain = await fetchUpstoxOptionChain(token, cfg.upstoxKey, expiry);
   }
 
+  // ===== Strategy: use REAL Upstox strikes when available =====
+  // Upstox returns the full chain for an expiry — we filter to ATM ± 10 strikes
+  // (or 21 strikes total: 10 ITM + ATM + 10 OTM). If Upstox has no data
+  // (offline / market closed / wrong expiry), fall back to synthetic.
+  const NUM_STRIKES_EACH_SIDE = 10;
+
+  let strikeInputs: Array<{ strike: number; upstoxRow?: any }> = [];
+
+  if (upstoxChain && upstoxChain.length > 0) {
+    // Sort by strike price ascending
+    const sorted = [...upstoxChain].sort((a, b) => a.strike_price - b.strike_price);
+    // Find ATM index (closest strike to spot)
+    let atmIdx = sorted.findIndex((r) => r.strike_price >= atm);
+    if (atmIdx === -1) atmIdx = Math.floor(sorted.length / 2);
+    const startIdx = Math.max(0, atmIdx - NUM_STRIKES_EACH_SIDE);
+    const endIdx = Math.min(sorted.length, atmIdx + NUM_STRIKES_EACH_SIDE + 1);
+    strikeInputs = sorted.slice(startIdx, endIdx).map((r) => ({
+      strike: r.strike_price,
+      upstoxRow: r,
+    }));
+  } else {
+    // Fallback: generate 15 synthetic strikes around ATM
+    for (let i = -7; i <= 7; i++) {
+      strikeInputs.push({ strike: atm + i * cfg.step });
+    }
+  }
+
   // Build strikes: 15 strikes (7 ITM + ATM + 7 OTM)
   const strikes: Array<{
     strikePrice: number;
@@ -199,8 +226,7 @@ export async function GET(req: NextRequest) {
     pe: OptionLeg;
   }> = [];
 
-  for (let i = -7; i <= 7; i++) {
-    const strike = atm + i * cfg.step;
+  for (const { strike, upstoxRow } of strikeInputs) {
     const diff = spot - strike;
     const ceIntrinsic = Math.max(0, diff);
     const peIntrinsic = Math.max(0, -diff);
@@ -212,38 +238,20 @@ export async function GET(req: NextRequest) {
     let ceChg: number, peChg: number;
     let ceChgPct: number, peChgPct: number;
 
-    if (upstoxChain && upstoxChain.length > 0) {
-      // Find matching strike in Upstox data
-      const upstoxRow = upstoxChain.find((r: any) => r.strike_price === strike);
-      if (upstoxRow) {
-        ceLtp = upstoxRow.call_options?.market_data?.last_price ?? ceIntrinsic + 5;
-        peLtp = upstoxRow.put_options?.market_data?.last_price ?? peIntrinsic + 5;
-        ceOi = upstoxRow.call_options?.market_data?.oi ?? 0;
-        peOi = upstoxRow.put_options?.market_data?.oi ?? 0;
-        ceVol = upstoxRow.call_options?.market_data?.volume ?? 0;
-        peVol = upstoxRow.put_options?.market_data?.volume ?? 0;
-        ceIv = upstoxRow.call_options?.option_greeks?.iv ?? 15;
-        peIv = upstoxRow.put_options?.option_greeks?.iv ?? 15;
-        ceChg = upstoxRow.call_options?.market_data?.net_change ?? 0;
-        peChg = upstoxRow.put_options?.market_data?.net_change ?? 0;
-        ceChgPct = ceLtp > 0 ? (ceChg / ceLtp) * 100 : 0;
-        peChgPct = peLtp > 0 ? (peChg / peLtp) * 100 : 0;
-      } else {
-        // Strike not in Upstox response — use fallback
-        const fallback = fallbackLeg(spot, strike, cfg.step, dte, normalized, expiry, diff);
-        ceLtp = fallback.ceLtp;
-        peLtp = fallback.peLtp;
-        ceOi = fallback.ceOi;
-        peOi = fallback.peOi;
-        ceVol = fallback.ceVol;
-        peVol = fallback.peVol;
-        ceIv = fallback.ceIv;
-        peIv = fallback.peIv;
-        ceChg = fallback.ceChg;
-        peChg = fallback.peChg;
-        ceChgPct = fallback.ceChgPct;
-        peChgPct = fallback.peChgPct;
-      }
+    if (upstoxRow) {
+      // Real Upstox data for this strike
+      ceLtp = upstoxRow.call_options?.market_data?.last_price ?? ceIntrinsic + 5;
+      peLtp = upstoxRow.put_options?.market_data?.last_price ?? peIntrinsic + 5;
+      ceOi = upstoxRow.call_options?.market_data?.oi ?? 0;
+      peOi = upstoxRow.put_options?.market_data?.oi ?? 0;
+      ceVol = upstoxRow.call_options?.market_data?.volume ?? 0;
+      peVol = upstoxRow.put_options?.market_data?.volume ?? 0;
+      ceIv = upstoxRow.call_options?.option_greeks?.iv ?? 15;
+      peIv = upstoxRow.put_options?.option_greeks?.iv ?? 15;
+      ceChg = upstoxRow.call_options?.market_data?.net_change ?? 0;
+      peChg = upstoxRow.put_options?.market_data?.net_change ?? 0;
+      ceChgPct = ceLtp > 0 ? (ceChg / ceLtp) * 100 : 0;
+      peChgPct = peLtp > 0 ? (peChg / peLtp) * 100 : 0;
     } else {
       // Fallback (no Upstox data) — use seeded random
       const fallback = fallbackLeg(spot, strike, cfg.step, dte, normalized, expiry, diff);

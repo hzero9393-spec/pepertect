@@ -71,6 +71,8 @@ interface ChainResponse {
   expiries: string[];
   dte: number;
   strikes: StrikeRow[];
+  realData?: boolean;
+  upstoxKey?: string;
 }
 
 // ---- Static index list (only 4 supported, per user request) -------------
@@ -413,6 +415,12 @@ export function OptionChainPage() {
                 ? `${data.dte}d to expiry`
                 : 'Loading…'}
             </p>
+            {data?.realData && (
+              <span className="inline-flex items-center gap-0.5 mt-1 px-1.5 py-0.5 rounded-full bg-tint-green text-profit-green text-[9px] font-bold uppercase tracking-wide">
+                <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                Live Upstox
+              </span>
+            )}
           </div>
         </div>
 

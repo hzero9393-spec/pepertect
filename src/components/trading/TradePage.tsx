@@ -7,7 +7,7 @@ import { hasFeature } from '@/lib/tier';
 import {
   ArrowUp, ArrowDown, Search, Settings, Check,
   LineChart as LineChartIcon, Layers, BarChart3,
-  ChevronDown, Plus, Minus, Wallet, FileSearch, Loader2,
+  ChevronDown, Plus, Minus, Wallet, FileSearch, Loader2, Shield,
 } from 'lucide-react';
 import type { Order, Trade, Stock } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -27,6 +27,11 @@ export function TradePage() {
   const [orderType, setOrderType] = useState<'MARKET' | 'LIMIT' | 'SL'>('MARKET');
   const [quantity, setQuantity] = useState('1');
   const [price, setPrice] = useState('');
+  /* Stop-loss and target — attached to the opened position so the PositionsPage
+     can auto-square-off when LTP hits either level (paper-trading SL/TGT). */
+  const [stopLoss, setStopLoss] = useState('');
+  const [target, setTarget] = useState('');
+  const [showSLTarget, setShowSLTarget] = useState(false);
   const [segment, setSegment] = useState<'EQUITY' | 'FUTURES' | 'OPTIONS'>('EQUITY');
   const [orders, setOrders] = useState<Order[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -132,6 +137,11 @@ export function TradePage() {
           type: orderType,
           quantity: parseInt(quantity),
           price: orderType !== 'MARKET' ? parseFloat(price) : undefined,
+          /* Stop-loss / target — only sent for BUY (opening a position).
+             Server stores them on the Position row; PositionsPage reads them
+             and triggers square-off when LTP hits either level. */
+          stopLoss: side === 'BUY' && stopLoss ? parseFloat(stopLoss) : undefined,
+          target: side === 'BUY' && target ? parseFloat(target) : undefined,
         }),
       });
       const data = await res.json();
@@ -140,6 +150,9 @@ export function TradePage() {
         setMessage(`${statusInfo.label} — ${side} ${quantity} ${symbol.toUpperCase()}`);
         setQuantity('1');
         setPrice('');
+        setStopLoss('');
+        setTarget('');
+        setShowSLTarget(false);
         const oRes = await fetch('/api/orders', { headers: { Authorization: `Bearer ${token}` } });
         const oData = await oRes.json();
         if (oData.success) setOrders(oData.data);
@@ -532,6 +545,61 @@ export function TradePage() {
                   onChange={(e) => setPrice(e.target.value)}
                   className="w-full h-11 px-3 rounded-lg border border-border bg-bg-surface-alt text-sm font-mono font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
                 />
+              </div>
+            )}
+
+            {/* ============== Stop Loss / Target (collapsible) ============== */}
+            {side === 'BUY' && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSLTarget(!showSLTarget)}
+                  className="w-full flex items-center justify-between rounded-lg border border-border bg-bg-base px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-bg-surface-alt transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5" />
+                    Stop Loss / Target
+                    {(stopLoss || target) && (
+                      <span className="pill bg-tint-green text-profit-green text-[9px]">SET</span>
+                    )}
+                  </span>
+                  <span className="text-text-tertiary text-[10px]">
+                    {showSLTarget ? 'Hide ▲' : 'Show ▼'}
+                  </span>
+                </button>
+                {showSLTarget && (
+                  <div className="grid grid-cols-2 gap-2 p-2 rounded-lg border border-border bg-bg-surface-alt/50">
+                    <div>
+                      <label className="text-[10px] font-semibold text-loss-red flex items-center gap-1">
+                        <ArrowDown className="h-2.5 w-2.5" /> Stop Loss (₹)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        placeholder="Auto exit if LTP ≤"
+                        value={stopLoss}
+                        onChange={(e) => setStopLoss(e.target.value)}
+                        className="w-full mt-1 h-9 px-2 rounded-md border border-loss-red/30 bg-bg-surface text-xs font-mono font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-loss-red/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-semibold text-profit-green flex items-center gap-1">
+                        <ArrowUp className="h-2.5 w-2.5" /> Target (₹)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.05"
+                        placeholder="Auto exit if LTP ≥"
+                        value={target}
+                        onChange={(e) => setTarget(e.target.value)}
+                        className="w-full mt-1 h-9 px-2 rounded-md border border-profit-green/30 bg-bg-surface text-xs font-mono font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-profit-green/20"
+                      />
+                    </div>
+                    <p className="col-span-2 text-[10px] text-text-tertiary leading-tight">
+                      When live market price hits your SL or Target, the position will be auto-squared off (paper trading only).
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 

@@ -22,15 +22,7 @@ import {
 import type { Stock } from '@/types';
 import { StockLogo, isIndexSymbol } from '@/components/shared/StockLogo';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
-
-// Map our internal symbols to Upstox instrument keys
-const SYMBOL_TO_UPSTOX_KEY: Record<string, string> = {
-  NIFTY: 'NSE_INDEX|Nifty 50',
-  SENSEX: 'BSE_INDEX|SENSEX',
-  BANKNIFTY: 'NSE_INDEX|Nifty Bank',
-  NIFTYFS: 'NSE_INDEX|Nifty Fin Service',
-  FINNIFTY: 'NSE_INDEX|Nifty Fin Service',
-};
+import { getUpstoxKey } from '@/lib/upstox-instruments';
 
 interface Candle {
   t: number;
@@ -212,7 +204,7 @@ export function StockDetailPage() {
   // Subscribe to live quotes for the current stock/index (if it has an Upstox mapping)
   useEffect(() => {
     if (!symbol) return;
-    const key = SYMBOL_TO_UPSTOX_KEY[symbol.toUpperCase()];
+    const key = getUpstoxKey(symbol);
     if (key) {
       subscribe([key]);
     }
@@ -272,7 +264,7 @@ export function StockDetailPage() {
   }
 
   // Try to use live LTP from Upstox WebSocket
-  const upstoxKey = stock?.symbol ? (SYMBOL_TO_UPSTOX_KEY[stock.symbol.toUpperCase()] || null) : null;
+  const upstoxKey = stock?.symbol ? getUpstoxKey(stock.symbol) : null;
   const liveTick = upstoxKey ? quotes[upstoxKey] : undefined;
 
   const ltp = liveTick?.ltp ?? stock.ltp ?? 0;
