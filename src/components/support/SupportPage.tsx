@@ -2,14 +2,22 @@
 
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { EmptyState } from '@/components/shared/common';
-import { HelpCircle, Plus, Send, MessageSquare } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  HelpCircle, Plus, Send, MessageSquare, Headphones, Sparkles,
+  Ticket as TicketIcon, ChevronRight, Mail, FileText,
+  Search, Filter,
+} from 'lucide-react';
 import type { SupportTicket } from '@/types';
+
+type StatusFilter = 'ALL' | 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
+
+const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
+  { key: 'ALL', label: 'All' },
+  { key: 'OPEN', label: 'Open' },
+  { key: 'IN_PROGRESS', label: 'In Progress' },
+  { key: 'RESOLVED', label: 'Closed' },
+];
 
 export function SupportPage() {
   const { token } = useAuthStore();
@@ -20,6 +28,7 @@ export function SupportPage() {
   const [replyContent, setReplyContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
   const fetchTickets = async () => {
     if (!token) return;
@@ -27,7 +36,9 @@ export function SupportPage() {
       const res = await fetch('/api/support', { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (data.success) setTickets(data.data);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setLoading(false);
   };
 
@@ -49,7 +60,9 @@ export function SupportPage() {
         fetchTickets();
         setSelectedTicket(data.data.id);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setCreating(false);
   };
 
@@ -63,112 +76,314 @@ export function SupportPage() {
       });
       setReplyContent('');
       fetchTickets();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   const activeTicket = tickets.find((t) => t.id === selectedTicket);
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'OPEN': return 'bg-warning-amber/10 text-warning-amber';
-      case 'IN_PROGRESS': return 'bg-brand-primary/10 text-brand-primary';
-      case 'RESOLVED': return 'bg-profit-green/10 text-profit-green';
+      case 'OPEN': return 'bg-tint-yellow text-accent-gold';
+      case 'IN_PROGRESS': return 'bg-tint-blue text-brand-primary';
+      case 'RESOLVED': return 'bg-tint-green text-profit-green';
       default: return 'bg-bg-surface-alt text-text-secondary';
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Ticket list */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="font-heading text-base font-semibold">Support Tickets</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {/* New ticket form */}
-            <div className="mb-4 space-y-2 rounded-lg border border-border-default bg-bg-base p-3">
-              <Label className="text-xs">New Ticket</Label>
-              <Input placeholder="Subject" value={newSubject} onChange={(e) => setNewSubject(e.target.value)} />
-              <Textarea placeholder="Describe your issue..." value={newDescription} onChange={(e) => setNewDescription(e.target.value)} rows={2} />
-              <Button size="sm" onClick={handleCreate} disabled={creating || !newSubject || !newDescription}>
-                <Plus className="mr-1 h-3 w-3" /> {creating ? 'Creating...' : 'Create Ticket'}
-              </Button>
-            </div>
+  const counts = {
+    ALL: tickets.length,
+    OPEN: tickets.filter((t) => t.status === 'OPEN').length,
+    IN_PROGRESS: tickets.filter((t) => t.status === 'IN_PROGRESS').length,
+    RESOLVED: tickets.filter((t) => t.status === 'RESOLVED').length,
+  };
 
+  const filteredTickets = statusFilter === 'ALL' ? tickets : tickets.filter((t) => t.status === statusFilter);
+
+  return (
+    <div className="space-y-4">
+      {/* ============== HERO CARD ============== */}
+      <div className="card-soft hero-support p-5 relative overflow-hidden">
+        {/* Decorative chat bubble */}
+        <svg
+          className="absolute right-4 top-4 opacity-40 pointer-events-none"
+          width="80"
+          height="80"
+          viewBox="0 0 80 80"
+          fill="none"
+          aria-hidden
+        >
+          <path
+            d="M16 12 C 8 12 4 16 4 24 L 4 44 C 4 52 8 56 16 56 L 22 56 L 22 66 L 36 56 L 60 56 C 68 56 72 52 72 44 L 72 24 C 72 16 68 12 60 12 Z"
+            fill="#2563EB"
+            opacity="0.25"
+          />
+          <circle cx="22" cy="34" r="3" fill="#2563EB" opacity="0.6" />
+          <circle cx="36" cy="34" r="3" fill="#2563EB" opacity="0.6" />
+          <circle cx="50" cy="34" r="3" fill="#2563EB" opacity="0.6" />
+        </svg>
+
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            <div className="icon-tile bg-tint-blue-strong">
+              <Headphones className="h-5 w-5 text-brand-primary" />
+            </div>
+            <h2 className="font-heading text-xl font-bold text-text-primary">How can we help you?</h2>
+          </div>
+          <p className="mt-2 text-sm text-text-secondary max-w-[80%]">
+            Browse our help center or create a support ticket. Our team is here to assist you with any questions.
+          </p>
+        </div>
+      </div>
+
+      {/* ============== CREATE TICKET CARD ============== */}
+      <div>
+        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Create a New Ticket</h3>
+        <div className="card-soft p-4 space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-text-secondary">Subject</label>
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Briefly describe your issue"
+                value={newSubject}
+                onChange={(e) => setNewSubject(e.target.value)}
+                className="w-full h-11 px-3 pr-10 rounded-lg border border-border bg-bg-surface-alt text-sm font-medium text-text-primary placeholder:text-text-tertiary placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+              />
+              <FileText className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary pointer-events-none" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-text-secondary">Describe your issue</label>
+            <textarea
+              placeholder="Provide details about your problem..."
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg-surface-alt text-sm text-text-primary placeholder:text-text-tertiary placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-brand-primary/30 resize-none"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-bg-surface text-text-secondary hover:bg-bg-surface-alt"
+              aria-label="Attach file"
+            >
+              <FileText className="h-4 w-4" />
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={creating || !newSubject || !newDescription}
+              className="flex-1 h-10 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+            >
+              <Plus className="h-4 w-4" />
+              {creating ? 'Creating...' : 'Create Ticket'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ============== YOUR TICKETS ============== */}
+      <div>
+        <div className="flex items-center justify-between px-1 mb-2">
+          <h3 className="font-heading text-sm font-semibold text-text-primary">Your Tickets</h3>
+          <button className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary">
+            <Filter className="h-3 w-3" />
+            Filter
+          </button>
+        </div>
+        <div className="card-soft">
+          {/* Status filter tabs */}
+          <div className="flex items-center border-b border-border px-2 overflow-x-auto no-scrollbar">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setStatusFilter(f.key)}
+                className="seg-tab whitespace-nowrap"
+                data-active={statusFilter === f.key}
+              >
+                {f.label}
+                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+                  {counts[f.key]}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div className="p-3">
             {loading ? (
-              <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-bg-surface-alt" />)}</div>
-            ) : tickets.length === 0 ? (
-              <EmptyState icon={HelpCircle} title="No tickets yet" description="Create a support ticket if you need help" />
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-16 animate-pulse rounded-lg bg-bg-surface-alt" />
+                ))}
+              </div>
+            ) : filteredTickets.length === 0 ? (
+              <div className="py-10 flex flex-col items-center text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-tint-blue mb-3">
+                  <FileText className="h-8 w-8 text-brand-primary" />
+                </div>
+                <p className="font-heading text-sm font-semibold text-text-primary">No tickets yet</p>
+                <p className="text-xs text-text-secondary mt-0.5">You haven't raised any support tickets.</p>
+                <button
+                  onClick={() => {
+                    setNewSubject('');
+                    setNewDescription('');
+                    document.getElementById('subject-input')?.focus();
+                  }}
+                  className="mt-4 rounded-lg border border-brand-primary text-brand-primary px-4 py-2 text-xs font-semibold hover:bg-tint-blue"
+                >
+                  Create your first ticket
+                </button>
+              </div>
             ) : (
-              <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
-                {tickets.map((t) => (
+              <div className="space-y-2">
+                {filteredTickets.map((t) => (
                   <button
                     key={t.id}
                     onClick={() => setSelectedTicket(t.id)}
-                    className={`w-full rounded-lg border p-3 text-left transition-colors ${selectedTicket === t.id ? 'border-brand-primary bg-brand-primary/5' : 'border-border-default hover:bg-bg-surface-alt'}`}
+                    className={cn(
+                      'w-full rounded-xl border p-3 text-left transition-colors',
+                      selectedTicket === t.id
+                        ? 'border-brand-primary bg-tint-blue'
+                        : 'border-border hover:bg-bg-surface-alt'
+                    )}
                   >
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-text-primary truncate">{t.subject}</p>
-                      <span className={`shrink-0 ml-2 rounded px-1.5 py-0.5 text-[10px] font-medium ${getStatusColor(t.status)}`}>
-                        {t.status}
+                      <p className="text-sm font-semibold text-text-primary truncate flex-1">{t.subject}</p>
+                      <span className={cn('pill shrink-0 ml-2', getStatusColor(t.status))}>
+                        {t.status === 'IN_PROGRESS' ? 'In Progress' : t.status.charAt(0) + t.status.slice(1).toLowerCase()}
                       </span>
                     </div>
-                    <p className="text-xs text-text-secondary mt-1">{new Date(t.createdAt).toLocaleDateString()}</p>
-                    <p className="text-xs text-text-secondary mt-0.5">{t.messages.length} messages</p>
+                    <p className="text-[11px] text-text-secondary mt-1">
+                      {new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      <span className="mx-1">·</span>
+                      {t.messages?.length || 0} messages
+                    </p>
                   </button>
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      </div>
 
-        {/* Chat view */}
-        <Card className="lg:col-span-3">
-          <CardHeader className="pb-3">
-            <CardTitle className="font-heading text-base font-semibold">
-              {activeTicket ? activeTicket.subject : 'Select a ticket'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {activeTicket ? (
-              <div className="space-y-4">
-                <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
-                  {activeTicket.messages.map((msg) => (
-                    <div key={msg.id} className={`flex ${msg.senderType === 'USER' ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                        msg.senderType === 'USER' ? 'bg-brand-primary text-white' : 'bg-bg-surface-alt text-text-primary'
-                      }`}>
-                        <p className="text-xs text-text-secondary mb-1">{msg.senderType}</p>
-                        <p className="text-sm">{msg.content}</p>
-                        <p className="text-[10px] mt-1 opacity-70">{new Date(msg.createdAt).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  ))}
+      {/* ============== TICKET CONVERSATION (if any selected) ============== */}
+      {activeTicket && (
+        <div>
+          <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Conversation</h3>
+          <div className="card-soft p-4">
+            <h4 className="font-heading text-sm font-semibold text-text-primary mb-3">{activeTicket.subject}</h4>
+            <div className="space-y-3 max-h-80 overflow-y-auto custom-scrollbar">
+              {(activeTicket.messages || []).map((msg) => (
+                <div
+                  key={msg.id}
+                  className={cn('flex', msg.senderType === 'USER' ? 'justify-end' : 'justify-start')}
+                >
+                  <div
+                    className={cn(
+                      'max-w-[80%] rounded-lg px-3 py-2',
+                      msg.senderType === 'USER'
+                        ? 'bg-brand-primary text-white'
+                        : 'bg-bg-surface-alt text-text-primary'
+                    )}
+                  >
+                    <p className="text-[10px] opacity-70 mb-0.5">{msg.senderType}</p>
+                    <p className="text-sm">{msg.content}</p>
+                    <p className="text-[10px] mt-1 opacity-70">
+                      {new Date(msg.createdAt).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Type your reply..."
-                    value={replyContent}
-                    onChange={(e) => setReplyContent(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleReply(activeTicket.id)}
-                  />
-                  <Button size="icon" onClick={() => handleReply(activeTicket.id)}>
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <MessageSquare className="h-8 w-8 text-text-secondary mb-2" />
-                <p className="text-sm text-text-secondary">Select a ticket to view conversation</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              ))}
+            </div>
+            <div className="mt-3 flex gap-2">
+              <input
+                placeholder="Type your reply..."
+                value={replyContent}
+                onChange={(e) => setReplyContent(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleReply(activeTicket.id)}
+                className="flex-1 h-10 px-3 rounded-lg border border-border bg-bg-surface-alt text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+              />
+              <button
+                onClick={() => handleReply(activeTicket.id)}
+                className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary text-white hover:bg-brand-primary-hover"
+                aria-label="Send reply"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============== RESOURCES ============== */}
+      <div>
+        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Resources</h3>
+        <div className="card-soft p-1">
+          <ResourceRow
+            icon={Sparkles}
+            tint="bg-tint-purple"
+            color="text-info-purple"
+            label="Help Center"
+            subtext="FAQs, guides, and tutorials"
+            href="/learning"
+          />
+          <ResourceRow
+            icon={MessageSquare}
+            tint="bg-tint-green"
+            color="text-profit-green"
+            label="Live Chat"
+            subtext="Chat with our support team"
+            href="#"
+          />
+          <ResourceRow
+            icon={Mail}
+            tint="bg-tint-blue"
+            color="text-brand-primary"
+            label="Email Support"
+            subtext="support@pepertect.com · We reply in 24 hours"
+            href="mailto:support@pepertect.com"
+            last
+          />
+        </div>
       </div>
     </div>
+  );
+}
+
+function ResourceRow({
+  icon: Icon,
+  tint,
+  color,
+  label,
+  subtext,
+  href,
+  last,
+}: {
+  icon: React.ElementType;
+  tint: string;
+  color: string;
+  label: string;
+  subtext: string;
+  href: string;
+  last?: boolean;
+}) {
+  return (
+    <a
+      href={href}
+      className={cn(
+        'flex items-center gap-3 px-3 py-3 transition-colors hover:bg-bg-surface-alt',
+        !last && 'border-b border-border'
+      )}
+    >
+      <div className={cn('icon-tile', tint)}>
+        <Icon className={cn('h-5 w-5', color)} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-text-primary">{label}</p>
+        <p className="text-xs text-text-secondary truncate">{subtext}</p>
+      </div>
+      <ChevronRight className="h-4 w-4 text-text-tertiary shrink-0" />
+    </a>
   );
 }

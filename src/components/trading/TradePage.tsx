@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { EmptyState, PremiumBadge, LiveDot } from '@/components/shared/common';
 import { formatNumber, getPnlColor, cn } from '@/lib/utils';
 import { hasFeature } from '@/lib/tier';
-import { BarChart3, ArrowUp, ArrowDown } from 'lucide-react';
+import {
+  ArrowUp, ArrowDown, Search, Settings, Check,
+  LineChart as LineChartIcon, Layers, BarChart3,
+  ChevronDown, Plus, Minus, Wallet, FileSearch,
+} from 'lucide-react';
 import type { Order, Trade, Stock } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 
@@ -35,6 +34,8 @@ export function TradePage() {
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'orders' | 'trades'>('orders');
   const [liveStock, setLiveStock] = useState<Stock | null>(null);
+  const [showMarginBreakdown, setShowMarginBreakdown] = useState(false);
+  const [mainTab, setMainTab] = useState<'place' | 'basket'>('place');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -42,7 +43,7 @@ export function TradePage() {
     if (params.get('side')) setSide(params.get('side') as 'BUY' | 'SELL');
   }, []);
 
-  // Fetch the live stock info whenever symbol changes (so user sees price)
+  // Fetch the live stock info whenever symbol changes
   useEffect(() => {
     if (!symbol || !token) {
       setLiveStock(null);
@@ -62,7 +63,7 @@ export function TradePage() {
         /* ignore */
       }
     };
-    const t = setTimeout(fetchStock, 200); // debounce
+    const t = setTimeout(fetchStock, 200);
     return () => {
       ctrl.abort();
       clearTimeout(t);
@@ -95,7 +96,6 @@ export function TradePage() {
     if (!symbol || !quantity) return;
     setSubmitting(true);
     setMessage('');
-
     try {
       const res = await fetch('/api/orders', {
         method: 'POST',
@@ -139,498 +139,475 @@ export function TradePage() {
     }
   };
 
-  const orderValue = (parseInt(quantity) || 0) * (liveStock?.ltp ?? (parseFloat(price) || 0));
+  const qty = parseInt(quantity) || 0;
+  const refPrice = liveStock?.ltp ?? (parseFloat(price) || 0);
+  const orderValue = qty * refPrice;
+  const availableBalance = user?.virtualCapital ?? 100000;
 
   return (
-    <div className="space-y-4 sm:space-y-6">
-      <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
-        {/* Order Form */}
-        <div className="lg:col-span-1 space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="font-heading text-base font-semibold">Place Order</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Symbol */}
-              <div className="space-y-1.5">
-                <Label className="text-xs">Symbol</Label>
-                <Input
-                  placeholder="e.g. RELIANCE"
+    <div className="space-y-4">
+      {/* ============== TOP TABS: Place Order | Basket | Settings ============== */}
+      <div className="flex items-center gap-1 border-b border-border">
+        <button
+          onClick={() => setMainTab('place')}
+          className={cn('seg-tab', mainTab === 'place' && '[data-active=true]')}
+          data-active={mainTab === 'place'}
+        >
+          Place Order
+        </button>
+        <button
+          onClick={() => setMainTab('basket')}
+          className={cn('seg-tab relative', mainTab === 'basket' && '[data-active=true]')}
+          data-active={mainTab === 'basket'}
+        >
+          Basket
+          <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-loss-red px-1 text-[10px] font-bold text-white">
+            2
+          </span>
+        </button>
+        <div className="flex-1" />
+        <button
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-bg-surface-alt"
+          aria-label="Order settings"
+        >
+          <Settings className="h-4 w-4" />
+        </button>
+      </div>
+
+      {mainTab === 'basket' && (
+        <div className="card-soft p-6 flex flex-col items-center text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-purple mb-3">
+            <Layers className="h-7 w-7 text-info-purple" />
+          </div>
+          <h3 className="font-heading text-base font-semibold text-text-primary">Basket trading coming soon</h3>
+          <p className="text-sm text-text-secondary mt-1">Place multiple orders in a single click.</p>
+          <button
+            onClick={() => setMainTab('place')}
+            className="mt-4 rounded-lg bg-brand-primary px-4 py-2 text-sm font-semibold text-white hover:bg-brand-primary-hover"
+          >
+            Back to Place Order
+          </button>
+        </div>
+      )}
+
+      {mainTab === 'place' && (
+        <>
+          {/* ============== ORDER ENTRY CARD ============== */}
+          <div className="card-soft p-4 space-y-4">
+            {/* Symbol search */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-text-secondary">Symbol</label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search company or paste symbol"
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                  className="h-11 text-base font-mono"
+                  className="w-full h-11 pl-9 pr-3 rounded-lg border border-border bg-bg-surface-alt text-sm font-mono font-medium text-text-primary placeholder:font-sans placeholder:font-normal placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
                 />
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {POPULAR_STOCKS.slice(0, 8).map((s) => (
-                    <button
-                      key={s}
-                      onClick={() => setSymbol(s)}
+              </div>
+              {/* Horizontal scrolling chips */}
+              <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 py-1">
+                {POPULAR_STOCKS.slice(0, 12).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setSymbol(s)}
+                    className={cn(
+                      'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors border',
+                      symbol === s
+                        ? 'border-brand-primary bg-tint-blue text-brand-primary'
+                        : 'border-border bg-bg-surface text-text-secondary hover:bg-bg-surface-alt'
+                    )}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Live stock strip */}
+            {liveStock && (
+              <div className="rounded-xl border border-border bg-bg-base p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <StockLogo symbol={liveStock.symbol} size="sm" rounded="md" />
+                    <div>
+                      <p className="font-mono text-sm font-semibold text-text-primary">{liveStock.symbol}</p>
+                      <p className="text-[11px] text-text-secondary truncate max-w-[150px]">{liveStock.name}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono text-base font-bold tabular-nums text-text-primary">
+                      ₹{formatNumber(liveStock.ltp ?? 0)}
+                    </p>
+                    <p
                       className={cn(
-                        'rounded px-2 py-0.5 text-[10px] font-mono transition-colors',
-                        symbol === s
-                          ? 'bg-brand-primary/10 text-brand-primary'
-                          : 'bg-bg-surface-alt text-text-secondary hover:bg-brand-primary/10 hover:text-brand-primary'
+                        'font-mono text-xs tabular-nums',
+                        (liveStock.changePct ?? 0) >= 0 ? 'text-profit-green' : 'text-loss-red'
                       )}
                     >
-                      {s}
-                    </button>
-                  ))}
+                      {(liveStock.change ?? 0) >= 0 ? '+' : ''}{formatNumber(liveStock.change ?? 0)} ({(liveStock.changePct ?? 0) >= 0 ? '+' : ''}{(liveStock.changePct ?? 0).toFixed(2)}%)
+                    </p>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Live price strip — only when symbol is valid */}
-              {liveStock && (
-                <div className="rounded-lg border border-border-default bg-bg-base p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <LiveDot isLive={(liveStock.changePct ?? 0) >= 0} />
-                      <span className="text-[10px] font-medium text-text-secondary">LIVE</span>
-                    </div>
-                    <a
-                      href={`/stock/${liveStock.symbol}`}
-                      className="text-[10px] text-brand-primary hover:underline"
+            {/* Segment cards */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-text-secondary">Segment</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(['EQUITY', 'FUTURES', 'OPTIONS'] as const).map((seg) => {
+                  const locked = seg !== 'EQUITY' && !hasFeature(user?.tier || 'FREE', seg === 'FUTURES' ? 'futures_trading' : 'options_trading');
+                  const isActive = segment === seg;
+                  const Icon = seg === 'EQUITY' ? LineChartIcon : seg === 'FUTURES' ? BarChart3 : Layers;
+                  return (
+                    <button
+                      key={seg}
+                      onClick={() => !locked && setSegment(seg)}
+                      className={cn(
+                        'relative rounded-xl p-3 text-left border-2 transition-all',
+                        isActive
+                          ? 'border-brand-primary bg-tint-blue'
+                          : locked
+                          ? 'border-border bg-bg-surface-alt opacity-70 cursor-not-allowed'
+                          : 'border-border bg-bg-surface hover:border-brand-primary/30'
+                      )}
+                      disabled={locked}
                     >
-                      View overview →
-                    </a>
-                  </div>
-                  <div className="mt-1.5 flex items-end justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <StockLogo symbol={liveStock.symbol} size="md" rounded="md" />
-                      <div className="min-w-0">
-                        <p className="font-mono text-2xl font-bold tabular-nums text-text-primary">
-                          ₹{formatNumber(liveStock.ltp ?? 0)}
-                        </p>
-                        <p
-                          className={cn(
-                            'font-mono text-sm font-semibold tabular-nums',
-                            getPnlColor(liveStock.changePct ?? 0)
-                          )}
-                        >
-                          {(liveStock.change ?? 0) >= 0 ? '+' : ''}
-                          {formatNumber(liveStock.change ?? 0)} ({(liveStock.changePct ?? 0) >= 0 ? '+' : ''}{(liveStock.changePct ?? 0).toFixed(2)}%)
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
-                    <div>
-                      <span className="text-text-secondary">O </span>
-                      <span className="font-mono text-text-primary">{formatNumber(liveStock.open ?? 0)}</span>
-                    </div>
-                    <div>
-                      <span className="text-text-secondary">H </span>
-                      <span className="font-mono text-profit-green">{formatNumber(liveStock.high ?? 0)}</span>
-                    </div>
-                    <div>
-                      <span className="text-text-secondary">L </span>
-                      <span className="font-mono text-loss-red">{formatNumber(liveStock.low ?? 0)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Segment — fixed: badge above label, not inside button */}
-              <div className="space-y-1.5">
-                <Label className="text-xs">Segment</Label>
-                <div className="flex gap-2">
-                  {(['EQUITY', 'FUTURES', 'OPTIONS'] as const).map((seg) => {
-                    const locked = seg !== 'EQUITY' && !hasFeature(user?.tier || 'FREE', seg === 'FUTURES' ? 'futures_trading' : 'options_trading');
-                    const isActive = segment === seg && !locked;
-                    return (
-                      <button
-                        key={seg}
-                        onClick={() => !locked && setSegment(seg)}
+                      {isActive && (
+                        <span className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-brand-primary">
+                          <Check className="h-3 w-3 text-white" strokeWidth={3} />
+                        </span>
+                      )}
+                      {locked && (
+                        <span className="absolute top-1.5 right-1.5 pill bg-tint-yellow-strong text-accent-gold">
+                          PREMIUM
+                        </span>
+                      )}
+                      <Icon
                         className={cn(
-                          'flex-1 rounded-md py-2 px-1 text-xs font-medium transition-colors relative',
-                          isActive
-                            ? 'bg-brand-primary text-white'
-                            : locked
-                            ? 'bg-bg-surface-alt text-text-secondary/60 cursor-not-allowed'
-                            : 'bg-bg-surface-alt text-text-secondary hover:bg-border-default'
+                          'h-5 w-5 mb-1.5',
+                          isActive ? 'text-brand-primary' : locked ? 'text-text-tertiary' : 'text-profit-green'
                         )}
-                        disabled={locked}
-                      >
-                        {locked && (
-                          <span className="absolute -top-1.5 left-1/2 -translate-x-1/2">
-                            <PremiumBadge size="sm" />
-                          </span>
-                        )}
-                        {seg}
-                      </button>
-                    );
-                  })}
-                </div>
+                      />
+                      <p className={cn('text-xs font-semibold', isActive ? 'text-brand-primary' : 'text-text-primary')}>
+                        {seg.charAt(0) + seg.slice(1).toLowerCase()}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
 
-              {/* Side */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSide('BUY')}
-                  className={cn(
-                    'flex-1 rounded-md py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-1.5',
-                    side === 'BUY' ? 'bg-profit-green text-white' : 'bg-bg-surface-alt text-text-secondary'
-                  )}
-                >
-                  <ArrowUp className="h-4 w-4" />
-                  BUY
-                </button>
-                <button
-                  onClick={() => setSide('SELL')}
-                  className={cn(
-                    'flex-1 rounded-md py-2.5 text-sm font-semibold transition-colors flex items-center justify-center gap-1.5',
-                    side === 'SELL' ? 'bg-loss-red text-white' : 'bg-bg-surface-alt text-text-secondary'
-                  )}
-                >
-                  <ArrowDown className="h-4 w-4" />
-                  SELL
-                </button>
-              </div>
-
-              {/* Order Type */}
+            {/* Order Type */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-text-secondary">Order Type</label>
               <div className="flex gap-2">
                 {(['MARKET', 'LIMIT', 'SL'] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setOrderType(t)}
                     className={cn(
-                      'flex-1 rounded-md py-2 text-xs font-medium transition-colors',
+                      'flex-1 rounded-lg py-2 text-xs font-semibold transition-colors border',
                       orderType === t
-                        ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/30'
-                        : 'bg-bg-surface-alt text-text-secondary'
+                        ? 'border-brand-primary bg-tint-blue text-brand-primary'
+                        : 'border-border bg-bg-surface text-text-secondary hover:bg-bg-surface-alt'
                     )}
                   >
-                    {t}
+                    {t === 'SL' ? 'SL' : t.charAt(0) + t.slice(1).toLowerCase()}
                   </button>
                 ))}
               </div>
+            </div>
 
-              {/* Quantity & Price */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Quantity</Label>
-                  <Input
+            {/* Quantity stepper */}
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-text-secondary">Quantity</label>
+              <div className="flex items-center gap-3">
+                <div className="qty-stepper">
+                  <button
+                    onClick={() => setQuantity(String(Math.max(1, qty - 1)))}
+                    disabled={qty <= 1}
+                    aria-label="Decrease quantity"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </button>
+                  <input
                     type="number"
                     min={1}
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="h-11 text-base font-mono"
                   />
+                  <button
+                    onClick={() => setQuantity(String(qty + 1))}
+                    aria-label="Increase quantity"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
                 </div>
-                {orderType !== 'MARKET' && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Price (₹)</Label>
-                    <Input
-                      type="number"
-                      step="0.05"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      className="h-11 text-base font-mono"
-                    />
-                  </div>
-                )}
+                <span className="text-xs text-text-secondary">Lot Size: 1</span>
+                <div className="flex-1 text-right">
+                  <span className="text-xs text-text-secondary">Available Balance: </span>
+                  <span className="text-xs font-semibold text-profit-green font-mono">₹{formatNumber(availableBalance, 2)}</span>
+                </div>
               </div>
+            </div>
 
-              {/* Estimated order value */}
-              {orderValue > 0 && symbol && (
-                <div className="flex items-center justify-between rounded-md border border-border-default bg-bg-base px-3 py-2 text-xs">
-                  <span className="text-text-secondary">Estimated Value</span>
-                  <span className="font-mono font-semibold tabular-nums text-text-primary">
-                    ₹{formatNumber(orderValue)}
-                  </span>
-                </div>
-              )}
+            {/* Price (if LIMIT or SL) */}
+            {orderType !== 'MARKET' && (
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-text-secondary">
+                  {orderType === 'SL' ? 'Trigger Price (₹)' : 'Price (₹)'}
+                </label>
+                <input
+                  type="number"
+                  step="0.05"
+                  placeholder="0.00"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className="w-full h-11 px-3 rounded-lg border border-border bg-bg-surface-alt text-sm font-mono font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                />
+              </div>
+            )}
 
-              {/* Submit */}
-              <Button
-                onClick={handleOrder}
-                disabled={submitting || !symbol || !quantity}
+            {/* Buy/Sell buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSide('BUY')}
                 className={cn(
-                  'w-full h-12 font-semibold text-white transition-colors',
-                  side === 'BUY' ? 'bg-profit-green hover:bg-profit-green/90' : 'bg-loss-red hover:bg-loss-red/90'
+                  'flex-1 h-12 rounded-lg text-sm font-bold uppercase transition-colors flex items-center justify-center gap-1.5',
+                  side === 'BUY'
+                    ? 'bg-profit-green text-white shadow-md shadow-profit-green/30'
+                    : 'bg-bg-surface-alt text-text-secondary border border-border'
                 )}
               >
-                {submitting ? 'Placing Order...' : `${side} ${symbol || 'Stock'}`}
-              </Button>
+                <ArrowUp className="h-4 w-4" />
+                BUY
+              </button>
+              <button
+                onClick={() => setSide('SELL')}
+                className={cn(
+                  'flex-1 h-12 rounded-lg text-sm font-bold uppercase transition-colors flex items-center justify-center gap-1.5',
+                  side === 'SELL'
+                    ? 'bg-loss-red text-white shadow-md shadow-loss-red/30'
+                    : 'bg-bg-surface-alt text-text-secondary border border-border'
+                )}
+              >
+                <ArrowDown className="h-4 w-4" />
+                SELL
+              </button>
+            </div>
 
-              {message && (
-                <p
-                  className={cn(
-                    'text-sm text-center font-medium',
-                    message.includes('failed') || message.includes('error')
-                      ? 'text-loss-red'
-                      : 'text-profit-green'
-                  )}
-                >
-                  {message}
-                </p>
+            {/* Required Margin (expandable) */}
+            <button
+              onClick={() => setShowMarginBreakdown(!showMarginBreakdown)}
+              className="w-full flex items-center justify-between rounded-lg border border-border bg-bg-base px-3 py-2.5 text-xs"
+            >
+              <span className="text-text-secondary flex items-center gap-1.5">
+                <Wallet className="h-3.5 w-3.5 text-profit-green" />
+                Required Margin <span className="text-text-tertiary">(Approx.)</span>
+              </span>
+              <span className="font-mono font-semibold text-text-primary">
+                ₹{formatNumber(orderValue || (liveStock?.ltp ?? 0), 2)}
+              </span>
+              <ChevronDown className={cn('h-3.5 w-3.5 text-text-tertiary transition-transform', showMarginBreakdown && 'rotate-180')} />
+            </button>
+            {showMarginBreakdown && (
+              <div className="rounded-lg bg-bg-base border border-border p-3 space-y-1.5 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">Order Value</span>
+                  <span className="font-mono text-text-primary">₹{formatNumber(orderValue, 2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">Margin Multiplier</span>
+                  <span className="font-mono text-text-primary">1x (Equity Intraday)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-secondary">Charges (Est.)</span>
+                  <span className="font-mono text-text-primary">₹0.00</span>
+                </div>
+              </div>
+            )}
+
+            {/* REVIEW CTA */}
+            <button
+              onClick={handleOrder}
+              disabled={submitting || !symbol || !quantity}
+              className={cn(
+                'w-full h-12 rounded-lg text-sm font-bold uppercase text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed',
+                side === 'BUY'
+                  ? 'bg-profit-green hover:bg-profit-green/90'
+                  : 'bg-loss-red hover:bg-loss-red/90'
               )}
-            </CardContent>
-          </Card>
-        </div>
+            >
+              {submitting ? 'Placing Order...' : `Review ${side} Order`}
+              <ArrowUp className={cn('h-4 w-4', side === 'SELL' && 'rotate-180')} />
+            </button>
 
-        {/* Order History / Trades */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-4 border-b border-border-default -mb-3">
+            {message && (
+              <p
+                className={cn(
+                  'text-sm text-center font-medium',
+                  message.includes('failed') || message.includes('error')
+                    ? 'text-loss-red'
+                    : 'text-profit-green'
+                )}
+              >
+                {message}
+              </p>
+            )}
+          </div>
+
+          {/* ============== ORDERS / TRADE HISTORY ============== */}
+          <div className="card-soft">
+            {/* Sub-tabs */}
+            <div className="flex items-center gap-1 border-b border-border px-3">
               <button
                 onClick={() => setActiveTab('orders')}
-                className={cn(
-                  'font-heading text-sm sm:text-base font-semibold py-3 border-b-2 -mb-px transition-colors',
-                  activeTab === 'orders'
-                    ? 'border-brand-primary text-text-primary'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
-                )}
+                className="seg-tab"
+                data-active={activeTab === 'orders'}
               >
                 Orders
-                {orders.length > 0 && (
-                  <span className="ml-1.5 rounded bg-bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
-                    {orders.length}
-                  </span>
-                )}
+                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+                  {orders.length}
+                </span>
               </button>
               <button
                 onClick={() => setActiveTab('trades')}
-                className={cn(
-                  'font-heading text-sm sm:text-base font-semibold py-3 border-b-2 -mb-px transition-colors',
-                  activeTab === 'trades'
-                    ? 'border-brand-primary text-text-primary'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
-                )}
+                className="seg-tab"
+                data-active={activeTab === 'trades'}
               >
                 Trade History
-                {trades.length > 0 && (
-                  <span className="ml-1.5 rounded bg-bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">
-                    {trades.length}
-                  </span>
-                )}
+                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+                  {trades.length}
+                </span>
+              </button>
+              <div className="flex-1" />
+              <button className="flex items-center gap-1 text-xs text-text-secondary py-2 px-2 hover:text-text-primary">
+                <span>All</span>
+                <ChevronDown className="h-3 w-3" />
               </button>
             </div>
-          </CardHeader>
-          <CardContent>
-            {activeTab === 'orders' ? (
-              loading ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 3 }).map((_, i) => (
-                    <div key={i} className="h-14 animate-pulse rounded-lg bg-bg-surface-alt" />
-                  ))}
-                </div>
-              ) : orders.length === 0 ? (
-                <div className="py-10">
-                  <EmptyState
-                    icon={BarChart3}
-                    title="No orders yet"
-                    description="Place your first trade to get started"
-                  />
-                </div>
-              ) : (
-                <>
-                  {/* Desktop table */}
-                  <div className="hidden sm:block overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-border-default text-xs text-text-secondary">
-                          <th className="pb-2 text-left font-medium">Symbol</th>
-                          <th className="pb-2 text-left font-medium">Side</th>
-                          <th className="pb-2 text-left font-medium">Type</th>
-                          <th className="pb-2 text-right font-medium">Qty</th>
-                          <th className="pb-2 text-right font-medium">Price</th>
-                          <th className="pb-2 text-right font-medium">Status</th>
-                          <th className="pb-2 text-right font-medium"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {orders.map((ord) => (
-                          <tr key={ord.id} className="border-b border-border-default/50 hover:bg-bg-surface-alt/50">
-                            <td className="py-2">
-                              <a
-                                href={`/stock/${ord.symbol}`}
-                                className="flex items-center gap-2 font-mono font-medium text-text-primary hover:text-brand-primary"
-                              >
-                                <StockLogo symbol={ord.symbol} size="xs" rounded="sm" />
-                                {ord.symbol}
-                              </a>
-                            </td>
-                            <td className={cn('py-2 font-medium', ord.side === 'BUY' ? 'text-profit-green' : 'text-loss-red')}>
-                              {ord.side}
-                            </td>
-                            <td className="py-2 text-text-secondary">{ord.orderType}</td>
-                            <td className="py-2 text-right font-mono">{ord.quantity}</td>
-                            <td className="py-2 text-right font-mono">{formatNumber(ord.filledPrice ?? ord.price ?? 0)}</td>
-                            <td className="py-2 text-right">
-                              <span
-                                className={cn(
-                                  'rounded px-1.5 py-0.5 text-xs font-medium',
-                                  ord.status === 'FILLED'
-                                    ? 'bg-profit-green/10 text-profit-green'
-                                    : ord.status === 'PENDING'
-                                    ? 'bg-warning-amber/10 text-warning-amber'
-                                    : 'bg-loss-red/10 text-loss-red'
-                                )}
-                              >
-                                {ord.status}
-                              </span>
-                            </td>
-                            <td className="py-2 text-right">
-                              {ord.status === 'PENDING' && (
-                                <button onClick={() => handleCancel(ord.id)} className="text-xs text-loss-red hover:underline">
-                                  Cancel
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
 
-                  {/* Mobile cards */}
-                  <div className="sm:hidden space-y-2">
-                    {orders.map((ord) => (
-                      <div key={ord.id} className="rounded-lg border border-border-default p-3">
-                        <div className="flex items-center justify-between mb-2">
+            <div className="p-3">
+              {activeTab === 'orders' ? (
+                loading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="h-14 animate-pulse rounded-lg bg-bg-surface-alt" />
+                    ))}
+                  </div>
+                ) : orders.length === 0 ? (
+                  <div className="py-10 flex flex-col items-center text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-blue mb-3">
+                      <FileSearch className="h-7 w-7 text-brand-primary" />
+                    </div>
+                    <p className="font-heading text-sm font-semibold text-text-primary">No open orders</p>
+                    <p className="text-xs text-text-secondary mt-0.5">Place an order to get started</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {orders.slice(0, 8).map((ord) => (
+                      <div
+                        key={ord.id}
+                        className="flex items-center gap-3 rounded-xl border border-border p-2.5"
+                      >
+                        <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
+                        <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
-                            <a
-                              href={`/stock/${ord.symbol}`}
-                              className="font-mono text-sm font-semibold text-text-primary"
-                            >
-                              {ord.symbol}
-                            </a>
+                            <p className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</p>
                             <span
                               className={cn(
-                                'rounded px-1.5 py-0.5 text-[10px] font-medium',
-                                ord.side === 'BUY'
-                                  ? 'bg-profit-green/10 text-profit-green'
-                                  : 'bg-loss-red/10 text-loss-red'
+                                'pill',
+                                ord.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
                               )}
                             >
                               {ord.side}
                             </span>
                           </div>
-                          <span
+                          <p className="text-[11px] text-text-secondary mt-0.5">{ord.orderType} · {ord.quantity} qty</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
+                            ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
+                          </p>
+                          <p
                             className={cn(
-                              'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                              'text-[11px] font-medium',
                               ord.status === 'FILLED'
-                                ? 'bg-profit-green/10 text-profit-green'
+                                ? 'text-profit-green'
                                 : ord.status === 'PENDING'
-                                ? 'bg-warning-amber/10 text-warning-amber'
-                                : 'bg-loss-red/10 text-loss-red'
+                                ? 'text-accent-gold'
+                                : 'text-loss-red'
                             )}
                           >
                             {ord.status}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-text-secondary">{ord.orderType} · {ord.quantity} qty</span>
-                          <span className="font-mono font-medium text-text-primary">
-                            ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0)}
-                          </span>
+                          </p>
                         </div>
                         {ord.status === 'PENDING' && (
                           <button
                             onClick={() => handleCancel(ord.id)}
-                            className="mt-2 w-full rounded-md border border-border-default py-1.5 text-xs font-medium text-loss-red hover:bg-loss-red/10"
+                            className="ml-2 text-[11px] font-medium text-loss-red hover:underline"
                           >
-                            Cancel Order
+                            Cancel
                           </button>
                         )}
                       </div>
                     ))}
                   </div>
-                </>
-              )
-            ) : loading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-14 animate-pulse rounded-lg bg-bg-surface-alt" />
-                ))}
-              </div>
-            ) : trades.length === 0 ? (
-              <div className="py-10">
-                <EmptyState icon={BarChart3} title="No trades yet" description="Your completed trades will appear here" />
-              </div>
-            ) : (
-              <>
-                {/* Desktop table */}
-                <div className="hidden sm:block overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border-default text-xs text-text-secondary">
-                        <th className="pb-2 text-left font-medium">Symbol</th>
-                        <th className="pb-2 text-left font-medium">Side</th>
-                        <th className="pb-2 text-left font-medium">Type</th>
-                        <th className="pb-2 text-right font-medium">Qty</th>
-                        <th className="pb-2 text-right font-medium">Price</th>
-                        <th className="pb-2 text-right font-medium">P&amp;L</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {trades.map((t) => (
-                        <tr key={t.id} className="border-b border-border-default/50 hover:bg-bg-surface-alt/50">
-                          <td className="py-2">
-                            <a
-                              href={`/stock/${t.symbol}`}
-                              className="flex items-center gap-2 font-mono font-medium text-text-primary hover:text-brand-primary"
-                            >
-                              <StockLogo symbol={t.symbol} size="xs" rounded="sm" />
-                              {t.symbol}
-                            </a>
-                          </td>
-                          <td className={cn('py-2 font-medium', t.side === 'BUY' ? 'text-profit-green' : 'text-loss-red')}>
-                            {t.side}
-                          </td>
-                          <td className="py-2 text-text-secondary">{t.type}</td>
-                          <td className="py-2 text-right font-mono">{t.quantity}</td>
-                          <td className="py-2 text-right font-mono">{formatNumber(t.price)}</td>
-                          <td className={cn('py-2 text-right font-mono', getPnlColor(t.pnl))}>
-                            {t.pnl >= 0 ? '+' : ''}{formatNumber(t.pnl)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                )
+              ) : loading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-14 animate-pulse rounded-lg bg-bg-surface-alt" />
+                  ))}
                 </div>
-
-                {/* Mobile cards */}
-                <div className="sm:hidden space-y-2">
-                  {trades.map((t) => (
-                    <div key={t.id} className="rounded-lg border border-border-default p-3">
-                      <div className="flex items-center justify-between mb-2">
+              ) : trades.length === 0 ? (
+                <div className="py-10 flex flex-col items-center text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-purple mb-3">
+                    <BarChart3 className="h-7 w-7 text-info-purple" />
+                  </div>
+                  <p className="font-heading text-sm font-semibold text-text-primary">No trades yet</p>
+                  <p className="text-xs text-text-secondary mt-0.5">Your completed trades will appear here</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {trades.slice(0, 8).map((t) => (
+                    <div
+                      key={t.id}
+                      className="flex items-center gap-3 rounded-xl border border-border p-2.5"
+                    >
+                      <StockLogo symbol={t.symbol} size="sm" rounded="sm" />
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <StockLogo symbol={t.symbol} size="sm" rounded="sm" />
-                          <a
-                            href={`/stock/${t.symbol}`}
-                            className="font-mono text-sm font-semibold text-text-primary"
-                          >
-                            {t.symbol}
-                          </a>
+                          <p className="font-mono text-sm font-semibold text-text-primary">{t.symbol}</p>
                           <span
                             className={cn(
-                              'rounded px-1.5 py-0.5 text-[10px] font-medium',
-                              t.side === 'BUY'
-                                ? 'bg-profit-green/10 text-profit-green'
-                                : 'bg-loss-red/10 text-loss-red'
+                              'pill',
+                              t.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
                             )}
                           >
                             {t.side}
                           </span>
                         </div>
-                        <span className={cn('font-mono text-sm font-semibold', getPnlColor(t.pnl))}>
-                          {t.pnl >= 0 ? '+' : ''}₹{formatNumber(t.pnl)}
-                        </span>
+                        <p className="text-[11px] text-text-secondary mt-0.5">{t.quantity} qty @ ₹{formatNumber(t.price, 2)}</p>
                       </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-text-secondary">{t.type} · {t.quantity} qty</span>
-                        <span className="font-mono text-text-secondary">@ ₹{formatNumber(t.price)}</span>
+                      <div className="text-right shrink-0">
+                        <p className={cn('font-mono text-sm font-semibold tabular-nums', getPnlColor(t.pnl))}>
+                          {t.pnl >= 0 ? '+' : ''}₹{formatNumber(t.pnl, 2)}
+                        </p>
+                        <p className="text-[11px] text-text-secondary">{t.type}</p>
                       </div>
                     </div>
                   ))}
                 </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

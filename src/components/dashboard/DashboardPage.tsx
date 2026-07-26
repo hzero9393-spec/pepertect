@@ -2,15 +2,29 @@
 
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { StatCard, LiveDot } from '@/components/shared/common';
-import { formatINR, formatNumber } from '@/lib/utils';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatINR, formatNumber, cn, getInitials } from '@/lib/utils';
 import {
-  Wallet, TrendingUp, TrendingDown, Activity,
-  BarChart3, Target, Trophy,
+  Wallet, TrendingUp, TrendingDown, Activity, Trophy,
+  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap,
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
+import { Sparkline } from '@/components/shared/Sparkline';
+
+// Deterministic mini-series for sparklines based on symbol
+function getMiniSeries(symbol: string, positive: boolean): number[] {
+  let h = 0;
+  for (let i = 0; i < symbol.length; i++) h = (Math.imul(31, h) + symbol.charCodeAt(i)) | 0;
+  const out: number[] = [];
+  let v = 50;
+  for (let i = 0; i < 16; i++) {
+    const noise = (Math.abs(Math.sin(h + i)) * 14) - 7;
+    const trend = positive ? 1.4 : -1.4;
+    v = Math.max(5, Math.min(95, v + noise + trend));
+    out.push(v);
+  }
+  return out;
+}
 
 export function DashboardPage() {
   const { user, token } = useAuthStore();
@@ -51,252 +65,356 @@ export function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="space-y-4">
+        <div className="h-28 animate-pulse rounded-2xl bg-bg-surface" />
+        <div className="grid gap-3 grid-cols-2">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-lg bg-bg-surface" />
+            <div key={i} className="h-28 animate-pulse rounded-2xl bg-bg-surface" />
           ))}
         </div>
       </div>
     );
   }
 
+  const totalPnl = portfolio?.totalPnl ?? 0;
+  const totalPnlPositive = totalPnl >= 0;
+  const winRate = portfolio?.winRate ?? 0;
+  const wins = portfolio?.winningTrades ?? 0;
+  const totalTrades = portfolio?.totalTrades ?? 0;
+  const losses = Math.max(0, totalTrades - wins);
+  const invested = portfolio?.investedAmount ?? 0;
+  const totalPnlPct = invested > 0 ? (totalPnl / invested) * 100 : 0;
+
   return (
-    <div className="space-y-6">
-      {/* Welcome */}
-      <div className="flex items-center gap-3">
-        <div>
-          <h2 className="font-heading text-2xl font-bold text-text-primary">
-            Welcome back, {user?.name || 'Trader'}
+    <div className="space-y-5">
+      {/* ============== HERO CARD ============== */}
+      <div className="card-soft hero-gradient p-5 relative overflow-hidden">
+        {/* Decorative chart graphic (top-right) */}
+        <svg
+          className="absolute -right-2 -top-2 opacity-60 pointer-events-none"
+          width="120"
+          height="80"
+          viewBox="0 0 120 80"
+          fill="none"
+          aria-hidden
+        >
+          <defs>
+            <linearGradient id="heroChartGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#2563EB" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M5 60 L20 50 L35 55 L50 35 L65 40 L80 20 L95 25 L110 10 L110 75 L5 75 Z"
+            fill="url(#heroChartGrad)"
+          />
+          <path
+            d="M5 60 L20 50 L35 55 L50 35 L65 40 L80 20 L95 25 L110 10"
+            stroke="#2563EB"
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          {/* Bars */}
+          <rect x="15" y="60" width="6" height="14" rx="1" fill="#2563EB" opacity="0.4" />
+          <rect x="45" y="50" width="6" height="24" rx="1" fill="#2563EB" opacity="0.4" />
+          <rect x="75" y="35" width="6" height="39" rx="1" fill="#2563EB" opacity="0.4" />
+        </svg>
+
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-text-secondary">
+              {user?.tier === 'PREMIUM' ? 'PREMIUM Plan' : 'FREE Plan'}
+            </span>
+            <span className="text-text-tertiary">·</span>
+            <div className="flex items-center gap-1.5">
+              <span className="live-dot-green" />
+              <span className="text-xs font-medium text-text-secondary">Market Live</span>
+            </div>
+          </div>
+          <h2 className="font-heading text-2xl font-bold text-text-primary mt-1">
+            Welcome back, {user?.name?.split(' ')[0] || 'Trader'}
           </h2>
-          <div className="flex items-center gap-2 mt-1">
-            <LiveDot isLive={true} />
-            <span className="text-sm text-text-secondary">Market Live</span>
-            <span className="text-xs text-text-secondary">·</span>
-            <span className="text-xs font-mono text-text-secondary">{user?.tier} Plan</span>
+          <div className="mt-2 flex items-center gap-1.5">
+            <a
+              href="/subscription"
+              className="text-sm font-semibold text-brand-primary hover:underline inline-flex items-center gap-1"
+            >
+              Upgrade <ArrowRight className="h-3.5 w-3.5" />
+            </a>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <StatCard
+      {/* ============== METRICS GRID 2x2 ============== */}
+      <div className="grid gap-3 grid-cols-2">
+        {/* Total Balance */}
+        <MetricCard
           icon={Wallet}
+          iconBg="bg-tint-blue"
+          iconColor="text-brand-primary"
           label="Total Balance"
           value={formatINR(portfolio?.totalBalance ?? 100000)}
           subtext="Virtual Capital"
-          color="bg-brand-primary/10"
         />
-        <StatCard
-          icon={portfolio && portfolio.totalPnl >= 0 ? TrendingUp : TrendingDown}
+        {/* Total P&L */}
+        <MetricCard
+          icon={totalPnlPositive ? TrendingUp : TrendingDown}
+          iconBg={totalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
+          iconColor={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
           label="Total P&L"
-          value={formatINR(portfolio?.totalPnl ?? 0)}
-          subtext={`Realized: ${formatINR(portfolio?.realizedPnl ?? 0)}`}
-          color={portfolio && portfolio.totalPnl >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10'}
+          value={
+            <span className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
+              {totalPnlPositive ? '+' : ''}{formatINR(totalPnl)}
+            </span>
+          }
+          subtext={`${totalPnlPositive ? '+' : ''}${totalPnlPct.toFixed(2)}% · Realized ${formatINR(portfolio?.realizedPnl ?? 0)}`}
         />
-        <StatCard
+        {/* Available Margin */}
+        <MetricCard
           icon={Activity}
+          iconBg="bg-tint-purple"
+          iconColor="text-info-purple"
           label="Available Margin"
           value={formatINR(portfolio?.availableMargin ?? 100000)}
           subtext={`Invested: ${formatINR(portfolio?.investedAmount ?? 0)}`}
-          color="bg-bg-surface-alt"
         />
-        <StatCard
+        {/* Win Rate */}
+        <MetricCard
           icon={Trophy}
+          iconBg="bg-tint-yellow"
+          iconColor="text-accent-gold"
           label="Win Rate"
-          value={`${portfolio?.winRate ?? 0}%`}
-          subtext={`${portfolio?.totalTrades ?? 0} trades`}
-          color="bg-accent-gold/10"
+          value={
+            <span className="text-brand-primary">{winRate}%</span>
+          }
+          subtext={`${wins} Wins • ${losses} Losses`}
         />
       </div>
 
-      {/* Indices & Positions */}
-      <div className="grid gap-6 lg:grid-cols-5">
-        {/* Market Indices */}
-        <Card className="lg:col-span-3">
-          <CardHeader className="pb-3">
-            <CardTitle className="font-heading text-base font-semibold flex items-center gap-2">
-              Market Indices
-              <div className="live-dot-green" />
-              <a href="/market" className="ml-auto text-xs text-brand-primary hover:underline">View All</a>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-2 sm:gap-3 sm:grid-cols-2">
-              {indices.map((idx) => (
+      {/* ============== MARKET INDICES ============== */}
+      <div>
+        <div className="flex items-center justify-between px-1 mb-2">
+          <h3 className="font-heading text-base font-semibold text-text-primary">Market Indices</h3>
+          <a href="/market" className="text-xs font-semibold text-brand-primary hover:underline">
+            View All
+          </a>
+        </div>
+        <div className="card-soft p-2">
+          <div className="space-y-1">
+            {indices.map((idx) => {
+              const positive = idx.change >= 0;
+              return (
                 <a
                   key={idx.id}
                   href={`/stock/${idx.symbol}`}
-                  className="group flex items-center justify-between rounded-lg border border-border-default p-3 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
+                  className="group flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-bg-surface-alt"
                 >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <StockLogo symbol={idx.symbol} size="sm" isIndex rounded="md" />
-                    <div className="min-w-0">
-                      <p className="font-heading text-sm font-semibold text-text-primary group-hover:text-brand-primary truncate">{idx.name}</p>
-                      <p className="text-xs text-text-secondary">{idx.exchange}</p>
+                  <StockLogo symbol={idx.symbol} size="sm" isIndex rounded="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-heading text-sm font-semibold text-text-primary truncate">{idx.name}</p>
+                    <p className="text-[11px] text-text-secondary">{idx.exchange}</p>
+                  </div>
+                  <Sparkline data={getMiniSeries(idx.symbol, positive)} positive={positive} />
+                  <div className="text-right shrink-0 min-w-[78px]">
+                    <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
+                      {formatNumber(idx.lastPrice, 2)}
+                    </p>
+                    <p
+                      className={cn(
+                        'font-mono text-[11px] tabular-nums',
+                        positive ? 'text-profit-green' : 'text-loss-red'
+                      )}
+                    >
+                      {positive ? '+' : ''}{idx.changePct.toFixed(2)}%
+                    </p>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ============== OPEN POSITIONS ============== */}
+      <div>
+        <div className="flex items-center justify-between px-1 mb-2">
+          <h3 className="font-heading text-base font-semibold text-text-primary">Open Positions</h3>
+          <a href="/positions" className="text-xs font-semibold text-brand-primary hover:underline">
+            View All
+          </a>
+        </div>
+        <div className="card-soft p-3">
+          {positions.length === 0 ? (
+            <div className="flex flex-col items-center py-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-bg-surface-alt mb-2">
+                <Briefcase className="h-6 w-6 text-text-secondary" />
+              </div>
+              <p className="text-sm font-medium text-text-primary">No open positions</p>
+              <a href="/trade" className="mt-2 text-xs font-semibold text-brand-primary hover:underline">
+                Start Trading
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {positions.slice(0, 3).map((pos) => {
+                const positive = pos.pnl >= 0;
+                return (
+                  <a
+                    key={pos.id}
+                    href={`/stock/${pos.symbol}`}
+                    className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-bg-surface-alt"
+                  >
+                    <StockLogo symbol={pos.symbol} size="md" rounded="md" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="font-mono text-sm font-semibold text-text-primary">{pos.symbol}</p>
+                        <span className="pill bg-tint-green text-profit-green">BUY</span>
+                      </div>
+                      <p className="text-[11px] text-text-secondary mt-0.5">
+                        NSE · {pos.quantity} Shares · ₹{formatNumber(pos.currentPrice ?? pos.avgPrice, 2)}
+                      </p>
                     </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-mono text-sm font-bold tabular-nums text-text-primary">
+                        ₹{formatNumber(pos.currentPrice * pos.quantity, 2)}
+                      </p>
+                      <p className={cn('font-mono text-[11px] tabular-nums', positive ? 'text-profit-green' : 'text-loss-red')}>
+                        {positive ? '+' : ''}₹{formatNumber(pos.pnl, 2)} ({positive ? '+' : ''}{pos.pnlPct?.toFixed(2) ?? '0.00'}%)
+                      </p>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ============== QUICK ACTIONS ============== */}
+      <div>
+        <h3 className="font-heading text-base font-semibold text-text-primary px-1 mb-2">Quick Actions</h3>
+        <div className="grid grid-cols-4 gap-2">
+          <QuickAction icon={Plus} label="Place Order" href="/trade" tint="bg-tint-blue" color="text-brand-primary" />
+          <QuickAction icon={Receipt} label="Orders" href="/trade" tint="bg-tint-purple" color="text-info-purple" />
+          <QuickAction icon={Briefcase} label="Positions" href="/positions" tint="bg-tint-green" color="text-profit-green" />
+          <QuickAction icon={Wallet} label="Funds" href="/profile" tint="bg-tint-yellow" color="text-accent-gold" />
+        </div>
+      </div>
+
+      {/* ============== RECENT ORDERS ============== */}
+      {recentOrders.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between px-1 mb-2">
+            <h3 className="font-heading text-base font-semibold text-text-primary">Recent Orders</h3>
+            <a href="/trade" className="text-xs font-semibold text-brand-primary hover:underline">
+              View All
+            </a>
+          </div>
+          <div className="card-soft p-3">
+            <div className="space-y-2">
+              {recentOrders.map((ord) => (
+                <a
+                  key={ord.id}
+                  href={`/stock/${ord.symbol}`}
+                  className="flex items-center gap-3 rounded-xl p-2 hover:bg-bg-surface-alt transition-colors"
+                >
+                  <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</p>
+                      <span
+                        className={cn(
+                          'pill',
+                          ord.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
+                        )}
+                      >
+                        {ord.side}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-text-secondary mt-0.5">
+                      {ord.orderType} · {ord.quantity} qty
+                    </p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-mono text-sm font-medium tabular-nums text-text-primary">
-                      {formatNumber(idx.lastPrice)}
+                    <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
+                      ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
                     </p>
-                    <p className={`font-mono text-xs tabular-nums ${idx.change >= 0 ? 'text-profit-green' : 'text-loss-red'}`}>
-                      {idx.change >= 0 ? '+' : ''}{formatNumber(idx.change)} ({idx.changePct >= 0 ? '+' : ''}{idx.changePct.toFixed(2)}%)
+                    <p
+                      className={cn(
+                        'text-[11px] font-medium',
+                        ord.status === 'FILLED'
+                          ? 'text-profit-green'
+                          : ord.status === 'PENDING'
+                          ? 'text-accent-gold'
+                          : 'text-loss-red'
+                      )}
+                    >
+                      {ord.status}
                     </p>
                   </div>
                 </a>
               ))}
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Active Positions */}
-        <Card className="lg:col-span-2">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="font-heading text-base font-semibold">Open Positions</CardTitle>
-              <a href="/positions" className="text-xs text-brand-primary hover:underline">View All</a>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {positions.length === 0 ? (
-              <div className="flex flex-col items-center py-8 text-center">
-                <BarChart3 className="h-8 w-8 text-text-secondary mb-2" />
-                <p className="text-sm text-text-secondary">No open positions</p>
-                <a href="/trade" className="mt-2 text-xs text-brand-primary hover:underline">Start Trading</a>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
-                {positions.slice(0, 5).map((pos) => (
-                  <a
-                    key={pos.id}
-                    href={`/stock/${pos.symbol}`}
-                    className="flex items-center justify-between rounded-md border border-border-default p-2.5 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <StockLogo symbol={pos.symbol} size="sm" rounded="md" />
-                      <div className="min-w-0">
-                        <p className="font-mono text-sm font-medium text-text-primary">{pos.symbol}</p>
-                        <p className="text-xs text-text-secondary">{pos.quantity} @ {formatNumber(pos.avgPrice)}</p>
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className={`font-mono text-sm tabular-nums ${pos.pnl >= 0 ? 'text-profit-green' : 'text-loss-red'}`}>
-                        {pos.pnl >= 0 ? '+' : ''}{formatNumber(pos.pnl)}
-                      </p>
-                      <p className={`text-xs tabular-nums ${pos.pnlPct >= 0 ? 'text-profit-green' : 'text-loss-red'}`}>
-                        {pos.pnlPct >= 0 ? '+' : ''}{pos.pnlPct.toFixed(1)}%
-                      </p>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Orders */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="font-heading text-base font-semibold">Recent Orders</CardTitle>
-            <a href="/trade" className="text-xs text-brand-primary hover:underline">View All</a>
           </div>
-        </CardHeader>
-        <CardContent>
-          {recentOrders.length === 0 ? (
-            <p className="text-sm text-text-secondary text-center py-4">No orders yet</p>
-          ) : (
-            <>
-              {/* Desktop: table */}
-              <div className="hidden sm:block overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border-default text-xs text-text-secondary">
-                      <th className="pb-2 text-left font-medium">Symbol</th>
-                      <th className="pb-2 text-left font-medium">Side</th>
-                      <th className="pb-2 text-left font-medium">Type</th>
-                      <th className="pb-2 text-right font-medium">Qty</th>
-                      <th className="pb-2 text-right font-medium">Price</th>
-                      <th className="pb-2 text-right font-medium">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recentOrders.map((ord) => (
-                      <tr key={ord.id} className="border-b border-border-default/50 hover:bg-bg-surface-alt/50">
-                        <td className="py-2">
-                          <a href={`/stock/${ord.symbol}`} className="flex items-center gap-2 font-mono font-medium text-text-primary hover:text-brand-primary">
-                            <StockLogo symbol={ord.symbol} size="xs" rounded="sm" />
-                            {ord.symbol}
-                          </a>
-                        </td>
-                        <td className="py-2">
-                          <span className={`font-medium ${ord.side === 'BUY' ? 'text-profit-green' : 'text-loss-red'}`}>
-                            {ord.side}
-                          </span>
-                        </td>
-                        <td className="py-2 text-text-secondary">{ord.orderType}</td>
-                        <td className="py-2 text-right font-mono text-text-primary">{ord.quantity}</td>
-                        <td className="py-2 text-right font-mono text-text-primary">{formatNumber(ord.filledPrice ?? ord.price ?? 0)}</td>
-                        <td className="py-2 text-right">
-                          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                            ord.status === 'FILLED' ? 'bg-profit-green/10 text-profit-green' :
-                            ord.status === 'PENDING' ? 'bg-warning-amber/10 text-warning-amber' :
-                            'bg-loss-red/10 text-loss-red'
-                          }`}>
-                            {ord.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile: cards */}
-              <div className="sm:hidden space-y-2">
-                {recentOrders.map((ord) => (
-                  <a
-                    key={ord.id}
-                    href={`/stock/${ord.symbol}`}
-                    className="block rounded-lg border border-border-default p-3 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
-                        <span className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</span>
-                        <span className={
-                          ord.side === 'BUY'
-                            ? 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-profit-green/10 text-profit-green'
-                            : 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-loss-red/10 text-loss-red'
-                        }>
-                          {ord.side}
-                        </span>
-                      </div>
-                      <span className={
-                        ord.status === 'FILLED'
-                          ? 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-profit-green/10 text-profit-green'
-                          : ord.status === 'PENDING'
-                          ? 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-warning-amber/10 text-warning-amber'
-                          : 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-loss-red/10 text-loss-red'
-                      }>
-                        {ord.status}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-text-secondary">{ord.orderType} · {ord.quantity} qty</span>
-                      <span className="font-mono font-medium text-text-primary">
-                        ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0)}
-                      </span>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
     </div>
+  );
+}
+
+function MetricCard({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  value,
+  subtext,
+}: {
+  icon: React.ElementType;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  value: React.ReactNode;
+  subtext?: string;
+}) {
+  return (
+    <div className="card-soft p-4">
+      <div className="flex items-start justify-between">
+        <p className="text-[12px] font-medium text-text-secondary">{label}</p>
+        <div className={cn('icon-tile', iconBg)}>
+          <Icon className={cn('h-[18px] w-[18px]', iconColor)} />
+        </div>
+      </div>
+      <p className="mt-2 font-mono text-xl font-bold tabular-nums text-text-primary">{value}</p>
+      {subtext && <p className="mt-0.5 text-[11px] text-text-tertiary">{subtext}</p>}
+    </div>
+  );
+}
+
+function QuickAction({
+  icon: Icon,
+  label,
+  href,
+  tint,
+  color,
+}: {
+  icon: React.ElementType;
+  label: string;
+  href: string;
+  tint: string;
+  color: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="card-soft p-3 flex flex-col items-center gap-2 hover:shadow-md transition-shadow"
+    >
+      <div className={cn('icon-tile', tint)}>
+        <Icon className={cn('h-5 w-5', color)} />
+      </div>
+      <span className="text-[11px] font-medium text-text-primary text-center leading-tight">{label}</span>
+    </a>
   );
 }

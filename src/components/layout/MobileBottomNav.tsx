@@ -12,6 +12,7 @@ interface MobileNavItem {
   icon: React.ElementType;
 }
 
+// Order: Home, Markets, [Trade FAB], Positions, Watchlist
 const MOBILE_NAV_ITEMS: MobileNavItem[] = [
   { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
   { id: 'market', label: 'Markets', icon: TrendingUp },
@@ -27,9 +28,7 @@ export function MobileBottomNav() {
   return (
     <nav
       className={cn(
-        'fixed bottom-0 left-0 right-0 z-50 md:hidden',
-        'border-t border-border-default bg-bg-surface/95 backdrop-blur-lg',
-        'no-select'
+        'fixed bottom-0 left-0 right-0 z-50 md:hidden bottom-nav no-select'
       )}
       style={{ paddingBottom: 'var(--safe-bottom)' }}
       aria-label="Mobile navigation"
@@ -38,19 +37,48 @@ export function MobileBottomNav() {
         {MOBILE_NAV_ITEMS.map((item) => {
           const isActive = activePath === item.id;
           const Icon = item.icon;
+
+          // Center "Trade" tab — elevated FAB
+          if (item.id === 'trade') {
+            return (
+              <a
+                key={item.id}
+                href={`/${item.id}`}
+                className="flex flex-1 flex-col items-center justify-end pb-1.5"
+                aria-current={isActive ? 'page' : undefined}
+                aria-label="Trade"
+              >
+                <div className="fab-trade" aria-hidden>
+                  <Icon className="h-6 w-6" strokeWidth={2.4} />
+                </div>
+                <span
+                  className={cn(
+                    'mt-1 text-[10px] font-medium',
+                    isActive ? 'text-brand-primary font-semibold' : 'text-text-secondary'
+                  )}
+                >
+                  {item.label}
+                </span>
+              </a>
+            );
+          }
+
           return (
             <a
               key={item.id}
               href={`/${item.id}`}
               className={cn(
-                'flex flex-1 flex-col items-center justify-center gap-0.5 py-2 transition-colors',
+                'flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors',
                 isActive
                   ? 'text-brand-primary'
                   : 'text-text-secondary hover:text-text-primary'
               )}
               aria-current={isActive ? 'page' : undefined}
             >
-              <Icon className={cn('h-5 w-5', isActive && 'scale-110')} strokeWidth={isActive ? 2.5 : 2} />
+              <Icon
+                className="h-5 w-5"
+                strokeWidth={isActive ? 2.5 : 2}
+              />
               <span className={cn('text-[10px] font-medium', isActive && 'font-semibold')}>
                 {item.label}
               </span>

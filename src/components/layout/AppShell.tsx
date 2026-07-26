@@ -27,10 +27,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Header />
         <main
-          className="flex-1 px-3 py-4 pb-mobile-nav md:px-6 md:py-6 md:pb-6"
-          style={{ paddingBottom: 'calc(1.5rem + var(--safe-bottom) + var(--mobile-nav-height))' }}
+          className="flex-1 px-4 py-4 pb-mobile-nav md:px-6 md:py-6 md:pb-6"
+          style={{ paddingBottom: 'calc(1.25rem + var(--safe-bottom) + var(--mobile-nav-height))' }}
         >
-          <div className="app-container mx-auto max-w-7xl">
+          <div className="mx-auto max-w-3xl lg:max-w-5xl">
             {children}
           </div>
         </main>
