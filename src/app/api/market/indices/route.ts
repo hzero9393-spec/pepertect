@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
+import { db } from '@/lib/db';
 
 const MOCK_INDICES = [
   { id: 'idx-1', name: 'NIFTY 50', symbol: 'NIFTY', exchange: 'NSE', lastPrice: 24587.30, change: 294.15, changePct: 1.21, high: 24612.80, low: 24278.45, open: 24315.00, close: 24293.15 },
@@ -13,9 +14,15 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
-    const indices = await db.index.findMany();
+    let indices: any[] = [];
+    try {
+      indices = await db.index.findMany();
+    } catch (dbErr) {
+      // Index table may not exist in some environments — fall back to mock
+      console.error('Index DB error:', dbErr);
+    }
     if (indices.length > 0) {
-      const mapped = indices.map((i) => ({
+      const mapped = indices.map((i: any) => ({
         id: i.id,
         name: i.name,
         symbol: i.symbol,

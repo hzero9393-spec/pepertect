@@ -8,6 +8,7 @@ import { EmptyState } from '@/components/shared/common';
 import { formatNumber } from '@/lib/utils';
 import { Search, TrendingUp, TrendingDown } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
+import { StockSearch } from '@/components/shared/StockSearch';
 import type { Stock, IndexData } from '@/types';
 
 export function MarketPage() {
@@ -48,6 +49,9 @@ export function MarketPage() {
 
   return (
     <div className="space-y-6">
+      {/* Universal stock search — searches entire 430+ universe, click → stock detail / option chain */}
+      <StockSearch placeholder="Search any stock / index — click to view option chain overview" />
+
       {/* Indices strip — horizontal scroll on mobile */}
       <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 no-scrollbar -mx-3 px-3 md:mx-0 md:px-0">
         {indices.map((idx) => (

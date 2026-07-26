@@ -10,6 +10,8 @@ import {
 import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { Sparkline } from '@/components/shared/Sparkline';
+import { StockSearch } from '@/components/shared/StockSearch';
+import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 
 // Deterministic mini-series for sparklines based on symbol
 function getMiniSeries(symbol: string, positive: boolean): number[] {
@@ -87,6 +89,12 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
+      {/* ============== UNIVERSAL SEARCH BAR ============== */}
+      <StockSearch placeholder="Search any stock / index — click to see option chain & overview" />
+
+      {/* ============== FREE TRIAL WIDGET ============== */}
+      <FreeTrialWidget variant="card" />
+
       {/* ============== HERO CARD ============== */}
       <div className="card-soft hero-gradient p-5 relative overflow-hidden">
         {/* Decorative chart graphic (top-right) */}
@@ -299,7 +307,7 @@ export function DashboardPage() {
           <QuickAction icon={Plus} label="Place Order" href="/trade" tint="bg-tint-blue" color="text-brand-primary" />
           <QuickAction icon={Receipt} label="Orders" href="/trade" tint="bg-tint-purple" color="text-info-purple" />
           <QuickAction icon={Briefcase} label="Positions" href="/positions" tint="bg-tint-green" color="text-profit-green" />
-          <QuickAction icon={Wallet} label="Funds" href="/profile" tint="bg-tint-yellow" color="text-accent-gold" />
+          <QuickAction icon={Wallet} label="Funds" href="/portfolio" tint="bg-tint-yellow" color="text-accent-gold" />
         </div>
       </div>
 

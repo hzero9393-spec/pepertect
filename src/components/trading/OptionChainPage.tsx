@@ -13,6 +13,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
+import { StockSearch } from '@/components/shared/StockSearch';
 
 // ---- Types ---------------------------------------------------------------
 
@@ -177,6 +178,12 @@ export function OptionChainPage() {
 
   return (
     <div className="space-y-4">
+      {/* Universal stock search — quick-jump to any other stock / index */}
+      <StockSearch
+        placeholder="Search any stock / index — click to switch"
+        variant="compact"
+      />
+
       {/* ============== HEADER ============== */}
       <div className="card-soft p-4">
         <div className="flex items-start gap-3">

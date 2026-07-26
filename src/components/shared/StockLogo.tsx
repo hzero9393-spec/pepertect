@@ -108,13 +108,27 @@ const STOCK_DOMAINS: Record<string, string> = {
   FEDERALBNK: 'federalbank.co.in',
 };
 
-// Indices — never use Clearbit (they aren't companies). Use single-letter avatar.
+// Indices — never use Clearbit (they aren't companies). Use the 4 custom
+// index logo files in /public/indices/ that the brand team supplied. If a
+// particular index doesn't have a dedicated logo, fall back to the
+// single-letter gradient avatar.
 const INDEX_SYMBOLS = new Set([
   'NIFTY', 'SENSEX', 'BANKNIFTY', 'NIFTYFS', 'NIFTYIT',
   'NIFTYBANK', 'NIFTYNEXT50', 'NIFTYMIDCAP', 'NIFTYSMLCAP',
   'INDIAVIX', 'NIFTYPSE', 'NIFTYPHARMA', 'NIFTYAUTO', 'NIFTYMETAL',
   'NIFTYFMCG', 'NIFTYENERGY', 'NIFTYREALTY', 'NIFTYMEDIA',
+  'FINNIFTY',
 ]);
+
+// Real index logo files shipped in /public/indices/.
+// FINNIFTY and NIFTYFS are aliases for the same index.
+const INDEX_LOGO_FILES: Record<string, string> = {
+  NIFTY: '/indices/nifty.png',
+  SENSEX: '/indices/sensex.png',
+  BANKNIFTY: '/indices/banknifty.png',
+  FINNIFTY: '/indices/finnifty.jpeg',
+  NIFTYFS: '/indices/finnifty.jpeg',
+};
 
 // Curated color palette — works in both light and dark mode.
 // Each entry: [bg, text] Tailwind classes.
@@ -190,10 +204,16 @@ export function StockLogo({
   const sym = (symbol || '').toUpperCase();
   const domain = STOCK_DOMAINS[sym];
   const isIdx = isIndex || INDEX_SYMBOLS.has(sym);
+  const indexLogoFile = isIdx ? INDEX_LOGO_FILES[sym] : undefined;
 
-  // For indices, never attempt Clearbit — always show initials avatar.
+  // For indices, never attempt Clearbit — only attempt our local logo files.
   // For stocks with no known domain, also skip the image attempt.
-  const shouldTryImage = !isIdx && !!domain;
+  const shouldTryImage = (!isIdx && !!domain) || !!indexLogoFile;
+  const imgSrc = indexLogoFile
+    ? indexLogoFile
+    : domain
+    ? `https://icon.horse/icon/${domain}`
+    : null;
 
   const [imgError, setImgError] = useState(false);
   // Reset error state when symbol changes (component may be reused in lists)
@@ -213,7 +233,7 @@ export function StockLogo({
   const initials = isIdx ? sym[0] || '?' : getInitials(sym);
 
   // If we don't try the image, or if the image already errored, render the avatar.
-  if (!shouldTryImage || imgError) {
+  if (!shouldTryImage || imgError || !imgSrc) {
     return (
       <div
         className={cn(
@@ -242,18 +262,21 @@ export function StockLogo({
         'relative flex shrink-0 items-center justify-center overflow-hidden',
         sizeClass.box,
         roundedClass,
-        'bg-bg-surface-alt',
+        isIdx ? 'bg-white' : 'bg-bg-surface-alt',
         className
       )}
       aria-label={sym}
       title={sym}
     >
       <img
-        src={`https://icon.horse/icon/${domain}`}
+        src={imgSrc}
         alt={`${sym} logo`}
         loading="lazy"
         onError={() => setImgError(true)}
-        className="h-full w-full object-contain p-1"
+        className={cn(
+          'h-full w-full object-contain',
+          isIdx ? 'p-0.5' : 'p-1'
+        )}
       />
     </div>
   );

@@ -12,6 +12,8 @@ import { PositionsPage } from '@/components/portfolio/PositionsPage';
 import { WatchlistPage } from '@/components/market/WatchlistPage';
 import { LearningPage } from '@/components/learning/LearningPage';
 import { SubscriptionPage } from '@/components/subscription/SubscriptionPage';
+import { FreeTrialPage } from '@/components/subscription/FreeTrialPage';
+import { PortfolioPage } from '@/components/portfolio/PortfolioPage';
 import { SupportPage } from '@/components/support/SupportPage';
 import { ProfilePage } from '@/components/profile/ProfilePage';
 import { SettingsPage } from '@/components/profile/SettingsPage';
@@ -36,6 +38,8 @@ const PAGE_MAP: Record<string, React.ComponentType> = {
   watchlist: WatchlistPage,
   learning: LearningPage,
   subscription: SubscriptionPage,
+  'free-trial': FreeTrialPage,
+  portfolio: PortfolioPage,
   support: SupportPage,
   profile: ProfilePage,
   settings: SettingsPage,
