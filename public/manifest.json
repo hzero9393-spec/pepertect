@@ -1,0 +1,17 @@
+{
+  "name": "Pepertect",
+  "short_name": "Pepertect",
+  "description": "NSE Paper Trading Platform",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F7F8FA",
+  "theme_color": "#1D4ED8",
+  "icons": [
+    {
+      "src": "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

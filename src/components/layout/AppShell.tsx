@@ -4,6 +4,7 @@ import { useAppStore } from '@/stores/useAppStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
+import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { cn } from '@/lib/utils';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -25,8 +26,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         )}
       >
         <Header />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main
+          className="flex-1 px-3 py-4 pb-mobile-nav md:px-6 md:py-6 md:pb-6"
+          style={{ paddingBottom: 'calc(1.5rem + var(--safe-bottom) + var(--mobile-nav-height))' }}
+        >
+          <div className="app-container mx-auto max-w-7xl">
+            {children}
+          </div>
+        </main>
       </div>
+      <MobileBottomNav />
     </div>
   );
 }

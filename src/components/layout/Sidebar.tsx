@@ -39,12 +39,12 @@ export function Sidebar() {
 
   if (!isAuthenticated) return null;
 
-  const activePath = pathname === '/' ? 'dashboard' : pathname.replace('/', '');
+  const activePath = pathname === '/' ? 'dashboard' : pathname.replace('/', '').split('/')[0];
 
   return (
     <aside
       className={cn(
-        'fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-border-default bg-bg-surface transition-all duration-300',
+        'fixed left-0 top-0 z-40 hidden md:flex h-screen flex-col border-r border-border-default bg-bg-surface transition-all duration-300',
         sidebarOpen ? 'w-64' : 'w-16'
       )}
     >
@@ -62,6 +62,7 @@ export function Sidebar() {
             'flex h-8 w-8 items-center justify-center rounded-md transition-colors hover:bg-bg-surface-alt',
             !sidebarOpen && 'mx-auto'
           )}
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           {sidebarOpen ? (
             <ChevronLeft className="h-4 w-4 text-text-secondary" />
@@ -119,6 +120,7 @@ export function Sidebar() {
               onClick={logout}
               className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-bg-surface-alt hover:text-loss-red"
               title="Logout"
+              aria-label="Logout"
             >
               <LogOut className="h-4 w-4" />
             </button>

@@ -142,30 +142,33 @@ export function WatchlistPage() {
           ) : (
             <div className="space-y-2">
               {items.map((item) => (
-                <div key={item.id} className="flex items-center justify-between rounded-lg border border-border-default p-3">
-                  <a href={`/stock/${item.symbol}`} className="flex flex-1 items-center gap-3">
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-md ${item.changePct >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10'}`}>
+                <div key={item.id} className="flex items-center justify-between rounded-lg border border-border-default p-3 gap-2">
+                  <a href={`/stock/${item.symbol}`} className="flex flex-1 items-center gap-2 sm:gap-3 min-w-0">
+                    <div className={`flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-md ${item.changePct >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10'}`}>
                       {item.changePct >= 0 ? (
                         <TrendingUp className="h-4 w-4 text-profit-green" />
                       ) : (
                         <TrendingDown className="h-4 w-4 text-loss-red" />
                       )}
                     </div>
-                    <div>
-                      <p className="font-heading text-sm font-semibold text-text-primary">{item.symbol}</p>
-                      <p className="text-xs text-text-secondary">{item.name}</p>
+                    <div className="min-w-0">
+                      <p className="font-heading text-sm font-semibold text-text-primary truncate">{item.symbol}</p>
+                      <p className="text-xs text-text-secondary truncate clamp-1">{item.name}</p>
                     </div>
                   </a>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4 shrink-0">
                     <div className="text-right">
-                      <p className="font-mono text-sm font-bold tabular-nums text-text-primary">{formatNumber(item.ltp)}</p>
+                      <p className="font-mono text-sm font-bold tabular-nums text-text-primary">
+                        ₹{formatNumber(item.ltp)}
+                      </p>
                       <p className={`font-mono text-xs tabular-nums ${getPnlColor(item.changePct)}`}>
                         {item.changePct >= 0 ? '+' : ''}{item.changePct.toFixed(2)}%
                       </p>
                     </div>
                     <button
                       onClick={() => handleRemove(item.symbol)}
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-loss-red/10 hover:text-loss-red"
+                      className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-loss-red/10 hover:text-loss-red"
+                      aria-label={`Remove ${item.symbol} from watchlist`}
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>

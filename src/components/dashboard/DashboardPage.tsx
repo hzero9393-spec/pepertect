@@ -192,44 +192,82 @@ export function DashboardPage() {
           {recentOrders.length === 0 ? (
             <p className="text-sm text-text-secondary text-center py-4">No orders yet</p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border-default text-xs text-text-secondary">
-                    <th className="pb-2 text-left font-medium">Symbol</th>
-                    <th className="pb-2 text-left font-medium">Side</th>
-                    <th className="pb-2 text-left font-medium">Type</th>
-                    <th className="pb-2 text-right font-medium">Qty</th>
-                    <th className="pb-2 text-right font-medium">Price</th>
-                    <th className="pb-2 text-right font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentOrders.map((ord) => (
-                    <tr key={ord.id} className="border-b border-border-default/50">
-                      <td className="py-2 font-mono font-medium text-text-primary">{ord.symbol}</td>
-                      <td className="py-2">
-                        <span className={`font-medium ${ord.side === 'BUY' ? 'text-profit-green' : 'text-loss-red'}`}>
+            <>
+              {/* Desktop: table */}
+              <div className="hidden sm:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border-default text-xs text-text-secondary">
+                      <th className="pb-2 text-left font-medium">Symbol</th>
+                      <th className="pb-2 text-left font-medium">Side</th>
+                      <th className="pb-2 text-left font-medium">Type</th>
+                      <th className="pb-2 text-right font-medium">Qty</th>
+                      <th className="pb-2 text-right font-medium">Price</th>
+                      <th className="pb-2 text-right font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentOrders.map((ord) => (
+                      <tr key={ord.id} className="border-b border-border-default/50">
+                        <td className="py-2 font-mono font-medium text-text-primary">{ord.symbol}</td>
+                        <td className="py-2">
+                          <span className={`font-medium ${ord.side === 'BUY' ? 'text-profit-green' : 'text-loss-red'}`}>
+                            {ord.side}
+                          </span>
+                        </td>
+                        <td className="py-2 text-text-secondary">{ord.orderType}</td>
+                        <td className="py-2 text-right font-mono text-text-primary">{ord.quantity}</td>
+                        <td className="py-2 text-right font-mono text-text-primary">{formatNumber(ord.filledPrice ?? ord.price ?? 0)}</td>
+                        <td className="py-2 text-right">
+                          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
+                            ord.status === 'FILLED' ? 'bg-profit-green/10 text-profit-green' :
+                            ord.status === 'PENDING' ? 'bg-warning-amber/10 text-warning-amber' :
+                            'bg-loss-red/10 text-loss-red'
+                          }`}>
+                            {ord.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile: cards */}
+              <div className="sm:hidden space-y-2">
+                {recentOrders.map((ord) => (
+                  <div key={ord.id} className="rounded-lg border border-border-default p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</span>
+                        <span className={
+                          ord.side === 'BUY'
+                            ? 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-profit-green/10 text-profit-green'
+                            : 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-loss-red/10 text-loss-red'
+                        }>
                           {ord.side}
                         </span>
-                      </td>
-                      <td className="py-2 text-text-secondary">{ord.orderType}</td>
-                      <td className="py-2 text-right font-mono text-text-primary">{ord.quantity}</td>
-                      <td className="py-2 text-right font-mono text-text-primary">{formatNumber(ord.filledPrice ?? ord.price ?? 0)}</td>
-                      <td className="py-2 text-right">
-                        <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                          ord.status === 'FILLED' ? 'bg-profit-green/10 text-profit-green' :
-                          ord.status === 'PENDING' ? 'bg-warning-amber/10 text-warning-amber' :
-                          'bg-loss-red/10 text-loss-red'
-                        }`}>
-                          {ord.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
+                      <span className={
+                        ord.status === 'FILLED'
+                          ? 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-profit-green/10 text-profit-green'
+                          : ord.status === 'PENDING'
+                          ? 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-warning-amber/10 text-warning-amber'
+                          : 'rounded px-1.5 py-0.5 text-[10px] font-medium bg-loss-red/10 text-loss-red'
+                      }>
+                        {ord.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-text-secondary">{ord.orderType} · {ord.quantity} qty</span>
+                      <span className="font-mono font-medium text-text-primary">
+                        ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
