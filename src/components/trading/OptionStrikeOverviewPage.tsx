@@ -436,22 +436,85 @@ export function OptionStrikeOverviewPage() {
             </div>
           )}
 
-          {/* ============== TRADE CTA ============== */}
-          {activeLeg && (
-            <a
-              href={`/trade?symbol=${encodeURIComponent(symbol)}&type=OPTION&side=${side}&strike=${strikeRow.strikePrice}&expiry=${encodeURIComponent(data?.expiry ?? '')}`}
-              className="card-soft p-4 flex items-center justify-between hover:bg-bg-surface-alt transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className="icon-tile bg-brand-primary/10">
-                  <Activity className="h-5 w-5 text-brand-primary" />
-                </div>
+          {/* ============== BUY / SELL ORDER PANEL ============== */}
+          {activeLeg && data && (
+            <div className="card-soft p-4 space-y-3">
+              <div className="flex items-center justify-between">
                 <div>
-                  <p className="font-semibold text-sm text-text-primary">Trade this {side === 'CE' ? 'Call' : 'Put'} Option</p>
-                  <p className="text-[11px] text-text-secondary">Place a paper order at ₹{formatNumber(activeLeg.lastPrice, 2)}</p>
+                  <h3 className="font-heading text-sm font-semibold text-text-primary">
+                    Place Order · {side === 'CE' ? 'CALL' : 'PUT'} {strikeRow.strikePrice}
+                  </h3>
+                  <p className="text-[11px] text-text-secondary mt-0.5">
+                    {idxInfo.display} · Lot Size {data.lotSize} · LTP ₹{formatNumber(activeLeg.lastPrice, 2)}
+                  </p>
+                </div>
+                <span className={cn(
+                  'pill text-[10px] font-bold',
+                  side === 'CE' ? 'bg-profit-green/15 text-profit-green' : 'bg-loss-red/15 text-loss-red'
+                )}>
+                  {side === 'CE' ? 'BULLISH' : 'BEARISH'}
+                </span>
+              </div>
+
+              {/* Order summary */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg border border-border bg-bg-surface p-2.5">
+                  <p className="text-[10px] uppercase font-medium text-text-tertiary">LTP</p>
+                  <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-text-primary">₹{formatNumber(activeLeg.lastPrice, 2)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-bg-surface p-2.5">
+                  <p className="text-[10px] uppercase font-medium text-text-tertiary">Lot Size</p>
+                  <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-text-primary">{data.lotSize}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-bg-surface p-2.5">
+                  <p className="text-[10px] uppercase font-medium text-text-tertiary">Per Lot</p>
+                  <p className="mt-0.5 font-mono text-sm font-bold tabular-nums text-text-primary">
+                    ₹{formatNumber(activeLeg.lastPrice * data.lotSize, 2)}
+                  </p>
                 </div>
               </div>
-              <ChevronRight className="h-4 w-4 text-text-secondary" />
+
+              {/* BUY & SELL buttons — prefill the trade page with the chosen option */}
+              <div className="grid grid-cols-2 gap-3">
+                <a
+                  href={`/trade?symbol=${encodeURIComponent(symbol)}&type=OPTION&side=CE&optionSide=BUY&strike=${strikeRow.strikePrice}&expiry=${encodeURIComponent(data.expiry ?? '')}&optionType=${side}&price=${activeLeg.lastPrice}`}
+                  className="flex flex-col items-center justify-center gap-1 rounded-xl bg-profit-green hover:bg-profit-green/90 text-white py-3 font-bold transition-colors"
+                >
+                  <span className="text-base">BUY {side}</span>
+                  <span className="text-[11px] font-medium opacity-90">
+                    ₹{formatNumber(activeLeg.lastPrice, 2)} · 1 Lot
+                  </span>
+                </a>
+                <a
+                  href={`/trade?symbol=${encodeURIComponent(symbol)}&type=OPTION&side=CE&optionSide=SELL&strike=${strikeRow.strikePrice}&expiry=${encodeURIComponent(data.expiry ?? '')}&optionType=${side}&price=${activeLeg.lastPrice}`}
+                  className="flex flex-col items-center justify-center gap-1 rounded-xl bg-loss-red hover:bg-loss-red/90 text-white py-3 font-bold transition-colors"
+                >
+                  <span className="text-base">SELL {side}</span>
+                  <span className="text-[11px] font-medium opacity-90">
+                    ₹{formatNumber(activeLeg.lastPrice, 2)} · 1 Lot
+                  </span>
+                </a>
+              </div>
+
+              <p className="text-[10px] text-text-tertiary text-center">
+                Paper trade · Virtual money · No real exchange execution
+              </p>
+            </div>
+          )}
+
+          {/* ============== TRADE CTA (advanced) ============== */}
+          {activeLeg && data && (
+            <a
+              href={`/trade?symbol=${encodeURIComponent(symbol)}&type=OPTION&side=${side}&strike=${strikeRow.strikePrice}&expiry=${encodeURIComponent(data?.expiry ?? '')}`}
+              className="card-soft p-3 flex items-center justify-between hover:bg-bg-surface-alt transition-colors"
+            >
+              <div className="flex items-center gap-2.5">
+                <Activity className="h-4 w-4 text-brand-primary" />
+                <p className="text-xs font-medium text-text-secondary">
+                  Open advanced order form (qty, SL, target, limit price)
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-text-tertiary" />
             </a>
           )}
         </>

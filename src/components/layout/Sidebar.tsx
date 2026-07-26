@@ -7,7 +7,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, TrendingUp, BarChart3, Briefcase, Eye,
   GraduationCap, CreditCard, HelpCircle, Settings, User,
-  ChevronLeft, ChevronRight, LogOut, Zap, ListTree,
+  ChevronLeft, ChevronRight, LogOut, Zap, ListTree, Wallet,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { getInitials } from '@/lib/utils';
@@ -25,6 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'trade', label: 'Trade', icon: BarChart3 },
   { id: 'optionchain', label: 'Option Chain', icon: ListTree },
   { id: 'positions', label: 'Positions', icon: Briefcase },
+  { id: 'history', label: 'Wallet History', icon: Wallet },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
   { id: 'learning', label: 'Learn', icon: GraduationCap, premium: true },
   { id: 'subscription', label: 'Pricing', icon: CreditCard },

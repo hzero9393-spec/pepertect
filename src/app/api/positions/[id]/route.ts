@@ -61,9 +61,12 @@ export async function POST(
       },
     });
 
+    // Fetch portfolio BEFORE update so we can record the running balance
+    const portfolioBefore = await db.portfolio.findUnique({ where: { userId: auth.userId } });
     await db.portfolio.update({
       where: { userId: auth.userId },
       data: {
+        totalBalance: { increment: orderValue - brokerage },
         availableMargin: { increment: orderValue - brokerage },
         investedAmount: { decrement: Number(position.investedAmt) },
         totalPnl: { increment: pnl },
@@ -72,6 +75,21 @@ export async function POST(
         winningTrades: { increment: pnl > 0 ? 1 : 0 },
       },
     });
+
+    // Record a CREDIT transaction so user can see money flowing back into the wallet
+    if (portfolioBefore) {
+      const newBalance = Number(portfolioBefore.totalBalance) + (orderValue - brokerage);
+      await db.transaction.create({
+        data: {
+          portfolioId: portfolioBefore.id,
+          type: 'CREDIT',
+          amount: orderValue - brokerage,
+          balance: newBalance,
+          description: `Exit ${position.symbol} · ${position.quantity} qty @ ₹${exitPrice.toFixed(2)}${pnl !== 0 ? ` · P&L ${pnl >= 0 ? '+' : ''}₹${pnl.toFixed(2)}` : ''}`,
+          reference: position.id,
+        },
+      });
+    }
 
     const updated = await db.position.findUnique({ where: { id } });
     return NextResponse.json({ success: true, data: updated });

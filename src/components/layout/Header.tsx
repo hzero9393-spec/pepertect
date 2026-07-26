@@ -31,6 +31,8 @@ export function Header() {
       optionchain: 'Option Chain',
       basket: 'Basket Order',
       positions: 'Positions',
+      history: 'Wallet History',
+      'wallet-history': 'Wallet History',
       watchlist: 'Watchlist',
       learning: 'Learning',
       subscription: 'Pricing',

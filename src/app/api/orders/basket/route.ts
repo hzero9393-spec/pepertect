@@ -176,6 +176,7 @@ export async function POST(req: NextRequest) {
                 },
               });
             }
+            const portfolioBefore = await db.portfolio.findUnique({ where: { userId: auth.userId } });
             await db.portfolio.update({
               where: { userId: auth.userId },
               data: {
@@ -184,6 +185,19 @@ export async function POST(req: NextRequest) {
                 investedAmount: { increment: orderValue },
               },
             });
+            if (portfolioBefore) {
+              const newBalance = Number(portfolioBefore.totalBalance) - (orderValue + brokerage);
+              await db.transaction.create({
+                data: {
+                  portfolioId: portfolioBefore.id,
+                  type: 'DEBIT',
+                  amount: orderValue + brokerage,
+                  balance: newBalance,
+                  description: `Buy ${leg.symbol.toUpperCase()} · ${leg.quantity} qty @ ₹${leg.fillPrice.toFixed(2)} · Brokerage ₹${brokerage.toFixed(2)}`,
+                  reference: order.id,
+                },
+              });
+            }
           } else {
             // SELL leg — square off position if exists
             const pos = await db.position.findFirst({
@@ -195,6 +209,7 @@ export async function POST(req: NextRequest) {
                 where: { id: pos.id },
                 data: { status: 'SQUAREDOFF', exitPrice: leg.fillPrice, exitReason: 'MANUAL', closedAt: new Date(), pnl },
               });
+              const portfolioBefore = await db.portfolio.findUnique({ where: { userId: auth.userId } });
               await db.portfolio.update({
                 where: { userId: auth.userId },
                 data: {
@@ -205,6 +220,19 @@ export async function POST(req: NextRequest) {
                   realizedPnl: { increment: pnl },
                 },
               });
+              if (portfolioBefore) {
+                const newBalance = Number(portfolioBefore.totalBalance) + (leg.fillPrice * leg.quantity - brokerage);
+                await db.transaction.create({
+                  data: {
+                    portfolioId: portfolioBefore.id,
+                    type: 'CREDIT',
+                    amount: leg.fillPrice * leg.quantity - brokerage,
+                    balance: newBalance,
+                    description: `Sell ${leg.symbol.toUpperCase()} · ${leg.quantity} qty @ ₹${leg.fillPrice.toFixed(2)}${pnl !== 0 ? ` · P&L ${pnl >= 0 ? '+' : ''}₹${pnl.toFixed(2)}` : ''}`,
+                    reference: order.id,
+                  },
+                });
+              }
             }
           }
         }

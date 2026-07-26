@@ -140,6 +140,8 @@ export interface Portfolio {
   realizedPnl: number;
   unrealizedPnl: number;
   dayPnl: number;
+  todayRealizedPnl?: number;
+  todayPnl?: number;
   winRate: number;
   totalTrades: number;
   winningTrades: number;

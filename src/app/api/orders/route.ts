@@ -173,6 +173,7 @@ export async function POST(req: NextRequest) {
         // Deduct from portfolio — totalBalance reflects cash on hand so it
         // drops when buying and rises when selling. availableMargin mirrors it
         // because the cash is no longer free.
+        const portfolioBefore = await db.portfolio.findUnique({ where: { userId: auth.userId } });
         await db.portfolio.update({
           where: { userId: auth.userId },
           data: {
@@ -181,6 +182,21 @@ export async function POST(req: NextRequest) {
             investedAmount: { increment: orderValue },
           },
         });
+
+        // Record DEBIT transaction for the buy
+        if (portfolioBefore) {
+          const newBalance = Number(portfolioBefore.totalBalance) - (orderValue + brokerage);
+          await db.transaction.create({
+            data: {
+              portfolioId: portfolioBefore.id,
+              type: 'DEBIT',
+              amount: orderValue + brokerage,
+              balance: newBalance,
+              description: `Buy ${symbol} · ${quantity} qty @ ₹${fillPrice.toFixed(2)} · Brokerage ₹${brokerage.toFixed(2)}`,
+              reference: order.id,
+            },
+          });
+        }
       } else {
         // SELL: find open position and square off
         const pos = await db.position.findFirst({
@@ -192,6 +208,7 @@ export async function POST(req: NextRequest) {
             where: { id: pos.id },
             data: { status: 'SQUAREDOFF', exitPrice: fillPrice, exitReason: 'MANUAL', closedAt: new Date(), pnl },
           });
+          const portfolioBefore = await db.portfolio.findUnique({ where: { userId: auth.userId } });
           await db.portfolio.update({
             where: { userId: auth.userId },
             data: {
@@ -202,6 +219,20 @@ export async function POST(req: NextRequest) {
               realizedPnl: { increment: pnl },
             },
           });
+          // Record CREDIT transaction for the sell
+          if (portfolioBefore) {
+            const newBalance = Number(portfolioBefore.totalBalance) + (fillPrice * quantity - brokerage);
+            await db.transaction.create({
+              data: {
+                portfolioId: portfolioBefore.id,
+                type: 'CREDIT',
+                amount: fillPrice * quantity - brokerage,
+                balance: newBalance,
+                description: `Sell ${symbol} · ${quantity} qty @ ₹${fillPrice.toFixed(2)}${pnl !== 0 ? ` · P&L ${pnl >= 0 ? '+' : ''}₹${pnl.toFixed(2)}` : ''}`,
+                reference: order.id,
+              },
+            });
+          }
         }
       }
     }

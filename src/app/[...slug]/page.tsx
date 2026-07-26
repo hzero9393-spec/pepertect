@@ -18,6 +18,7 @@ import { LearningPage } from '@/components/learning/LearningPage';
 import { SubscriptionPage } from '@/components/subscription/SubscriptionPage';
 import { FreeTrialPage } from '@/components/subscription/FreeTrialPage';
 import { PortfolioPage } from '@/components/portfolio/PortfolioPage';
+import { TransactionHistoryPage } from '@/components/portfolio/TransactionHistoryPage';
 import { SupportPage } from '@/components/support/SupportPage';
 import { NewTicketPage } from '@/components/support/NewTicketPage';
 import { HelpCenterPage } from '@/components/support/HelpCenterPage';
@@ -48,6 +49,8 @@ const PAGE_MAP: Record<string, React.ComponentType> = {
   subscription: SubscriptionPage,
   'free-trial': FreeTrialPage,
   portfolio: PortfolioPage,
+  history: TransactionHistoryPage,
+  'wallet-history': TransactionHistoryPage,
   support: SupportPage,
   profile: ProfilePage,
   settings: SettingsPage,

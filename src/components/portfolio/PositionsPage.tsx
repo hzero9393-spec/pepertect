@@ -1,26 +1,38 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/common';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
-import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2 } from 'lucide-react';
-import type { Position } from '@/types';
+import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays } from 'lucide-react';
+import type { Position, Trade } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 
 /* Index symbols — used to classify positions as Index vs Stock */
 const INDEX_SYMBOLS = new Set(['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY']);
 
 /* Helper: classify a position as Index or Stock */
-function isIndexPosition(p: Position): boolean {
+function isIndexPosition(p: Position | Trade): boolean {
   return INDEX_SYMBOLS.has(p.symbol.toUpperCase()) || p.segment !== 'EQUITY';
+}
+
+/* Helper: was this trade executed today? */
+function isToday(iso: string): boolean {
+  const d = new Date(iso);
+  const now = new Date();
+  return (
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear()
+  );
 }
 
 export function PositionsPage() {
   const { token } = useAuthStore();
   const [positions, setPositions] = useState<Position[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'stock' | 'index'>('stock');
@@ -31,9 +43,14 @@ export function PositionsPage() {
     const fetchPositions = async () => {
       if (!token) return;
       try {
-        const res = await fetch('/api/positions', { headers: { Authorization: `Bearer ${token}` } });
-        const data = await res.json();
-        if (data.success) setPositions(data.data);
+        const [posRes, tradeRes] = await Promise.all([
+          fetch('/api/positions', { headers: { Authorization: `Bearer ${token}` } }),
+          fetch('/api/trades', { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        const posData = await posRes.json();
+        const tradeData = await tradeRes.json();
+        if (posData.success) setPositions(posData.data);
+        if (tradeData.success) setTrades(tradeData.data);
       } catch (err) {
         console.error('Positions fetch error:', err);
       } finally {
@@ -108,6 +125,28 @@ export function PositionsPage() {
   const totalInvested = filteredPositions.reduce((sum, p) => sum + p.investedAmt, 0);
   const totalPnl = filteredPositions.reduce((sum, p) => sum + p.pnl, 0);
   const totalQty = filteredPositions.reduce((s, p) => s + p.quantity, 0);
+
+  /* ---------- Today's P&L (realized + unrealized) for the active tab ---------- */
+  const todayStats = useMemo(() => {
+    const todayRealized = trades
+      .filter((t) => isToday(t.createdAt) && (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
+      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+    const todayUnrealized = filteredPositions
+      .filter((p) => isToday(p.openedAt))
+      .reduce((sum, p) => sum + (p.pnl || 0), 0);
+    return {
+      realized: todayRealized,
+      unrealized: todayUnrealized,
+      total: todayRealized + todayUnrealized,
+    };
+  }, [trades, filteredPositions, activeTab]);
+
+  /* ---------- All-time totals for the active tab (extra context) ---------- */
+  const allTimeRealized = useMemo(() => {
+    return trades
+      .filter((t) => (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
+      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+  }, [trades, activeTab]);
 
   return (
     <div className="space-y-6">
@@ -192,7 +231,47 @@ export function PositionsPage() {
         </div>
       )}
 
-      {/* Summary */}
+      {/* ============== TODAY'S P&L HERO CARD ============== */}
+      <div className="card-soft p-4 relative overflow-hidden">
+        <div className="absolute -right-2 -top-2 opacity-50 pointer-events-none">
+          <CalendarDays className="h-20 w-20 text-brand-primary/20" />
+        </div>
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-brand-primary" />
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Today's P&L · {activeTab === 'stock' ? 'Stock' : 'Index'}
+            </p>
+          </div>
+          <p className={`mt-2 font-mono text-3xl sm:text-4xl font-bold tabular-nums ${getPnlColor(todayStats.total)}`}>
+            {todayStats.total >= 0 ? '+' : '−'}{formatINR(Math.abs(todayStats.total))}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-text-tertiary">Realized:</span>
+              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(todayStats.realized)}`}>
+                {todayStats.realized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(todayStats.realized), 2)}
+              </span>
+            </div>
+            <span className="text-border">·</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-text-tertiary">Unrealized:</span>
+              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(todayStats.unrealized)}`}>
+                {todayStats.unrealized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(todayStats.unrealized), 2)}
+              </span>
+            </div>
+            <span className="text-border">·</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-text-tertiary">All-time realized:</span>
+              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(allTimeRealized)}`}>
+                {allTimeRealized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(allTimeRealized), 2)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============== SUMMARY GRID ============== */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-border-default bg-bg-surface p-4">
           <p className="text-xs text-text-secondary">Open {activeTab === 'stock' ? 'Stock' : 'Index'} Positions</p>

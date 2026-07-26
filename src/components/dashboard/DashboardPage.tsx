@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatINR, formatNumber, cn, getInitials, formatOrderStatus } from '@/lib/utils';
+import { getVirtualCapitalForTier } from '@/lib/tier';
 import {
   Wallet, TrendingUp, TrendingDown, Activity, Trophy,
-  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame,
+  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame, History,
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -34,6 +35,9 @@ export function DashboardPage() {
   const [indices, setIndices] = useState<IndexData[]>([]);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Tier-based fallback capital — used only when portfolio fetch hasn't returned yet
+  const tierFallback = user?.tier === 'PREMIUM' ? 100000 : 10000;
 
   useEffect(() => {
     const fetchData = async () => {
@@ -159,7 +163,7 @@ export function DashboardPage() {
           iconBg="bg-tint-blue"
           iconColor="text-brand-primary"
           label="Total Balance"
-          value={formatINR(portfolio?.totalBalance ?? 100000)}
+          value={formatINR(portfolio?.totalBalance ?? tierFallback)}
           subtext="Virtual Capital"
         />
         {/* Total P&L */}
@@ -181,7 +185,7 @@ export function DashboardPage() {
           iconBg="bg-tint-purple"
           iconColor="text-info-purple"
           label="Available Margin"
-          value={formatINR(portfolio?.availableMargin ?? 100000)}
+          value={formatINR(portfolio?.availableMargin ?? tierFallback)}
           subtext={`Invested: ${formatINR(portfolio?.investedAmount ?? 0)}`}
         />
         {/* Win Rate */}
@@ -328,8 +332,8 @@ export function DashboardPage() {
         <h3 className="font-heading text-base font-semibold text-text-primary px-1 mb-2">Quick Actions</h3>
         <div className="grid grid-cols-4 gap-2">
           <QuickAction icon={Plus} label="Place Order" href="/trade" tint="bg-tint-blue" color="text-brand-primary" />
-          <QuickAction icon={Receipt} label="Orders" href="/trade" tint="bg-tint-purple" color="text-info-purple" />
           <QuickAction icon={Briefcase} label="Positions" href="/positions" tint="bg-tint-green" color="text-profit-green" />
+          <QuickAction icon={History} label="Wallet History" href="/history" tint="bg-tint-purple" color="text-info-purple" />
           <QuickAction icon={Wallet} label="Funds" href="/portfolio" tint="bg-tint-yellow" color="text-accent-gold" />
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
-import { getVirtualCapitalForTier } from '@/lib/tier';
+import { getVirtualCapitalForTier, FREE_VIRTUAL_CAPITAL, PREMIUM_VIRTUAL_CAPITAL } from '@/lib/tier';
 
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
@@ -20,6 +20,44 @@ export async function GET(req: NextRequest) {
           availableMargin: capital,
         },
       });
+      // Record the initial capital as a CREDIT transaction so the wallet history
+      // shows where the starting balance came from.
+      await db.transaction.create({
+        data: {
+          portfolioId: portfolio.id,
+          type: 'CREDIT',
+          amount: capital,
+          balance: capital,
+          description: `Initial virtual capital · ${auth.tier === 'PREMIUM' ? 'Premium' : 'Free'} plan`,
+        },
+      });
+    } else {
+      /* One-time migration: previously FREE users were seeded with ₹1,00,000.
+         If the user is FREE, has the legacy ₹1L starting balance, and has never
+         traded, reset them down to ₹10,000 (the correct free-plan capital). */
+      const isLegacyFree =
+        auth.tier !== 'PREMIUM' &&
+        Number(portfolio.totalBalance) === PREMIUM_VIRTUAL_CAPITAL &&
+        Number(portfolio.investedAmount) === 0 &&
+        Number(portfolio.realizedPnl) === 0;
+      if (isLegacyFree) {
+        portfolio = await db.portfolio.update({
+          where: { userId: auth.userId },
+          data: {
+            totalBalance: FREE_VIRTUAL_CAPITAL,
+            availableMargin: FREE_VIRTUAL_CAPITAL,
+          },
+        });
+        await db.transaction.create({
+          data: {
+            portfolioId: portfolio.id,
+            type: 'CREDIT',
+            amount: FREE_VIRTUAL_CAPITAL,
+            balance: FREE_VIRTUAL_CAPITAL,
+            description: 'Initial virtual capital · Free plan (reset)',
+          },
+        });
+      }
     }
 
     const totalTrades = await db.trade.count({ where: { userId: auth.userId } });
@@ -44,6 +82,15 @@ export async function GET(req: NextRequest) {
       unrealizedPnl += (currentPrice - Number(pos.avgPrice)) * pos.quantity;
     }
 
+    // Calculate today's realized P&L from trades executed today
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const todayTrades = await db.trade.findMany({
+      where: { userId: auth.userId, createdAt: { gte: startOfToday } },
+    });
+    const todayRealizedPnl = todayTrades.reduce((sum, t) => sum + Number(t.pnl ?? 0), 0);
+    const todayPnl = todayRealizedPnl + unrealizedPnl;
+
     return NextResponse.json({
       success: true,
       data: {
@@ -54,6 +101,8 @@ export async function GET(req: NextRequest) {
         realizedPnl: Number(portfolio.realizedPnl),
         unrealizedPnl: parseFloat(unrealizedPnl.toFixed(2)),
         dayPnl: Number(portfolio.dayPnl),
+        todayRealizedPnl: parseFloat(todayRealizedPnl.toFixed(2)),
+        todayPnl: parseFloat(todayPnl.toFixed(2)),
         winRate: parseFloat(winRate.toFixed(1)),
         totalTrades,
         winningTrades,

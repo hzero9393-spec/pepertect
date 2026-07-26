@@ -23,11 +23,8 @@ export function SupportPage() {
   const { token } = useAuthStore();
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
-  const [newSubject, setNewSubject] = useState('');
-  const [newDescription, setNewDescription] = useState('');
   const [replyContent, setReplyContent] = useState('');
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
   const fetchTickets = async () => {
@@ -43,28 +40,6 @@ export function SupportPage() {
   };
 
   useEffect(() => { fetchTickets(); }, [token]);
-
-  const handleCreate = async () => {
-    if (!newSubject || !newDescription) return;
-    setCreating(true);
-    try {
-      const res = await fetch('/api/support', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject: newSubject, description: newDescription }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNewSubject('');
-        setNewDescription('');
-        fetchTickets();
-        setSelectedTicket(data.data.id);
-      }
-    } catch {
-      /* ignore */
-    }
-    setCreating(false);
-  };
 
   const handleReply = async (ticketId: string) => {
     if (!replyContent) return;
@@ -137,59 +112,24 @@ export function SupportPage() {
         </div>
       </div>
 
-      {/* ============== CREATE TICKET CARD ============== */}
-      <div>
-        <div className="flex items-center justify-between px-1 mb-2">
-          <h3 className="font-heading text-sm font-semibold text-text-primary">Create a New Ticket</h3>
-          <a
-            href="/support/new-ticket"
-            className="text-xs font-semibold text-brand-primary hover:underline"
-          >
-            Open full page →
-          </a>
+      {/* ============== CREATE TICKET CTA (compact) ============== */}
+      {/* Inline form removed — user clicks the prominent CTA below to open the
+          dedicated /support/new-ticket page where the full form lives. */}
+      <a
+        href="/support/new-ticket"
+        className="card-soft p-4 flex items-center gap-3 hover:bg-bg-surface-alt transition-colors group"
+      >
+        <div className="icon-tile bg-tint-blue">
+          <Plus className="h-5 w-5 text-brand-primary" />
         </div>
-        <div className="card-soft p-4 space-y-3">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-text-secondary">Subject</label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Briefly describe your issue"
-                value={newSubject}
-                onChange={(e) => setNewSubject(e.target.value)}
-                className="w-full h-11 px-3 pr-10 rounded-lg border border-border bg-bg-surface-alt text-sm font-medium text-text-primary placeholder:text-text-tertiary placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-              />
-              <FileText className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary pointer-events-none" />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-text-secondary">Describe your issue</label>
-            <textarea
-              placeholder="Provide details about your problem..."
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg-surface-alt text-sm text-text-primary placeholder:text-text-tertiary placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-brand-primary/30 resize-none"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              className="flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-bg-surface text-text-secondary hover:bg-bg-surface-alt"
-              aria-label="Attach file"
-            >
-              <FileText className="h-4 w-4" />
-            </button>
-            <button
-              onClick={handleCreate}
-              disabled={creating || !newSubject || !newDescription}
-              className="flex-1 h-10 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-            >
-              <Plus className="h-4 w-4" />
-              {creating ? 'Creating...' : 'Create Ticket'}
-            </button>
-          </div>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-text-primary">Create a New Ticket</p>
+          <p className="text-[11px] text-text-secondary mt-0.5">
+            Open the dedicated ticket form to describe your issue in detail
+          </p>
         </div>
-      </div>
+        <ChevronRight className="h-4 w-4 text-text-tertiary group-hover:text-brand-primary transition-colors shrink-0" />
+      </a>
 
       {/* ============== YOUR TICKETS ============== */}
       <div>

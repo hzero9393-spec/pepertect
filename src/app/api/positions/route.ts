@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
         await db.portfolio.update({
           where: { userId: auth.userId },
           data: {
+            totalBalance: { increment: orderValue },
             availableMargin: { increment: orderValue },
             investedAmount: { decrement: Number(p.investedAmt) },
             totalPnl: { increment: pnl },
