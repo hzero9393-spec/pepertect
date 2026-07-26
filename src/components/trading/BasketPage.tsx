@@ -366,42 +366,75 @@ export function BasketPage() {
       {result && (
         <div
           className={cn(
-            'card-soft p-4 border-l-4',
+            'card-soft p-5 border-l-4 relative overflow-hidden',
             result.success ? 'border-l-profit-green' : 'border-l-loss-red'
           )}
         >
-          <div className="flex items-start gap-2">
+          {/* Decorative gradient wash for success */}
+          {result.success && (result.failed?.length ?? 0) === 0 && (
+            <div className="absolute inset-0 bg-gradient-to-br from-tint-green/30 via-transparent to-tint-blue/20 pointer-events-none" />
+          )}
+          <div className="relative flex items-start gap-3">
             {result.success ? (
-              <CheckCircle2 className="h-5 w-5 text-profit-green shrink-0 mt-0.5" />
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-tint-green shrink-0">
+                <CheckCircle2 className="h-6 w-6 text-profit-green" />
+              </div>
             ) : (
-              <XCircle className="h-5 w-5 text-loss-red shrink-0 mt-0.5" />
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-tint-red shrink-0">
+                <XCircle className="h-6 w-6 text-loss-red" />
+              </div>
             )}
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-text-primary">{result.message}</p>
-              {result.created && result.created.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {result.created.map((c) => (
-                    <div key={c.id} className="flex items-center gap-2 text-xs">
-                      <span
-                        className={cn(
-                          'pill',
-                          c.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
+              <p className="font-heading text-base font-bold text-text-primary">
+                {result.success
+                  ? `${result.created?.length ?? 0}/${(result.created?.length ?? 0) + (result.failed?.length ?? 0)} leg(s) placed successfully`
+                  : 'Basket failed'}
+              </p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                {result.success && (result.failed?.length ?? 0) === 0
+                  ? 'All orders executed. View them in the Orders tab.'
+                  : result.success
+                    ? `${result.failed?.length ?? 0} leg(s) could not be placed — see details below.`
+                    : result.message}
+              </p>
+
+              {/* Compact summary chips when all succeeded */}
+              {result.success && (result.failed?.length ?? 0) === 0 && result.created && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {(() => {
+                    const buyCount = result.created!.filter((c) => c.side === 'BUY').length;
+                    const sellCount = result.created!.filter((c) => c.side === 'SELL').length;
+                    return (
+                      <>
+                        {buyCount > 0 && (
+                          <span className="pill bg-tint-green text-profit-green font-semibold">
+                            ▲ {buyCount} BUY
+                          </span>
                         )}
-                      >
-                        {c.side}
-                      </span>
-                      <span className="font-mono font-semibold text-text-primary">{c.symbol}</span>
-                      <span className="text-text-secondary">— {c.status}</span>
-                    </div>
-                  ))}
+                        {sellCount > 0 && (
+                          <span className="pill bg-tint-red text-loss-red font-semibold">
+                            ▼ {sellCount} SELL
+                          </span>
+                        )}
+                        <span className="pill bg-bg-surface-alt text-text-secondary font-semibold">
+                          {result.created!.length} filled
+                        </span>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
+
+              {/* Failed legs — only shown when there are failures */}
               {result.failed && result.failed.length > 0 && (
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs font-semibold text-loss-red">Failed legs:</p>
+                <div className="mt-3 rounded-lg border border-loss-red/30 bg-loss-red/[0.06] p-2.5 space-y-1">
+                  <p className="text-[11px] font-semibold text-loss-red uppercase tracking-wide">
+                    Failed legs ({result.failed.length})
+                  </p>
                   {result.failed.map((f, i) => (
-                    <div key={i} className="text-xs text-loss-red">
-                      <span className="font-mono font-semibold">{f.symbol}</span> — {f.error}
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono font-semibold text-text-primary">{f.symbol}</span>
+                      <span className="text-loss-red">— {f.error}</span>
                     </div>
                   ))}
                 </div>
@@ -409,11 +442,21 @@ export function BasketPage() {
             </div>
             <button
               onClick={() => setResult(null)}
-              className="text-text-tertiary hover:text-text-primary text-xs font-medium"
+              className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-text-tertiary hover:text-text-primary hover:bg-bg-surface-alt"
             >
               Dismiss
             </button>
           </div>
+
+          {/* Quick action: view orders */}
+          {result.success && (result.failed?.length ?? 0) === 0 && (
+            <a
+              href="/trade"
+              className="relative mt-3 flex items-center justify-center gap-1.5 rounded-lg border border-border bg-bg-surface px-3 py-2 text-xs font-semibold text-text-primary hover:bg-bg-surface-alt transition-colors"
+            >
+              View Orders →
+            </a>
+          )}
         </div>
       )}
 

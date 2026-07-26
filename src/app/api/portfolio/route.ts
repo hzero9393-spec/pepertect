@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
+import { getVirtualCapitalForTier } from '@/lib/tier';
 
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
@@ -10,11 +11,13 @@ export async function GET(req: NextRequest) {
     let portfolio = await db.portfolio.findUnique({ where: { userId: auth.userId } });
 
     if (!portfolio) {
+      // Plan-based capital: FREE → ₹10,000, PREMIUM → ₹1,00,000
+      const capital = getVirtualCapitalForTier(auth.tier);
       portfolio = await db.portfolio.create({
         data: {
           userId: auth.userId,
-          totalBalance: 100000,
-          availableMargin: 100000,
+          totalBalance: capital,
+          availableMargin: capital,
         },
       });
     }

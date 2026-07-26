@@ -139,7 +139,15 @@ export function SupportPage() {
 
       {/* ============== CREATE TICKET CARD ============== */}
       <div>
-        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Create a New Ticket</h3>
+        <div className="flex items-center justify-between px-1 mb-2">
+          <h3 className="font-heading text-sm font-semibold text-text-primary">Create a New Ticket</h3>
+          <a
+            href="/support/new-ticket"
+            className="text-xs font-semibold text-brand-primary hover:underline"
+          >
+            Open full page →
+          </a>
+        </div>
         <div className="card-soft p-4 space-y-3">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-text-secondary">Subject</label>
@@ -224,16 +232,13 @@ export function SupportPage() {
                 </div>
                 <p className="font-heading text-sm font-semibold text-text-primary">No tickets yet</p>
                 <p className="text-xs text-text-secondary mt-0.5">You haven't raised any support tickets.</p>
-                <button
-                  onClick={() => {
-                    setNewSubject('');
-                    setNewDescription('');
-                    document.getElementById('subject-input')?.focus();
-                  }}
-                  className="mt-4 rounded-lg border border-brand-primary text-brand-primary px-4 py-2 text-xs font-semibold hover:bg-tint-blue"
+                <a
+                  href="/support/new-ticket"
+                  className="mt-4 rounded-lg border border-brand-primary text-brand-primary px-4 py-2 text-xs font-semibold hover:bg-tint-blue inline-flex items-center gap-1.5"
                 >
+                  <Plus className="h-3.5 w-3.5" />
                   Create your first ticket
-                </button>
+                </a>
               </div>
             ) : (
               <div className="space-y-2">
@@ -326,7 +331,7 @@ export function SupportPage() {
             color="text-info-purple"
             label="Help Center"
             subtext="FAQs, guides, and tutorials"
-            href="/learning"
+            href="/support/help-center"
           />
           <ResourceRow
             icon={MessageSquare}
@@ -334,7 +339,7 @@ export function SupportPage() {
             color="text-profit-green"
             label="Live Chat"
             subtext="Chat with our support team"
-            href="#"
+            href="/support/live-chat"
           />
           <ResourceRow
             icon={Mail}
@@ -345,6 +350,43 @@ export function SupportPage() {
             href="mailto:support@pepertect.com"
             last
           />
+        </div>
+      </div>
+
+      {/* ============== QUICK ACTIONS (3 main buttons) ============== */}
+      <div>
+        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Need more help?</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <a
+            href="/support/new-ticket"
+            className="card-soft p-4 hover:shadow-md transition-shadow group"
+          >
+            <div className="icon-tile bg-tint-blue mb-3">
+              <Plus className="h-5 w-5 text-brand-primary" />
+            </div>
+            <p className="font-semibold text-sm text-text-primary">Create a Ticket</p>
+            <p className="text-[11px] text-text-secondary mt-0.5">Get a dedicated support thread</p>
+          </a>
+          <a
+            href="/support/help-center"
+            className="card-soft p-4 hover:shadow-md transition-shadow group"
+          >
+            <div className="icon-tile bg-tint-purple mb-3">
+              <Sparkles className="h-5 w-5 text-info-purple" />
+            </div>
+            <p className="font-semibold text-sm text-text-primary">Help Center</p>
+            <p className="text-[11px] text-text-secondary mt-0.5">Browse FAQs &amp; guides</p>
+          </a>
+          <a
+            href="/support/live-chat"
+            className="card-soft p-4 hover:shadow-md transition-shadow group"
+          >
+            <div className="icon-tile bg-tint-green mb-3">
+              <MessageSquare className="h-5 w-5 text-profit-green" />
+            </div>
+            <p className="font-semibold text-sm text-text-primary">Live Chat</p>
+            <p className="text-[11px] text-text-secondary mt-0.5">Chat with our team instantly</p>
+          </a>
         </div>
       </div>
 

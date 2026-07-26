@@ -179,6 +179,7 @@ export async function POST(req: NextRequest) {
             await db.portfolio.update({
               where: { userId: auth.userId },
               data: {
+                totalBalance: { decrement: orderValue + brokerage },
                 availableMargin: { decrement: orderValue + brokerage },
                 investedAmount: { increment: orderValue },
               },
@@ -197,6 +198,7 @@ export async function POST(req: NextRequest) {
               await db.portfolio.update({
                 where: { userId: auth.userId },
                 data: {
+                  totalBalance: { increment: leg.fillPrice * leg.quantity - brokerage },
                   availableMargin: { increment: leg.fillPrice * leg.quantity - brokerage },
                   investedAmount: { decrement: pos.investedAmt },
                   totalPnl: { increment: pnl },

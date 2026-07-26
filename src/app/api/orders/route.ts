@@ -170,10 +170,13 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // Deduct from portfolio
+        // Deduct from portfolio — totalBalance reflects cash on hand so it
+        // drops when buying and rises when selling. availableMargin mirrors it
+        // because the cash is no longer free.
         await db.portfolio.update({
           where: { userId: auth.userId },
           data: {
+            totalBalance: { decrement: orderValue + brokerage },
             availableMargin: { decrement: orderValue + brokerage },
             investedAmount: { increment: orderValue },
           },
@@ -192,6 +195,7 @@ export async function POST(req: NextRequest) {
           await db.portfolio.update({
             where: { userId: auth.userId },
             data: {
+              totalBalance: { increment: fillPrice * quantity - brokerage },
               availableMargin: { increment: fillPrice * quantity - brokerage },
               investedAmount: { decrement: pos.investedAmt },
               totalPnl: { increment: pnl },

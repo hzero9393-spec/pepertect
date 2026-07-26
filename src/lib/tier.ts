@@ -30,6 +30,15 @@ export function getFeatureMatrix() {
 }
 
 export const FREE_WATCHLIST_LIMIT = 10;
-export const FREE_VIRTUAL_CAPITAL = 100000;
-export const PREMIUM_VIRTUAL_CAPITAL = 1000000;
+export const FREE_VIRTUAL_CAPITAL = 10000;
+export const PREMIUM_VIRTUAL_CAPITAL = 100000;
 export const PREMIUM_PRICE = 299;
+
+/**
+ * Returns the virtual capital for a given user tier.
+ * FREE → ₹10,000 (paper trading starter)
+ * PREMIUM → ₹1,00,000 (299 plan)
+ */
+export function getVirtualCapitalForTier(tier: string): number {
+  return tier === 'PREMIUM' ? PREMIUM_VIRTUAL_CAPITAL : FREE_VIRTUAL_CAPITAL;
+}

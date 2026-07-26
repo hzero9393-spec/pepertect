@@ -19,6 +19,9 @@ import { SubscriptionPage } from '@/components/subscription/SubscriptionPage';
 import { FreeTrialPage } from '@/components/subscription/FreeTrialPage';
 import { PortfolioPage } from '@/components/portfolio/PortfolioPage';
 import { SupportPage } from '@/components/support/SupportPage';
+import { NewTicketPage } from '@/components/support/NewTicketPage';
+import { HelpCenterPage } from '@/components/support/HelpCenterPage';
+import { LiveChatPage } from '@/components/support/LiveChatPage';
 import { ProfilePage } from '@/components/profile/ProfilePage';
 import { SettingsPage } from '@/components/profile/SettingsPage';
 import { NotificationsPage } from '@/components/shared/NotificationsPage';
@@ -73,6 +76,16 @@ function resolvePage(pathname: string): React.ComponentType | null {
   // Handle /optionchain/strike — focused single-strike overview page
   if (segment === 'optionchain' && parts.length > 1 && parts[1] === 'strike') {
     return OptionStrikeOverviewPage;
+  }
+  // Handle /support/<sub-page> routes — dedicated support sub-pages
+  if (segment === 'support' && parts.length > 1 && parts[1]) {
+    const SUPPORT_PAGE_MAP: Record<string, React.ComponentType> = {
+      'new-ticket': NewTicketPage,
+      'help-center': HelpCenterPage,
+      'live-chat': LiveChatPage,
+    };
+    const subPage = SUPPORT_PAGE_MAP[parts[1]];
+    if (subPage) return subPage;
   }
   // Handle /settings/<sub-page> routes
   if (segment === 'settings' && parts.length > 1 && parts[1]) {
