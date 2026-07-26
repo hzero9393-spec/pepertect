@@ -829,3 +829,38 @@ Stage Summary:
 - Fixed Vercel project link (was my-project, now correctly pepertect)
 - Fixed stock seeding to handle partially-seeded DBs and use batched createMany for 428 stocks within 30s function timeout
 - Production deployed at https://pepertect.vercel.app
+
+---
+Task ID: 4
+Agent: main
+Task: 4 fixes — (a) option chain strike click → strike overview page, (b) make signup T&C/Privacy accept button smaller, (c) remove duplicate maximize icon on stock overview (keep only 1), (d) do NOT redeploy per user request.
+
+Work Log:
+- Read StockDetailPage.tsx and found 2 maximize icons in chart header (a `Maximize2` icon button + an `ExternalLink` "TradingView" link).
+- Removed the `ExternalLink` link and its unused import; kept only the single `Maximize2` icon button that opens the official TradingView chart.
+- Read OptionChainPage.tsx → OptionChainTable: pulled `symbol` and `expiry` from the chain response and wrapped the strike price cell in an `<a href="/optionchain/strike?symbol=X&expiry=Y&strike=Z">` with hover styling.
+- Created new file `src/components/trading/OptionStrikeOverviewPage.tsx` — a professional strike overview page showing:
+  • Header with index logo, strike pill, expiry type (WEEKLY/MONTHLY), expiry date, lot size, spot price.
+  • CE/PE side switcher tabs with ITM badges.
+  • Active leg card: LTP, change%, ITM/OTM status with distance from spot.
+  • Stat grid: OI, Volume, IV, Intrinsic value.
+  • Moneyness visualization number-line with strike + spot markers, plus CE/PE ITM/OTM explanation cards.
+  • CE vs PE comparison columns.
+  • Trade CTA linking to /trade with prefilled option params.
+- Registered the new route in `src/app/[...slug]/page.tsx`:
+  • Added `import { OptionStrikeOverviewPage }`.
+  • Updated `resolvePage()` to handle `/optionchain/strike` → returns `OptionStrikeOverviewPage`.
+- Read RegisterPage.tsx and shrank the legal acceptance section:
+  • Checkboxes: h-5 w-5 → h-3.5 w-3.5 (rounded-[3px]).
+  • Check icon: h-3.5 → h-2.5.
+  • Container padding: p-3 → px-2.5 py-2; gap reduced.
+  • Text: text-xs → text-[11px] (accept line), Preview button text-[11px] → text-[10px].
+  • External icons: h-3 → h-2.5; preview boxes: max-h-32 → max-h-28, p-2.5 → p-2.
+- Verified via `npx tsc --noEmit`: zero type errors in any modified file (OptionChainPage, OptionStrikeOverviewPage, StockDetailPage, RegisterPage, [...slug]/page.tsx).
+- Honored user request: did NOT redeploy.
+
+Stage Summary:
+- Strike clicks on option chain now navigate to a dedicated professional overview page at /optionchain/strike.
+- Single maximize icon on stock overview (the TradingView external-link button is gone).
+- Signup T&C/Privacy acceptance UI is now compact and unobtrusive.
+- All changes are committed locally; no deployment performed per user's explicit instruction.

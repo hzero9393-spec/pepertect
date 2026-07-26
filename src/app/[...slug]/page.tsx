@@ -10,6 +10,7 @@ import { LegalPage } from '@/components/legal/LegalPage';
 import { LEGAL_DOCS } from '@/components/legal/legal-docs';
 import { TradePage } from '@/components/trading/TradePage';
 import { OptionChainPage } from '@/components/trading/OptionChainPage';
+import { OptionStrikeOverviewPage } from '@/components/trading/OptionStrikeOverviewPage';
 import { BasketPage } from '@/components/trading/BasketPage';
 import { PositionsPage } from '@/components/portfolio/PositionsPage';
 import { WatchlistPage } from '@/components/market/WatchlistPage';
@@ -69,6 +70,10 @@ function resolvePage(pathname: string): React.ComponentType | null {
   const parts = pathname.replace('/', '').split('/');
   const segment = parts[0];
   if (segment === 'stock') return StockDetailPage;
+  // Handle /optionchain/strike — focused single-strike overview page
+  if (segment === 'optionchain' && parts.length > 1 && parts[1] === 'strike') {
+    return OptionStrikeOverviewPage;
+  }
   // Handle /settings/<sub-page> routes
   if (segment === 'settings' && parts.length > 1 && parts[1]) {
     const subPage = SETTINGS_PAGE_MAP[parts[1]];

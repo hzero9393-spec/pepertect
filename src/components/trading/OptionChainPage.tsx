@@ -414,7 +414,11 @@ function SummaryCell({
 }
 
 function OptionChainTable({ data }: { data: ChainResponse }) {
-  const { strikes, atm } = data;
+  const { strikes, atm, symbol, expiry } = data;
+
+  // Build the strike overview URL — clicking the strike price opens a focused page
+  const strikeHref = (strike: number) =>
+    `/optionchain/strike?symbol=${encodeURIComponent(symbol)}&expiry=${encodeURIComponent(expiry)}&strike=${strike}`;
 
   return (
     <div className="overflow-x-auto">
@@ -490,17 +494,24 @@ function OptionChainTable({ data }: { data: ChainResponse }) {
                   {formatNumber(row.ce.lastPrice, 2)}
                 </td>
 
-                {/* STRIKE */}
+                {/* STRIKE — clickable, opens strike overview page */}
                 <td className={cn(
                   'px-2 sm:px-3 py-2 text-center font-mono tabular-nums font-bold border-r border-border',
                   isAtm ? 'text-brand-primary bg-tint-blue' : 'text-text-primary'
                 )}>
-                  {row.strikePrice}
-                  {isAtm && (
-                    <span className="ml-1 text-[9px] font-semibold text-brand-primary bg-brand-primary/10 px-1 py-0.5 rounded">
-                      ATM
-                    </span>
-                  )}
+                  <a
+                    href={strikeHref(row.strikePrice)}
+                    className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-brand-primary/10 hover:text-brand-primary transition-colors"
+                    aria-label={`View ${row.strikePrice} strike overview`}
+                    title="View strike overview"
+                  >
+                    {row.strikePrice}
+                    {isAtm && (
+                      <span className="text-[9px] font-semibold text-brand-primary bg-brand-primary/10 px-1 py-0.5 rounded">
+                        ATM
+                      </span>
+                    )}
+                  </a>
                 </td>
 
                 {/* PUT side */}

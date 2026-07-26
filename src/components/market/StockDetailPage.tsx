@@ -18,7 +18,6 @@ import {
   Plus,
   ChevronLeft,
   Maximize2,
-  ExternalLink,
 } from 'lucide-react';
 import type { Stock } from '@/types';
 import { StockLogo, isIndexSymbol } from '@/components/shared/StockLogo';
@@ -412,17 +411,6 @@ export function StockDetailPage() {
             >
               <Maximize2 className="h-4 w-4" />
             </button>
-            <a
-              href={tradingViewUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex h-8 items-center justify-center gap-1 rounded-md border border-border bg-bg-surface-alt px-2.5 text-[11px] font-semibold text-text-secondary hover:text-brand-primary hover:border-brand-primary/30 transition-colors"
-              aria-label="Open TradingView"
-              title="TradingView"
-            >
-              <ExternalLink className="h-3 w-3" />
-              <span className="hidden sm:inline">TradingView</span>
-            </a>
           </div>
         </div>
         {/* Time period tabs */}

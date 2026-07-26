@@ -98,24 +98,24 @@ export function RegisterPage() {
             </div>
 
             {/* ============== LEGAL ACCEPTANCE ============== */}
-            <div className="rounded-lg border border-border bg-bg-surface p-3 space-y-3">
+            <div className="rounded-md border border-border bg-bg-surface px-2.5 py-2 space-y-2">
               {/* Terms & Conditions */}
               <div>
-                <label className="flex items-start gap-2.5 cursor-pointer">
+                <label className="flex items-start gap-2 cursor-pointer">
                   <button
                     type="button"
                     onClick={() => setAcceptedTerms((v) => !v)}
-                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                    className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
                       acceptedTerms
                         ? 'bg-brand-primary border-brand-primary text-white'
                         : 'bg-bg-base border-border'
                     }`}
                     aria-label="Accept Terms & Conditions"
                   >
-                    {acceptedTerms && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                    {acceptedTerms && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
                   </button>
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs text-text-primary">
+                    <span className="text-[11px] text-text-primary leading-tight">
                       I accept the{' '}
                       <a
                         href="/legal/terms"
@@ -124,33 +124,33 @@ export function RegisterPage() {
                         className="text-brand-primary hover:underline inline-flex items-center gap-0.5"
                       >
                         Terms &amp; Conditions
-                        <ExternalLink className="h-3 w-3" />
+                        <ExternalLink className="h-2.5 w-2.5" />
                       </a>
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowTermsPreview((v) => !v)}
-                      className="ml-2 text-[11px] text-text-secondary hover:text-text-primary inline-flex items-center gap-0.5"
+                      className="ml-1.5 text-[10px] text-text-tertiary hover:text-text-secondary inline-flex items-center gap-0.5"
                     >
                       {showTermsPreview ? (
-                        <>Hide <ChevronUp className="h-3 w-3" /></>
+                        <>Hide <ChevronUp className="h-2.5 w-2.5" /></>
                       ) : (
-                        <>Preview <ChevronDown className="h-3 w-3" /></>
+                        <>Preview <ChevronDown className="h-2.5 w-2.5" /></>
                       )}
                     </button>
                   </div>
                 </label>
                 {showTermsPreview && (
-                  <div className="mt-2 ml-7 max-h-32 overflow-y-auto rounded-md border border-border bg-bg-base p-2.5 text-[11px] text-text-secondary leading-relaxed">
-                    <p className="font-semibold text-text-primary mb-1">Key points:</p>
-                    <ul className="list-disc list-inside space-y-1">
+                  <div className="mt-1.5 ml-5 max-h-28 overflow-y-auto rounded border border-border bg-bg-base p-2 text-[10px] text-text-secondary leading-relaxed">
+                    <p className="font-semibold text-text-primary mb-0.5">Key points:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
                       <li>Pepertect is a paper trading platform — no real money is involved.</li>
                       <li>Virtual capital (₹1,00,000) has no monetary value and cannot be withdrawn.</li>
                       <li>You must be 18+ and provide accurate information.</li>
                       <li>One free trial per user — creating multiple accounts is prohibited.</li>
                       <li>We are not liable for any losses from real-market decisions you make.</li>
                     </ul>
-                    <p className="mt-2">
+                    <p className="mt-1.5">
                       <a href="/legal/terms" target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline">
                         Read full Terms →
                       </a>
@@ -161,21 +161,21 @@ export function RegisterPage() {
 
               {/* Privacy Policy */}
               <div>
-                <label className="flex items-start gap-2.5 cursor-pointer">
+                <label className="flex items-start gap-2 cursor-pointer">
                   <button
                     type="button"
                     onClick={() => setAcceptedPrivacy((v) => !v)}
-                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition-colors ${
+                    className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
                       acceptedPrivacy
                         ? 'bg-brand-primary border-brand-primary text-white'
                         : 'bg-bg-base border-border'
                     }`}
                     aria-label="Accept Privacy Policy"
                   >
-                    {acceptedPrivacy && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                    {acceptedPrivacy && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
                   </button>
                   <div className="flex-1 min-w-0">
-                    <span className="text-xs text-text-primary">
+                    <span className="text-[11px] text-text-primary leading-tight">
                       I accept the{' '}
                       <a
                         href="/legal/privacy"
@@ -184,33 +184,33 @@ export function RegisterPage() {
                         className="text-brand-primary hover:underline inline-flex items-center gap-0.5"
                       >
                         Privacy Policy
-                        <ExternalLink className="h-3 w-3" />
+                        <ExternalLink className="h-2.5 w-2.5" />
                       </a>
                     </span>
                     <button
                       type="button"
                       onClick={() => setShowPrivacyPreview((v) => !v)}
-                      className="ml-2 text-[11px] text-text-secondary hover:text-text-primary inline-flex items-center gap-0.5"
+                      className="ml-1.5 text-[10px] text-text-tertiary hover:text-text-secondary inline-flex items-center gap-0.5"
                     >
                       {showPrivacyPreview ? (
-                        <>Hide <ChevronUp className="h-3 w-3" /></>
+                        <>Hide <ChevronUp className="h-2.5 w-2.5" /></>
                       ) : (
-                        <>Preview <ChevronDown className="h-3 w-3" /></>
+                        <>Preview <ChevronDown className="h-2.5 w-2.5" /></>
                       )}
                     </button>
                   </div>
                 </label>
                 {showPrivacyPreview && (
-                  <div className="mt-2 ml-7 max-h-32 overflow-y-auto rounded-md border border-border bg-bg-base p-2.5 text-[11px] text-text-secondary leading-relaxed">
-                    <p className="font-semibold text-text-primary mb-1">Key points:</p>
-                    <ul className="list-disc list-inside space-y-1">
+                  <div className="mt-1.5 ml-5 max-h-28 overflow-y-auto rounded border border-border bg-bg-base p-2 text-[10px] text-text-secondary leading-relaxed">
+                    <p className="font-semibold text-text-primary mb-0.5">Key points:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
                       <li>We collect: name, email, hashed password, device info, virtual trades.</li>
                       <li>We never sell your data. We use it only to operate the platform.</li>
                       <li>Passwords are bcrypt-hashed — we never see your plain-text password.</li>
                       <li>You can delete your account anytime — data removed within 30 days.</li>
                       <li>Governed by India&apos;s DPDP Act, 2023.</li>
                     </ul>
-                    <p className="mt-2">
+                    <p className="mt-1.5">
                       <a href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline">
                         Read full Privacy Policy →
                       </a>
