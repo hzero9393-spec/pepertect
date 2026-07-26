@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { formatINR, formatNumber, cn, getInitials } from '@/lib/utils';
+import { formatINR, formatNumber, cn, getInitials, formatOrderStatus } from '@/lib/utils';
 import {
   Wallet, TrendingUp, TrendingDown, Activity, Trophy,
-  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap,
+  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame,
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -296,6 +296,33 @@ export function DashboardPage() {
         </div>
       </div>
 
+      {/* ============== TOP MOVERS BANNER ============== */}
+      <a
+        href="/movers"
+        className="block rounded-2xl border border-border bg-gradient-to-br from-tint-green/40 via-bg-surface to-tint-red/40 p-4 hover:shadow-md transition-shadow"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-surface-alt shrink-0">
+              <Flame className="h-6 w-6 text-accent-gold" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-heading text-sm font-bold text-text-primary">
+                Top Gainers &amp; Losers
+              </p>
+              <p className="text-[11px] text-text-secondary mt-0.5 truncate">
+                Today's top 20 gainers and 20 losers across 430+ stocks
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="pill bg-tint-green text-profit-green">+Gainers</span>
+            <span className="pill bg-tint-red text-loss-red">-Losers</span>
+            <ArrowRight className="h-4 w-4 text-text-secondary" />
+          </div>
+        </div>
+      </a>
+
       {/* ============== QUICK ACTIONS ============== */}
       <div>
         <h3 className="font-heading text-base font-semibold text-text-primary px-1 mb-2">Quick Actions</h3>
@@ -345,18 +372,14 @@ export function DashboardPage() {
                     <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
                       ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
                     </p>
-                    <p
-                      className={cn(
-                        'text-[11px] font-medium',
-                        ord.status === 'FILLED'
-                          ? 'text-profit-green'
-                          : ord.status === 'PENDING'
-                          ? 'text-accent-gold'
-                          : 'text-loss-red'
-                      )}
-                    >
-                      {ord.status}
-                    </p>
+                    {(() => {
+                      const si = formatOrderStatus(ord.status);
+                      return (
+                        <p className={cn('text-[11px] font-medium', si.color)}>
+                          {si.label}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </a>
               ))}

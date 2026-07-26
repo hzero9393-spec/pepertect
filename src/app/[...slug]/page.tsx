@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/components/dashboard/DashboardPage';
 import { MarketPage } from '@/components/market/MarketPage';
+import { MoversPage } from '@/components/market/MoversPage';
 import { TradePage } from '@/components/trading/TradePage';
 import { OptionChainPage } from '@/components/trading/OptionChainPage';
 import { BasketPage } from '@/components/trading/BasketPage';
@@ -31,6 +32,7 @@ import { StockDetailPage } from '@/components/market/StockDetailPage';
 const PAGE_MAP: Record<string, React.ComponentType> = {
   dashboard: DashboardPage,
   market: MarketPage,
+  movers: MoversPage,
   trade: TradePage,
   optionchain: OptionChainPage,
   basket: BasketPage,

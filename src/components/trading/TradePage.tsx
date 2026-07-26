@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { formatNumber, getPnlColor, cn } from '@/lib/utils';
+import { formatNumber, getPnlColor, formatOrderStatus, cn } from '@/lib/utils';
 import { hasFeature } from '@/lib/tier';
 import {
   ArrowUp, ArrowDown, Search, Settings, Check,
@@ -115,7 +115,8 @@ export function TradePage() {
       });
       const data = await res.json();
       if (data.success) {
-        setMessage(`Order ${data.data.status} — ${side} ${quantity} ${symbol.toUpperCase()}`);
+        const statusInfo = formatOrderStatus(data.data.status);
+        setMessage(`${statusInfo.label} — ${side} ${quantity} ${symbol.toUpperCase()}`);
         setQuantity('1');
         setPrice('');
         const oRes = await fetch('/api/orders', { headers: { Authorization: `Bearer ${token}` } });
@@ -177,7 +178,7 @@ export function TradePage() {
       )}
 
       {/* ============== TOP TABS: Place Order | Basket | Orders ============== */}
-      <div className="flex items-center gap-1 border-b border-border">
+      <div className="flex items-center gap-6 border-b border-border">
         <button
           onClick={() => setMainTab('place')}
           className="seg-tab"
@@ -648,18 +649,14 @@ function OrdersList({
                 <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
                   ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
                 </p>
-                <p
-                  className={cn(
-                    'text-[11px] font-medium',
-                    ord.status === 'FILLED'
-                      ? 'text-profit-green'
-                      : ord.status === 'PENDING'
-                      ? 'text-accent-gold'
-                      : 'text-loss-red'
-                  )}
-                >
-                  {ord.status}
-                </p>
+                {(() => {
+                  const si = formatOrderStatus(ord.status);
+                  return (
+                    <p className={cn('text-[11px] font-medium', si.color)}>
+                      {si.label}
+                    </p>
+                  );
+                })()}
               </div>
               {ord.status === 'PENDING' && (
                 <button

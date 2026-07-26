@@ -39,6 +39,31 @@ export function getPnlColor(value: number): string {
   return value >= 0 ? 'text-profit-green' : 'text-loss-red';
 }
 
+/**
+ * Format raw order status enum (from DB) into a user-friendly label + color.
+ *   FILLED    -> Executed (green)   — order matched & position updated
+ *   PENDING   -> Pending   (gold)   — waiting for trigger / limit hit
+ *   CANCELLED -> Closed    (gray)   — user-cancelled or auto-expired (24h)
+ *   REJECTED  -> Rejected  (red)    — broker/exchange rejected
+ *   (any)     -> fallback  (red)
+ *
+ * The DB continues to store the raw enum; this helper only affects DISPLAY.
+ */
+export function formatOrderStatus(status: string): { label: string; color: string } {
+  switch ((status || '').toUpperCase()) {
+    case 'FILLED':
+      return { label: 'Executed', color: 'text-profit-green' };
+    case 'PENDING':
+      return { label: 'Pending', color: 'text-accent-gold' };
+    case 'CANCELLED':
+      return { label: 'Closed', color: 'text-text-secondary' };
+    case 'REJECTED':
+      return { label: 'Rejected', color: 'text-loss-red' };
+    default:
+      return { label: status || 'Unknown', color: 'text-loss-red' };
+  }
+}
+
 export function getPnlBgColor(value: number): string {
   return value >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10';
 }
