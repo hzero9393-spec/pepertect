@@ -48,3 +48,4 @@ server.log
 tool-results/
 scripts/
 worklog.md
+.env*
