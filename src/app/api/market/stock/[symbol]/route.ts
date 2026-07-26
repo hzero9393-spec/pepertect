@@ -1,34 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
+import { DEDUPED_STOCKS } from '@/lib/stocks-data';
 
-const MOCK_PRICES: Record<string, { name: string; ltp: number; sector: string; lotSize: number; exchange?: string }> = {
-  RELIANCE:     { name: 'Reliance Industries Ltd',        ltp: 1882.75, sector: 'Energy',        lotSize: 250 },
-  TCS:          { name: 'Tata Consultancy Services Ltd',  ltp: 3945.60, sector: 'IT',            lotSize: 150 },
-  INFY:         { name: 'Infosys Ltd',                   ltp: 1568.30, sector: 'IT',            lotSize: 300 },
-  HDFCBANK:     { name: 'HDFC Bank Ltd',                 ltp: 1685.20, sector: 'Banking',       lotSize: 550 },
-  ICICIBANK:    { name: 'ICICI Bank Ltd',                ltp: 1245.80, sector: 'Banking',       lotSize: 700 },
-  SBIN:         { name: 'State Bank of India',          ltp: 828.45,  sector: 'Banking',       lotSize: 1500 },
-  BHARTIARTL:   { name: 'Bharti Airtel Ltd',            ltp: 1620.50, sector: 'Telecom',       lotSize: 475 },
-  ITC:          { name: 'ITC Ltd',                       ltp: 468.25,  sector: 'FMCG',          lotSize: 1600 },
-  HINDUNILVR:   { name: 'Hindustan Unilever Ltd',       ltp: 2534.10, sector: 'FMCG',          lotSize: 300 },
-  KOTAKBANK:    { name: 'Kotak Mahindra Bank Ltd',       ltp: 1789.30, sector: 'Banking',       lotSize: 400 },
-  LT:           { name: 'Larsen & Toubro Ltd',           ltp: 3542.65, sector: 'Infrastructure', lotSize: 150 },
-  AXISBANK:     { name: 'Axis Bank Ltd',                ltp: 1168.40, sector: 'Banking',       lotSize: 1200 },
-  BAJFINANCE:   { name: 'Bajaj Finance Ltd',            ltp: 7234.50, sector: 'Finance',       lotSize: 125 },
-  MARUTI:       { name: 'Maruti Suzuki India Ltd',       ltp: 12450.80, sector: 'Auto',        lotSize: 50 },
-  TATAMOTORS:   { name: 'Tata Motors Ltd',               ltp: 978.35,  sector: 'Auto',          lotSize: 550 },
-  WIPRO:        { name: 'Wipro Ltd',                     ltp: 572.60,  sector: 'IT',            lotSize: 1500 },
-  HCLTECH:      { name: 'HCL Technologies Ltd',         ltp: 1712.40, sector: 'IT',            lotSize: 350 },
-  SUNPHARMA:    { name: 'Sun Pharmaceutical Industries', ltp: 1824.15, sector: 'Pharma',        lotSize: 700 },
-  TITAN:        { name: 'Titan Company Ltd',             ltp: 3568.90, sector: 'Consumer',      lotSize: 175 },
-  ADANIENT:     { name: 'Adani Enterprises Ltd',        ltp: 2890.45, sector: 'Conglomerate', lotSize: 250 },
-  // Indices — so /stock/NIFTY etc. don't 404 when clicked from dashboard
-  NIFTY:        { name: 'NIFTY 50 Index',                ltp: 24587.30, sector: 'Index',        lotSize: 50,  exchange: 'NSE' },
-  SENSEX:       { name: 'BSE SENSEX Index',              ltp: 80842.10, sector: 'Index',        lotSize: 10,  exchange: 'BSE' },
-  BANKNIFTY:    { name: 'NIFTY Bank Index',              ltp: 52134.55, sector: 'Index',        lotSize: 15,  exchange: 'NSE' },
-  NIFTYFS:      { name: 'NIFTY Financial Services Index', ltp: 23156.80, sector: 'Index',       lotSize: 25,  exchange: 'NSE' },
-};
+// Quick lookup map for the in-memory universe — used as a fallback when the
+// stock isn't yet seeded into the DB. This guarantees that EVERY stock in the
+// 430+ universe can be opened on the detail page without depending on a
+// lazy-seed having been triggered first.
+const STOCK_UNIVERSE_MAP: Record<
+  string,
+  { name: string; ltp: number; sector: string; lotSize: number; exchange?: string }
+> = (() => {
+  const out: Record<string, { name: string; ltp: number; sector: string; lotSize: number; exchange?: string }> = {};
+  for (const s of DEDUPED_STOCKS) {
+    out[s.symbol.toUpperCase()] = {
+      name: s.name,
+      ltp: s.ltp,
+      sector: s.sector,
+      lotSize: s.lotSize,
+      exchange: 'NSE',
+    };
+  }
+  // Indices — these have no DEDUPED_STOCKS entry, so add them explicitly so
+  // /stock/NIFTY etc. still work.
+  const INDICES: Record<string, { name: string; ltp: number; sector: string; lotSize: number; exchange?: string }> = {
+    NIFTY:     { name: 'NIFTY 50 Index',                     ltp: 24587.30, sector: 'Index', lotSize: 50,  exchange: 'NSE' },
+    SENSEX:    { name: 'BSE SENSEX Index',                   ltp: 80842.10, sector: 'Index', lotSize: 10,  exchange: 'BSE' },
+    BANKNIFTY: { name: 'NIFTY Bank Index',                   ltp: 52134.55, sector: 'Index', lotSize: 15,  exchange: 'NSE' },
+    NIFTYFS:   { name: 'NIFTY Financial Services Index',     ltp: 23156.80, sector: 'Index', lotSize: 25,  exchange: 'NSE' },
+    FINNIFTY:  { name: 'NIFTY Financial Services Index',     ltp: 23156.80, sector: 'Index', lotSize: 25,  exchange: 'NSE' },
+  };
+  for (const [k, v] of Object.entries(INDICES)) {
+    if (!out[k]) out[k] = v;
+  }
+  return out;
+})();
 
 function generateMockOHLC(ltp: number) {
   const change = ltp * (Math.random() * 0.04 - 0.02);
@@ -55,24 +61,33 @@ export async function GET(
   if (auth instanceof NextResponse) return auth;
 
   const { symbol } = await params;
+  const symUpper = symbol.toUpperCase();
 
   try {
-    let stock = await db.stock.findUnique({ where: { symbol } });
+    let stock = await db.stock.findUnique({ where: { symbol: symUpper } });
 
-    if (!stock && MOCK_PRICES[symbol]) {
-      const mock = MOCK_PRICES[symbol];
+    // 1) Try the in-memory universe — works for ALL 430+ stocks and 5 indices
+    //    without needing a prior lazy-seed.
+    if (!stock && STOCK_UNIVERSE_MAP[symUpper]) {
+      const mock = STOCK_UNIVERSE_MAP[symUpper];
       const ohlc = generateMockOHLC(mock.ltp);
-      stock = await db.stock.create({
-        data: {
-          symbol,
-          name: mock.name,
-          sector: mock.sector,
-          lotSize: mock.lotSize,
-          tickSize: 0.05,
-          exchange: mock.exchange || 'NSE',
-          ...ohlc,
-        },
-      });
+      try {
+        stock = await db.stock.create({
+          data: {
+            symbol: symUpper,
+            name: mock.name,
+            sector: mock.sector,
+            lotSize: mock.lotSize,
+            tickSize: 0.05,
+            exchange: mock.exchange || 'NSE',
+            ...ohlc,
+          },
+        });
+      } catch {
+        // Race condition — another request created it in parallel.
+        // Re-fetch instead of failing.
+        stock = await db.stock.findUnique({ where: { symbol: symUpper } });
+      }
     }
 
     if (!stock) {
