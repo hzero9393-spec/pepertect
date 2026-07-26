@@ -347,7 +347,41 @@ export function SupportPage() {
           />
         </div>
       </div>
+
+      {/* ============== LEGAL / FOOTER ============== */}
+      <div className="card-soft p-4">
+        <h3 className="font-heading text-sm font-semibold text-text-primary mb-3">Legal &amp; Policies</h3>
+        <div className="grid grid-cols-2 gap-2">
+          <LegalLink href="/legal/terms" label="Terms & Conditions" />
+          <LegalLink href="/legal/privacy" label="Privacy Policy" />
+          <LegalLink href="/legal/disclaimer" label="Disclaimer" />
+          <LegalLink href="/legal/refund" label="Refund Policy" />
+          <LegalLink href="/legal/cookies" label="Cookie Policy" />
+          <LegalLink href="/legal/grievance" label="Grievance Officer" />
+        </div>
+        <div className="mt-4 pt-3 border-t border-border text-center">
+          <p className="text-[11px] text-text-tertiary">
+            © {new Date().getFullYear()} Pepertect. Paper trading platform for educational purposes only.
+          </p>
+          <p className="text-[10px] text-text-tertiary mt-1">
+            Investments in securities market are subject to market risks. Read all documents carefully before investing.
+          </p>
+        </div>
+      </div>
     </div>
+  );
+}
+
+function LegalLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="flex items-center gap-2 rounded-lg border border-border bg-bg-base px-3 py-2.5 text-xs font-medium text-text-primary hover:bg-bg-surface-alt hover:border-brand-primary/30 transition-colors"
+    >
+      <FileText className="h-3.5 w-3.5 text-text-secondary shrink-0" />
+      <span className="truncate">{label}</span>
+      <ChevronRight className="h-3 w-3 text-text-tertiary ml-auto shrink-0" />
+    </a>
   );
 }
 

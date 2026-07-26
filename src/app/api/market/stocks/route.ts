@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
 
   try {
     let stocks = await db.stock.findMany({
-      take: 50,
+      take: 1000,
       orderBy: { symbol: 'asc' },
     });
 

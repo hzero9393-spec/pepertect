@@ -21,6 +21,23 @@ export async function POST(req: NextRequest) {
     }
 
     const { email, password } = parsed.data;
+    const acceptedTerms = body.acceptedTerms === true;
+    const acceptedPrivacy = body.acceptedPrivacy === true;
+
+    /* Enforce legal acceptance before account creation.
+       This is a server-side guard — the client UI also disables the submit
+       button until both checkboxes are ticked, but we double-check here to
+       prevent bypassing the UI. */
+    if (!acceptedTerms || !acceptedPrivacy) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'You must accept the Terms & Conditions and Privacy Policy to create an account',
+        },
+        { status: 400 }
+      );
+    }
 
     // Check if email already exists
     const existingUser = await db.user.findUnique({ where: { email } });
@@ -42,6 +59,15 @@ export async function POST(req: NextRequest) {
         role: 'USER',
         tier: 'FREE',
         virtualCapital: FREE_VIRTUAL_CAPITAL,
+        /* Store legal acceptance timestamps in notifSettings (JSON field).
+           This avoids a schema migration while still recording consent. */
+        notifSettings: {
+          legalAcceptance: {
+            terms: { accepted: true, at: new Date().toISOString() },
+            privacy: { accepted: true, at: new Date().toISOString() },
+            version: '2026-07-26',
+          },
+        },
       },
     });
 

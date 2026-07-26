@@ -1,14 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/shared/common';
-import { formatNumber } from '@/lib/utils';
-import { Search, TrendingUp, TrendingDown } from 'lucide-react';
+import { formatNumber, cn } from '@/lib/utils';
+import { Search, TrendingUp, TrendingDown, ChevronDown, Loader2 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
 import type { Stock, IndexData } from '@/types';
+
+/* Pagination config:
+   - Initial page size: 30 stocks
+   - Each "View More" click: +20 stocks
+   - When searching, show all matches (no pagination) */
+const INITIAL_PAGE_SIZE = 30;
+const PAGE_INCREMENT = 20;
 
 export function MarketPage() {
   const { token } = useAuthStore();
@@ -16,6 +23,8 @@ export function MarketPage() {
   const [indices, setIndices] = useState<IndexData[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_PAGE_SIZE);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     const fetchMarket = async () => {
@@ -39,12 +48,34 @@ export function MarketPage() {
     fetchMarket();
   }, [token]);
 
-  const filtered = search
-    ? stocks.filter((s) =>
-        s.symbol.toLowerCase().includes(search.toLowerCase()) ||
-        s.name.toLowerCase().includes(search.toLowerCase())
-      )
-    : stocks;
+  /* Filter by search — when searching, ignore pagination and show all matches */
+  const filtered = useMemo(() => {
+    if (!search) return stocks;
+    const q = search.toLowerCase();
+    return stocks.filter(
+      (s) =>
+        s.symbol.toLowerCase().includes(q) ||
+        s.name.toLowerCase().includes(q)
+    );
+  }, [stocks, search]);
+
+  /* Visible slice — only paginated when not searching */
+  const visibleStocks = search ? filtered : filtered.slice(0, visibleCount);
+  const hasMore = !search && filtered.length > visibleCount;
+
+  const handleViewMore = () => {
+    setLoadingMore(true);
+    // Simulate small delay so user sees feedback (also lets the UI paint next batch)
+    setTimeout(() => {
+      setVisibleCount((c) => c + PAGE_INCREMENT);
+      setLoadingMore(false);
+    }, 200);
+  };
+
+  /* Reset pagination when search changes back to empty */
+  useEffect(() => {
+    if (search) setVisibleCount(INITIAL_PAGE_SIZE);
+  }, [search]);
 
   return (
     <div className="space-y-6">
@@ -84,7 +115,16 @@ export function MarketPage() {
       {/* Stocks — 1 col mobile, 2 col tablet, 3 col desktop */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="font-heading text-base font-semibold">Stocks</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-heading text-base font-semibold">Stocks</CardTitle>
+            {!loading && (
+              <span className="text-xs text-text-secondary">
+                {search
+                  ? `${filtered.length} match${filtered.length === 1 ? '' : 'es'}`
+                  : `Showing ${visibleStocks.length} of ${stocks.length}`}
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -100,42 +140,76 @@ export function MarketPage() {
               description="Try searching with a different symbol or name"
             />
           ) : (
-            <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {filtered.map((stock) => (
-                <a
-                  key={stock.id}
-                  href={`/stock/${stock.symbol}`}
-                  className="rounded-lg border border-border-default bg-bg-base p-3 sm:p-4 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <StockLogo symbol={stock.symbol} size="md" rounded="md" />
-                      <div className="min-w-0">
-                        <p className="font-heading text-sm font-semibold text-text-primary">{stock.symbol}</p>
-                        <p className="text-xs text-text-secondary truncate clamp-1">{stock.name}</p>
+            <>
+              <div className="grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                {visibleStocks.map((stock) => (
+                  <a
+                    key={stock.id}
+                    href={`/stock/${stock.symbol}`}
+                    className="rounded-lg border border-border-default bg-bg-base p-3 sm:p-4 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <StockLogo symbol={stock.symbol} size="md" rounded="md" />
+                        <div className="min-w-0">
+                          <p className="font-heading text-sm font-semibold text-text-primary">{stock.symbol}</p>
+                          <p className="text-xs text-text-secondary truncate clamp-1">{stock.name}</p>
+                        </div>
                       </div>
+                      {stock.changePct !== undefined && stock.changePct !== 0 && (
+                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${stock.changePct >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10'}`}>
+                          {stock.changePct >= 0 ? (
+                            <TrendingUp className="h-3.5 w-3.5 text-profit-green" />
+                          ) : (
+                            <TrendingDown className="h-3.5 w-3.5 text-loss-red" />
+                          )}
+                        </div>
+                      )}
                     </div>
-                    {stock.changePct !== undefined && stock.changePct !== 0 && (
-                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${stock.changePct >= 0 ? 'bg-profit-green/10' : 'bg-loss-red/10'}`}>
-                        {stock.changePct >= 0 ? (
-                          <TrendingUp className="h-3.5 w-3.5 text-profit-green" />
-                        ) : (
-                          <TrendingDown className="h-3.5 w-3.5 text-loss-red" />
-                        )}
-                      </div>
+                    <div className="mt-2 sm:mt-3 flex items-end justify-between">
+                      <p className="font-mono text-base sm:text-lg font-bold tabular-nums text-text-primary">
+                        ₹{formatNumber(stock.ltp ?? 0)}
+                      </p>
+                      <p className={`font-mono text-xs tabular-nums ${stock.changePct !== undefined && stock.changePct >= 0 ? 'text-profit-green' : 'text-loss-red'}`}>
+                        {stock.changePct !== undefined && (stock.changePct >= 0 ? '+' : '')}{stock.changePct?.toFixed(2)}%
+                      </p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+
+              {/* View More button */}
+              {hasMore && (
+                <div className="mt-6 flex flex-col items-center gap-2">
+                  <button
+                    onClick={handleViewMore}
+                    disabled={loadingMore}
+                    className={cn(
+                      'inline-flex items-center gap-2 rounded-lg border border-border bg-bg-surface px-5 py-2.5 text-sm font-semibold text-text-primary hover:bg-bg-surface-alt hover:border-brand-primary/30 transition-colors',
+                      loadingMore && 'opacity-60 cursor-wait'
                     )}
-                  </div>
-                  <div className="mt-2 sm:mt-3 flex items-end justify-between">
-                    <p className="font-mono text-base sm:text-lg font-bold tabular-nums text-text-primary">
-                      ₹{formatNumber(stock.ltp ?? 0)}
-                    </p>
-                    <p className={`font-mono text-xs tabular-nums ${stock.changePct !== undefined && stock.changePct >= 0 ? 'text-profit-green' : 'text-loss-red'}`}>
-                      {stock.changePct !== undefined && (stock.changePct >= 0 ? '+' : '')}{stock.changePct?.toFixed(2)}%
-                    </p>
-                  </div>
-                </a>
-              ))}
-            </div>
+                  >
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="h-4 w-4" />
+                        View More Stocks
+                        <span className="ml-1 text-xs text-text-secondary">
+                          (+{Math.min(PAGE_INCREMENT, stocks.length - visibleCount)} more)
+                        </span>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[11px] text-text-tertiary">
+                    {visibleStocks.length} of {stocks.length} stocks loaded
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

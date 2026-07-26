@@ -6,6 +6,8 @@ import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/components/dashboard/DashboardPage';
 import { MarketPage } from '@/components/market/MarketPage';
 import { MoversPage } from '@/components/market/MoversPage';
+import { LegalPage } from '@/components/legal/LegalPage';
+import { LEGAL_DOCS } from '@/components/legal/legal-docs';
 import { TradePage } from '@/components/trading/TradePage';
 import { OptionChainPage } from '@/components/trading/OptionChainPage';
 import { BasketPage } from '@/components/trading/BasketPage';
@@ -71,6 +73,11 @@ function resolvePage(pathname: string): React.ComponentType | null {
   if (segment === 'settings' && parts.length > 1 && parts[1]) {
     const subPage = SETTINGS_PAGE_MAP[parts[1]];
     if (subPage) return subPage;
+  }
+  // Handle /legal/<doc> routes — render the matching legal document
+  if (segment === 'legal' && parts.length > 1 && parts[1]) {
+    const doc = LEGAL_DOCS[parts[1]];
+    if (doc) return () => <LegalPage doc={doc} />;
   }
   return PAGE_MAP[segment] ?? null;
 }

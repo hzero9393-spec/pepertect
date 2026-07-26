@@ -17,6 +17,8 @@ import {
   Share2,
   Plus,
   ChevronLeft,
+  Maximize2,
+  ExternalLink,
 } from 'lucide-react';
 import type { Stock } from '@/types';
 import { StockLogo, isIndexSymbol } from '@/components/shared/StockLogo';
@@ -81,6 +83,58 @@ export function StockDetailPage() {
   const [chartLoading, setChartLoading] = useState(true);
   const [inWatchlist, setInWatchlist] = useState(false);
   const [watchlistToggling, setWatchlistToggling] = useState(false);
+  const [shareToast, setShareToast] = useState<string | null>(null);
+
+  /* ---------- TradingView URL for "Maximize" button ----------
+     Builds the official TradingView chart URL for the same stock.
+     NSE stocks use the NSE: prefix, BSE use BSE: prefix.
+     Indices (NIFTY, SENSEX, etc.) map to their TradingView ticker. */
+  const tradingViewUrl = useMemo(() => {
+    if (!stock) return '';
+    const sym = stock.symbol?.toUpperCase() ?? '';
+    // Map our internal index symbols to TradingView ticker symbols
+    const INDEX_TV_MAP: Record<string, string> = {
+      NIFTY: 'NIFTY',
+      SENSEX: 'SENSEX',
+      BANKNIFTY: 'NSE:BANKNIFTY',
+      NIFTYFS: 'NSE:NIFTYFIN',
+      FINNIFTY: 'NSE:NIFTYFIN',
+    };
+    if (INDEX_TV_MAP[sym]) {
+      const tv = INDEX_TV_MAP[sym];
+      // Some already have the exchange prefix, some don't
+      const ticker = tv.includes(':') ? tv : `NSE:${tv}`;
+      return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`;
+    }
+    const exch = (stock.exchange || 'NSE').toUpperCase() === 'BSE' ? 'BSE' : 'NSE';
+    return `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(`${exch}:${sym}`)}`;
+  }, [stock]);
+
+  /* ---------- Share button — uses Web Share API on mobile, falls back to clipboard ---------- */
+  const handleShare = useCallback(async () => {
+    if (!stock) return;
+    const shareUrl = typeof window !== 'undefined' ? window.location.href : '';
+    const shareText = `Check out ${stock.symbol} on Pepertect — ₹${formatNumber(stock.ltp ?? 0)}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${stock.symbol} — Pepertect`, text: shareText, url: shareUrl });
+        setShareToast('Shared');
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        setShareToast('Link copied!');
+      }
+    } catch {
+      // user cancelled or clipboard failed — silent
+    }
+    setTimeout(() => setShareToast(null), 2000);
+  }, [stock]);
+
+  /* ---------- Open in TradingView (maximize) ---------- */
+  const openInTradingView = useCallback(() => {
+    if (tradingViewUrl) {
+      window.open(tradingViewUrl, '_blank', 'noopener,noreferrer');
+    }
+  }, [tradingViewUrl]);
 
   const symbol = useMemo(() => {
     if (typeof window === 'undefined') return '';
@@ -244,12 +298,16 @@ export function StockDetailPage() {
             </div>
           </div>
           <button
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-bg-surface-alt shrink-0"
+            onClick={handleShare}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-bg-surface-alt hover:text-brand-primary shrink-0 transition-colors"
             aria-label="Share"
           >
             <Share2 className="h-4 w-4" />
           </button>
         </div>
+        {shareToast && (
+          <p className="mt-2 text-xs font-medium text-profit-green">{shareToast}</p>
+        )}
 
         {/* For indices that have an option chain (NIFTY/SENSEX/BANKNIFTY/FINNIFTY):
             show a prominent "View Option Chain" CTA above the watchlist row. */}
@@ -263,13 +321,13 @@ export function StockDetailPage() {
           </a>
         )}
 
-        {/* Watchlist + BUY/SELL row */}
+        {/* Watchlist row — Buy/Sell buttons removed from here; only bottom sticky bar has them now */}
         <div className="mt-4 flex items-center gap-2">
           <button
             onClick={toggleWatchlist}
             disabled={watchlistToggling}
             className={cn(
-              'flex h-11 items-center justify-center gap-1.5 rounded-lg border-2 px-3 text-sm font-semibold transition-colors',
+              'flex h-11 items-center justify-center gap-1.5 rounded-lg border-2 px-3 text-sm font-semibold transition-colors flex-1',
               inWatchlist
                 ? 'border-accent-gold bg-tint-yellow text-accent-gold'
                 : 'border-brand-primary bg-bg-surface text-brand-primary hover:bg-tint-blue'
@@ -281,25 +339,8 @@ export function StockDetailPage() {
             ) : (
               <Plus className="h-4 w-4" />
             )}
-            <span className="hidden sm:inline">{inWatchlist ? 'Watching' : 'Watchlist'}</span>
+            <span>{inWatchlist ? 'Watching' : 'Add to Watchlist'}</span>
           </button>
-          {/* Indices aren't tradable as equity — hide BUY/SELL for them */}
-          {!isIndex && (
-            <>
-              <a href={`/trade?symbol=${stock.symbol}`} className="flex-1">
-                <button className="w-full h-11 rounded-lg bg-profit-green text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-profit-green/90">
-                  <ArrowUp className="h-4 w-4" />
-                  BUY
-                </button>
-              </a>
-              <a href={`/trade?symbol=${stock.symbol}&side=SELL`} className="flex-1">
-                <button className="w-full h-11 rounded-lg bg-loss-red text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-loss-red/90">
-                  <ArrowDown className="h-4 w-4" />
-                  SELL
-                </button>
-              </a>
-            </>
-          )}
           {/* For indices without option chain support, show a disabled-looking placeholder */}
           {isIndex && !optionChainSymbol && (
             <div className="flex-1 h-11 rounded-lg bg-bg-surface-alt text-text-tertiary font-medium text-xs flex items-center justify-center px-3 text-center">
@@ -362,6 +403,26 @@ export function StockDetailPage() {
             <button className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-bg-surface-alt" aria-label="Chart type">
               <BarChart3 className="h-4 w-4" />
             </button>
+            {/* Maximize — opens same stock on official TradingView in new tab */}
+            <button
+              onClick={openInTradingView}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-text-secondary hover:bg-tint-blue hover:text-brand-primary transition-colors"
+              aria-label="Open in TradingView"
+              title="Open in TradingView"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
+            <a
+              href={tradingViewUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-8 items-center justify-center gap-1 rounded-md border border-border bg-bg-surface-alt px-2.5 text-[11px] font-semibold text-text-secondary hover:text-brand-primary hover:border-brand-primary/30 transition-colors"
+              aria-label="Open TradingView"
+              title="TradingView"
+            >
+              <ExternalLink className="h-3 w-3" />
+              <span className="hidden sm:inline">TradingView</span>
+            </a>
           </div>
         </div>
         {/* Time period tabs */}
@@ -381,12 +442,12 @@ export function StockDetailPage() {
             </button>
           ))}
         </div>
-        {/* Chart */}
+        {/* Chart — compact size; "Maximize" button above opens TradingView for full chart */}
         <div className="mt-3">
           {chartLoading ? (
-            <div className="h-56 sm:h-64 animate-pulse rounded-lg bg-bg-surface-alt" />
+            <div className="h-44 sm:h-52 animate-pulse rounded-lg bg-bg-surface-alt" />
           ) : candles.length === 0 ? (
-            <div className="flex h-56 sm:h-64 items-center justify-center rounded-lg border border-dashed border-border">
+            <div className="flex h-44 sm:h-52 items-center justify-center rounded-lg border border-dashed border-border">
               <p className="text-sm text-text-secondary">No chart data available</p>
             </div>
           ) : (
@@ -657,7 +718,7 @@ function CandlestickChart({ candles, isUp }: { candles: Candle[]; isUp: boolean 
       <svg
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio="none"
-        className="w-full h-56 sm:h-72"
+        className="w-full h-44 sm:h-52"
       >
         <defs>
           <linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1">

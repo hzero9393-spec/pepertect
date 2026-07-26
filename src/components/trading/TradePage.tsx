@@ -40,6 +40,12 @@ export function TradePage() {
   const [mainTab, setMainTab] = useState<'place' | 'basket' | 'orders'>('place');
   /* Redirect state — when set, will redirect to /positions after delay */
   const [redirecting, setRedirecting] = useState(false);
+  /* Settings panel — opens when user clicks the gear icon in the tab bar */
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  /* Session-only order defaults (controlled by the Settings panel) */
+  const [defaultOrderType, setDefaultOrderType] = useState<'MARKET' | 'LIMIT' | 'SL'>('MARKET');
+  const [defaultQty, setDefaultQty] = useState(1);
+  const [confirmBefore, setConfirmBefore] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -98,6 +104,13 @@ export function TradePage() {
 
   const handleOrder = async () => {
     if (!symbol || !quantity) return;
+    /* Optional confirmation dialog (controlled by Settings panel) */
+    if (confirmBefore) {
+      const ok = window.confirm(
+        `Confirm ${side} order:\n\n${quantity} ${symbol.toUpperCase()} @ ${orderType}${orderType !== 'MARKET' && price ? ` (₹${price})` : ''}\n\nApprox. value: ₹${(qty * refPrice).toLocaleString('en-IN')}`
+      );
+      if (!ok) return;
+    }
     setSubmitting(true);
     setMessage('');
     try {
@@ -211,12 +224,93 @@ export function TradePage() {
         </button>
         <div className="flex-1" />
         <button
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-bg-surface-alt"
+          onClick={() => setSettingsOpen((v) => !v)}
+          className={cn(
+            'flex h-9 w-9 items-center justify-center rounded-lg border border-border text-text-secondary hover:bg-bg-surface-alt transition-colors',
+            settingsOpen && 'bg-tint-blue text-brand-primary border-brand-primary/30'
+          )}
           aria-label="Order settings"
+          title="Order settings"
         >
-          <Settings className="h-4 w-4" />
+          <Settings className={cn('h-4 w-4', settingsOpen && 'rotate-90 transition-transform')} />
         </button>
       </div>
+
+      {/* Settings panel — toggles for price display, default order type, etc. */}
+      {settingsOpen && (
+        <div className="card-soft p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="font-heading text-sm font-semibold text-text-primary">Order Settings</p>
+            <button
+              onClick={() => setSettingsOpen(false)}
+              className="text-xs text-text-secondary hover:text-text-primary"
+            >
+              Close
+            </button>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-text-primary">Default order type</p>
+                <p className="text-[11px] text-text-secondary">Pre-selected when you open Place Order</p>
+              </div>
+              <select
+                value={defaultOrderType}
+                onChange={(e) => {
+                  const v = e.target.value as 'MARKET' | 'LIMIT' | 'SL';
+                  setDefaultOrderType(v);
+                  setOrderType(v);
+                }}
+                className="bg-bg-surface-alt border border-border rounded-md px-2 py-1.5 text-xs font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+              >
+                <option value="MARKET">MARKET</option>
+                <option value="LIMIT">LIMIT</option>
+                <option value="SL">SL (Stop-Loss)</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-text-primary">Default quantity</p>
+                <p className="text-[11px] text-text-secondary">Starting qty when placing a new order</p>
+              </div>
+              <input
+                type="number"
+                min={1}
+                value={defaultQty}
+                onChange={(e) => {
+                  const v = Math.max(1, parseInt(e.target.value) || 1);
+                  setDefaultQty(v);
+                  setQuantity(String(v));
+                }}
+                className="w-20 bg-bg-surface-alt border border-border rounded-md px-2 py-1.5 text-xs font-semibold font-mono text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-medium text-text-primary">Confirm before placing</p>
+                <p className="text-[11px] text-text-secondary">Show a review dialog before submitting</p>
+              </div>
+              <button
+                onClick={() => setConfirmBefore(!confirmBefore)}
+                className={cn(
+                  'relative h-6 w-11 rounded-full transition-colors',
+                  confirmBefore ? 'bg-brand-primary' : 'bg-bg-surface-alt'
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
+                    confirmBefore ? 'translate-x-5' : 'translate-x-0.5'
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+          <p className="text-[11px] text-text-tertiary pt-2 border-t border-border">
+            Settings apply for this session only and reset when you reload the page.
+          </p>
+        </div>
+      )}
 
       {/* 24h retention notice — only on Orders tab */}
       {mainTab === 'orders' && (
@@ -303,7 +397,18 @@ export function TradePage() {
                   return (
                     <button
                       key={seg}
-                      onClick={() => !locked && setSegment(seg)}
+                      onClick={() => {
+                        if (locked) return;
+                        /* OPTIONS segment — redirect to Option Chain page
+                           (user wants this behavior so they can pick strikes visually).
+                           If no symbol entered yet, default to NIFTY. */
+                        if (seg === 'OPTIONS') {
+                          const sym = (symbol || 'NIFTY').toUpperCase();
+                          window.location.href = `/optionchain?symbol=${encodeURIComponent(sym)}`;
+                          return;
+                        }
+                        setSegment(seg);
+                      }}
                       className={cn(
                         'relative rounded-xl p-3 text-left border-2 transition-all',
                         isActive
