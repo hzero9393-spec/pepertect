@@ -44,21 +44,35 @@ export async function GET(req: NextRequest) {
     // (e.g. from older deployments that only had ~25 stocks).
     if (stocks.length < 100) {
       try {
-        // Use createMany for efficiency — single round-trip per batch
-        const created = await Promise.all(
-          DEDUPED_STOCKS.map((m) =>
-            db.stock.create({
-              data: {
-                symbol: m.symbol,
-                name: m.name,
-                sector: m.sector,
-                lotSize: m.lotSize,
-                tickSize: 0.05,
-                ...generateOHLC(m.ltp),
-              },
-            }).catch(() => null) // ignore duplicate-key race conditions
-          )
-        );
+        // Find which symbols are already in the DB so we only insert missing ones
+        const existingSymbols = new Set(stocks.map((s: any) => s.symbol));
+        const toSeed = DEDUPED_STOCKS.filter((m) => !existingSymbols.has(m.symbol));
+
+        if (toSeed.length > 0) {
+          // Use createMany in batches of 50 to stay within Vercel's 30s function
+          // timeout and avoid overwhelming the DB connection pool.
+          const BATCH_SIZE = 50;
+          for (let i = 0; i < toSeed.length; i += BATCH_SIZE) {
+            const batch = toSeed.slice(i, i + BATCH_SIZE);
+            try {
+              await db.stock.createMany({
+                data: batch.map((m) => ({
+                  symbol: m.symbol,
+                  name: m.name,
+                  sector: m.sector,
+                  lotSize: m.lotSize,
+                  tickSize: 0.05,
+                  ...generateOHLC(m.ltp),
+                })),
+                skipDuplicates: true,
+              });
+            } catch (batchErr) {
+              console.error(`Stock seed batch ${i} error:`, batchErr);
+              // Continue with next batch — partial seeding is better than none
+            }
+          }
+        }
+
         // Re-fetch all stocks after seeding (existing + newly created) so we
         // return a complete sorted list to the caller.
         stocks = await db.stock.findMany({
