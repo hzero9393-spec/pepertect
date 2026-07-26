@@ -493,3 +493,68 @@ Stage Summary:
 - Language selector supports 8 Indian languages
 - Production deployed at https://pepertect.vercel.app
 - 7 verification screenshots saved to /home/z/my-project/download/
+
+---
+Task ID: landing-3d-video-upgrade
+Agent: main
+Task: Upgrade the 10 auto-scrolling intro slides on the landing page from static images to "video-type" animated visuals (live ticking prices, growing profit counters, AI cursor auto-controlling UI like Gemini/WhatsApp ads) with white+blue Apple.com-inspired 3D depth backgrounds.
+
+Work Log:
+- Read existing LandingPage.tsx (1089 lines, 10 static TourSlides with mock UI previews)
+- Added ~310 lines of new CSS animations to /home/z/my-project/src/app/globals.css:
+  * Floating glass orbs (3 layers, parallax depth) — .lp-orb-1/2/3 with float keyframes
+  * Subtle blue tech grid overlay (masked radial fade) — .lp-grid-overlay
+  * 3D perspective container + tilt classes — .lp-3d-stage, .lp-3d-card
+  * Glassmorphism card (frosted blur, layered shadows) — .lp-glass
+  * Price tick flash (green/red background fade on tick) — .lp-flash-up/.lp-flash-down
+  * Number glow when ticking — .lp-num-glow.is-ticking
+  * SVG line self-draw animation (stroke-dashoffset) — .lp-draw-line
+  * ATM pulse ring (expanding glow) — .lp-pulse-ring
+  * AI cursor with click ripple — .lp-ai-cursor + .lp-click-ripple
+  * Progress bar fill transition — .lp-progress-fill
+  * Slide entrance (fade-up, fade-scale) — .lp-fade-up/.lp-fade-scale
+  * Shimmer loading — .lp-shimmer
+  * Live chip pulse (real-time indicator) — .lp-live-chip
+  * Hero text gradient (3D dark→bright blue) — .lp-hero-text
+  * 3 background variants (hero/light/surface) with white+blue gradients
+  * Active slide dot gradient — .lp-dot-active
+- Rewrote /home/z/my-project/src/components/auth/LandingPage.tsx (1252 lines):
+  * Kept all auto-scroll logic (10 slides, 3s interval, pause on interaction, skip button, progress dots)
+  * Added mouse parallax tilt — mouseTilt state, mousemove listener, perspective transform on hero cards
+  * Replaced TourSlide backgrounds with lp-bg-hero/light/surface + floating orbs + grid overlay
+  * Slide 1 (Hero): 3D perspective tilt on welcome card with hero gradient text
+  * Slide 2: NEW LiveTickerVisual — 7 tickers update every 700ms with green/red flash on each tick + LIVE chip pulse
+  * Slide 3: NEW OrderTicketVisual — AI cursor moves through: select asset → qty stepper → MARKET/LIMIT → margin preview → BUY button (loops every 7s)
+  * Slide 4: NEW OptionChainLiveVisual — 5 strikes, LTP ticks every 800ms with flash, ATM strike has pulse ring
+  * Slide 5: NEW PortfolioGrowthVisual — capital counter animates 1L→1.12L (easeOutExpo), Day P&L counts up +1240, bar chart grows bar-by-bar
+  * Slide 6: NEW BasketExecutionVisual — AI cursor clicks Execute, 3 legs fill progress one-by-one (50%→100%), green check marks appear, loops every 6s
+  * Slide 7: NEW WatchlistLiveVisual — 4 stocks tick every 900ms with flash + sparkline redraws (point shift)
+  * Slide 8: NEW AnalyticsDrawVisual — SVG P&L chart line draws itself (stroke-dashoffset), 3 P&L counters count up simultaneously, floating tooltip, loops every 4s
+  * Slide 9: NEW LearningPathVisual — 4 modules fill progress bars one-by-one, active module gets ring highlight, 100% modules show check mark, loops every 5s
+  * Slide 10 (CTA): 3D perspective tilt on "Start in Seconds" card with hero gradient text
+  * CTA section now uses lp-bg-hero background with floating orbs + grid overlay + glassmorphism cards
+  * FeatureCards now have hover lift animation (translate-y + shadow)
+- Added 2 reusable helper components:
+  * AnimatedCounter — uses requestAnimationFrame + easeOutExpo, supports loop with configurable pause
+  * AICursor — moves through predefined (x,y) steps with click ripples, loops indefinitely
+
+Build & deploy:
+- TypeScript: 0 errors
+- Production build: succeeded in 26s, 37 routes
+- Committed as 1 commit (d790d4e), pushed to GitHub main
+- Deployed to Vercel production in 46s
+- Production URL: https://pepertect.vercel.app (verified 200 OK, 0.81s response)
+
+Stage Summary:
+- Landing page intro slides now feel like a video product demo (Apple/Gemini/WhatsApp-ad style)
+- All 8 mid-tour visuals are animated and loop indefinitely:
+  * Prices flash green/red on every tick (700-900ms intervals)
+  * Profit/capital counters animate up using easeOutExpo easing
+  * SVG charts draw themselves with stroke-dashoffset
+  * AI cursor visibly moves and "clicks" through order tickets and basket execution
+  * Progress bars fill bar-by-bar with cubic-bezier easing
+- Backgrounds use white+blue gradient + floating glass orbs + tech grid overlay for 3D depth
+- Hero text uses gradient (dark blue → bright blue) for 3D feel
+- Glassmorphism cards with backdrop-blur, layered shadows, subtle hover lift
+- Mouse parallax tilt on hero slides (rotateY/rotateX based on cursor position)
+- Production live at https://pepertect.vercel.app
