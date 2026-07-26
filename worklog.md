@@ -187,3 +187,114 @@ Stage Summary:
 - For stocks where source favicon is minimal (HDFC "H", Bajaj "B"), that IS the actual brand asset
 - Indices use branded gradient avatars (since indices aren't companies with logos)
 - Production redeployed successfully at https://pepertect.vercel.app
+
+---
+Task ID: 6
+Agent: Main
+Task: Redesign all 5 main pages (Dashboard, Trade, Stock Detail, Profile, Support) per user's mobile reference images
+
+Work Log:
+- Analyzed 5 user-uploaded mobile reference screenshots via VLM (z-ai vision CLI):
+  * Image 1: Profile page — card-based layout with avatar, account summary 2x3 grid, account details, quick actions, preferences
+  * Image 2: Dashboard — hero card, 2x2 metrics, indices with sparklines, positions, quick actions, Trade FAB
+  * Image 3: Stock Detail — stock identity card, dual BUY/SELL CTAs, price card with sparkline+OHLC, chart with time period tabs, performance row, fundamentals
+  * Image 4: Support — hero card, create ticket form, tabbed ticket list with empty state, resources list
+  * Image 5: Trade — Place Order/Basket tabs, symbol search + chips, segment cards with checkmark, BUY/SELL, REVIEW CTA, orders empty state
+
+- Extracted shared design system from images:
+  * Primary blue #2563EB (was #1D4ED8), Profit green #10B981, Loss red #EF4444
+  * New tints for icon containers: tint-blue/green/red/purple/yellow/cyan/orange (light + strong)
+  * Card pattern: 16px radius, subtle shadow, 16px padding (card-soft class)
+  * Lightning bolt logo in a blue tile next to page title
+  * Bottom nav with Trade tab as elevated 56px FAB (blue circle, white border, lifted above bar)
+  * Inter-style typography with semibold/bold weights
+
+Changes made:
+1. src/app/globals.css — Updated design tokens (#2563EB primary, #10B981 green, #EF4444 red, purple/cyan/yellow/orange tints). Added new utility classes: card-soft, card-bordered, card-mini, icon-tile (40x40), icon-tile-sm (32x32), pill, fab-trade, sparkline, seg-tab (with blue underline), qty-stepper (- 1 +), hero-gradient, hero-support, toggle-track + toggle-thumb (iOS-style), bottom-nav
+
+2. src/components/layout/Header.tsx — Rewrote: lightning bolt logo in blue tile (visible on all screen sizes, not just mobile), hamburger menu (mobile), title, search icon (mobile) / search input (desktop), theme toggle (desktop), notification bell with red "3" badge, user avatar (right side, blue circle with initials)
+
+3. src/components/layout/MobileBottomNav.tsx — Rewrote: 5 tabs (Home, Markets, Trade, Positions, Watchlist). Trade tab now renders as elevated FAB (56px blue circle with white border + shadow, lifted above the bar via negative margin-top). Other tabs use the regular flat layout.
+
+4. src/components/layout/AppShell.tsx — Tighter mobile padding (px-4), narrower max-width (max-w-3xl on mobile, lg:max-w-5xl on desktop) for better reading width
+
+5. src/components/dashboard/DashboardPage.tsx — Completely rewritten:
+   - Hero card with hero-gradient (light blue gradient), "Welcome back, Trader" + plan badge + Market Live + Upgrade link + decorative SVG chart graphic (top-right)
+   - 2x2 metrics grid (Total Balance, Total P&L, Available Margin, Win Rate) — each card has a colored icon tile in top-right (blue/green/purple/yellow)
+   - Market Indices section with new Sparkline component (mini SVG line chart with gradient fill, green/red based on trend)
+   - Open Positions list — each row has StockLogo, symbol, BUY pill, exchange/qty/price, P&L with %
+   - Quick Actions row (4 tiles: Place Order, Orders, Positions, Funds) with colored icons
+   - Recent Orders section (only shown if orders exist)
+
+6. src/components/trading/TradePage.tsx — Completely rewritten:
+   - Top tabs: "Place Order" (active) | "Basket" (with red "2" badge) | Settings gear icon
+   - Symbol search input + horizontal scrolling chips (RELIANCE, TCS, INFY, etc.) — selected chip shows blue border
+   - Live stock strip (conditional on symbol being valid)
+   - Segment cards (3 columns): Equity (selected, blue border + checkmark badge top-right), Futures/Options (locked, grayed out with PREMIUM pill)
+   - Order Type chips: MARKET (selected), LIMIT, SL
+   - Quantity stepper (- 1 +) with icon buttons, plus Lot Size + Available Balance display
+   - BUY/SELL buttons side-by-side (green/red, full-width, with up/down arrows)
+   - Expandable Required Margin section with chevron (wallet icon, "Approx." label, breakdown rows)
+   - REVIEW BUY/SELL ORDER CTA (full-width, colored per side)
+   - Orders/Trade History sub-tabs with count badges
+   - Empty states with icon illustrations (FileSearch for orders, BarChart3 for trades)
+
+7. src/components/market/StockDetailPage.tsx — Completely rewritten:
+   - Mobile back button (top-left, "← Back")
+   - Stock identity card: StockLogo (xl with ring), ticker, name, NSE tag (with India flag emoji) + sector pill + Large Cap pill, share button
+   - Watchlist toggle (blue outline when off, gold filled when on) + BUY/SELL row (full-width)
+   - Price card: large price (3xl-4xl), inline sparkline next to price (desktop), change +%, timestamp, OHLC grid (3 cols x 2 rows: Open/High/Low/Close/Volume/Lot Size)
+   - Chart card: time period tabs (1D/1W/1M/3M/1Y/5Y horizontal scroll), candlestick chart (pure SVG with area fill + grid lines + last price marker)
+   - Performance row: 6 period cards (1D/1W/1M/3M/1Y/5Y) with % returns (green/red), horizontal scroll
+   - Fundamentals card: 3-column grid (Market Cap, P/E Ratio, 52W Range) + 52W range slider with gradient bar
+   - Sticky secondary BUY/SELL bar (bottom on mobile, static on desktop)
+
+8. src/components/profile/ProfilePage.tsx — Completely rewritten:
+   - Profile header card: 80px blue avatar with white initials + camera overlay button (bottom-right), name + verified badge (green check), email with copy icon, user ID (TRDxxxxxx) with copy icon, plan/role/KYC pills, Edit Profile button (top-right)
+   - Collapsible edit form (name + phone inputs + Save button)
+   - Account Summary 2x3 grid (6 cards): Virtual Capital (green wallet), Used Margin (red pie chart), Available Margin (purple activity), Total P&L (cyan trending up, colored by sign), Total Trades (yellow trophy), Win Rate (cyan target, blue %)
+   - Account Details list (Broker, Timezone, Account Type, Last Login, Currency, Member Since) with icon tiles
+   - Quick Actions row (4 tiles): Change Password (blue lock), Enable 2FA (green shield, "Recommended" subtext), Login Activity (purple monitor), Logout All (red logout)
+   - Preferences list: Dark Mode (sun/moon icon + iOS-style toggle), Notification Settings (bell + chevron), Language: English (globe + chevron), Logout (red logout + chevron)
+
+9. src/components/support/SupportPage.tsx — Completely rewritten:
+   - Hero card with hero-support gradient (blue→purple), headset icon, "How can we help you?" headline, subtitle, decorative chat-bubble SVG (top-right)
+   - Create a New Ticket card: Subject input (with FileText icon on right), Description textarea, file attach button + Create Ticket CTA (blue, with + icon)
+   - Your Tickets section: status filter tabs (All, Open, In Progress, Closed) with count badges, empty state with FileText icon + "No tickets yet" + "Create your first ticket" outlined button
+   - Conversation thread (only shows when a ticket is selected): chat bubbles (USER = blue right-aligned, ADMIN = gray left-aligned), reply input + Send button
+   - Resources list: Help Center (purple sparkles), Live Chat (green message square), Email Support (blue mail) — each row has icon tile + title + subtitle + chevron
+
+10. src/components/shared/Sparkline.tsx (NEW) — Lightweight inline SVG sparkline component:
+    - Takes data array + positive boolean
+    - Generates smooth quadratic-curve path with gradient area fill (10% opacity at top → 0% at bottom)
+    - Color is green (#10B981) if positive, red (#EF4444) if negative
+    - Default size 80x32, configurable width/height
+    - Used in DashboardPage for market index mini-charts
+
+Type fixes:
+- Portfolio type uses `winningTrades` (not `wins`) — fixed in both DashboardPage and ProfilePage
+- Portfolio has no `losses` field — calculated as `totalTrades - winningTrades`
+- Portfolio has no `totalPnlPct` field — calculated as `(totalPnl / investedAmount) * 100`
+- Position uses `currentPrice` (not `currentValue`) — fixed current value calc as `currentPrice * quantity`
+- Replaced `Storefront` lucide-react import with `Store` (Storefront isn't exported)
+
+Build & deploy:
+- TypeScript check: 0 errors in modified files (pre-existing errors in skills/ and api/auth/ unchanged)
+- Production build: succeeded, 28 routes prerendered
+- Committed as 1 commit (71d5ae2), pushed to GitHub main
+- Deployed to Vercel production via vercel CLI (token from scripts/set_vercel_envs.py)
+- Production URL: https://pepertect.vercel.app (ready in 46s)
+
+Verification (agent-browser on iPhone 14 viewport, logged in via Demo Account):
+- Dashboard: hero gradient card ✓, 2x2 metrics grid with colored icon tiles ✓, market indices with green/red sparklines ✓, Trade FAB elevated above bottom nav ✓
+- Trade page: Place Order/Basket tabs with red badge ✓, symbol search + horizontal scrolling chips ✓, Equity segment card selected with checkmark ✓, quantity stepper (- 1 +) ✓, BUY/SELL buttons side-by-side ✓, REVIEW BUY ORDER CTA ✓
+- Stock Detail (RELIANCE): stock identity with logo + NSE tag (with India flag) + watchlist button ✓, BUY/SELL primary CTAs ✓, large price + change% + timestamp + OHLC grid ✓, chart with 1D/1W/1M/3M/1Y/5Y tabs ✓, sticky secondary BUY/SELL bar ✓
+- Profile: avatar with camera overlay + verified badge + copyable email/UID ✓, 2x3 account summary grid ✓, account details list ✓, quick actions row (4 tiles with "Recommended" subtext on 2FA) ✓, preferences with Dark Mode iOS toggle ✓
+- Support: hero card with headset icon ✓, create ticket form ✓, ticket filter tabs (All/Open/In Progress/Closed) with counts ✓, empty state with FileText icon ✓, resources list (Help Center/Live Chat/Email Support) ✓
+
+Stage Summary:
+- All 5 main pages now match the user's mobile reference design images
+- Production deployed at https://pepertect.vercel.app
+- 6 screenshots saved to /home/z/my-project/download/v2_*.png
+- VLM verified each page against the reference image checklist
+- Shared design system established: blue lightning logo, Trade FAB, card-soft pattern, colored icon tiles, sparklines, segmented tabs with blue underline, iOS-style toggle, hero gradient cards
