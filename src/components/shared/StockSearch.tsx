@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { cn, formatNumber } from '@/lib/utils';
-import { Search, X, Loader2, TrendingUp, TrendingDown, ChevronRight } from 'lucide-react';
+import { Search, X, Loader2, TrendingUp, TrendingDown, ChevronRight, Target, Layers } from 'lucide-react';
 import { StockLogo, isIndexSymbol } from '@/components/shared/StockLogo';
 
 interface SearchResult {
@@ -15,6 +15,77 @@ interface SearchResult {
   change?: number;
   changePct?: number;
   exchange?: string;
+}
+
+/* Indices that have an option chain page — used to detect strike searches. */
+const OPTION_INDICES = ['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY', 'BANKNIFTY', 'NIFTYFS'] as const;
+
+interface StrikeMatch {
+  symbol: string;
+  strike: number;
+  side: 'CE' | 'PE';
+  expiry?: string; // YYYY-MM-DD if user typed one
+  raw: string;
+}
+
+/**
+ * Parse a free-text query and detect an option-strike pattern, e.g.:
+ *   "25100 CE"
+ *   "NIFTY 25100 CE"
+ *   "BANKNIFTY 24400 PE 24-Jan"
+ *   "nifty 25100 call 2025-01-30"
+ *
+ * Returns null if the query doesn't look like a strike search.
+ */
+function parseStrikeQuery(q: string): StrikeMatch | null {
+  const s = q.trim().toLowerCase();
+  if (!s) return null;
+
+  // Detect index name (optional — defaults to NIFTY if not specified)
+  let symbol = 'NIFTY';
+  let remaining = s;
+  for (const idx of OPTION_INDICES) {
+    const idxL = idx.toLowerCase();
+    if (remaining.startsWith(idxL + ' ') || remaining.startsWith(idxL)) {
+      symbol = idx === 'NIFTYFS' ? 'FINNIFTY' : idx;
+      remaining = remaining.slice(idxL.length).trim();
+      break;
+    }
+  }
+
+  // Strike price — 3 to 6 digit integer (e.g. 100, 24400, 25100)
+  const strikeMatch = remaining.match(/\b(\d{3,6})\b/);
+  if (!strikeMatch) return null;
+  const strike = parseInt(strikeMatch[1], 10);
+  if (strike < 50 || strike > 999999) return null;
+  remaining = remaining.replace(strikeMatch[0], ' ').trim();
+
+  // Side — CE/PE or CALL/PUT
+  let side: 'CE' | 'PE' | null = null;
+  if (/\b(ce|call)\b/i.test(remaining)) side = 'CE';
+  else if (/\b(pe|put)\b/i.test(remaining)) side = 'PE';
+  // If only a strike was typed (e.g. "NIFTY 25100"), still allow navigation
+  // — default to CE so the user lands on a strike overview page.
+  if (!side) side = 'CE';
+
+  // Expiry — try to parse a date like "24-Jan", "24-01-2025", "2025-01-24"
+  let expiry: string | undefined;
+  const dateMatch = remaining.match(/\b(\d{1,2})[-/\s]([a-z0-9]{3,9})[-/\s]?(\d{2,4})?\b/i);
+  if (dateMatch) {
+    const day = dateMatch[1].padStart(2, '0');
+    const monStr = dateMatch[2];
+    const year = dateMatch[3] ? (dateMatch[3].length === 2 ? '20' + dateMatch[3] : dateMatch[3]) : String(new Date().getFullYear());
+    const months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+    const monIdx = months.findIndex((m) => monStr.toLowerCase().startsWith(m));
+    if (monIdx >= 0) {
+      expiry = `${year}-${String(monIdx + 1).padStart(2, '0')}-${day}`;
+    }
+  }
+  // Also accept ISO dates directly
+  const isoMatch = remaining.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+  if (isoMatch) expiry = isoMatch[0];
+
+  return { symbol, strike, side, expiry, raw: q.trim() };
 }
 
 interface Props {
@@ -41,6 +112,8 @@ interface Props {
  *    StockDetailPage with the option chain overview, strikes, OI, etc.
  *  - Indices (NIFTY, BANKNIFTY, etc.) route to the same /stock/<symbol> page
  *    where the "View Option Chain" CTA appears.
+ *  - If the query looks like an option strike (e.g. "NIFTY 25100 CE"), the
+ *    first result becomes a "Open strike overview" link to /optionchain/strike.
  *  - Keyboard navigation: ArrowUp/ArrowDown/Enter/Esc.
  */
 export function StockSearch({
@@ -59,6 +132,19 @@ export function StockSearch({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Detect option-strike pattern in the query — surfaces a special "open
+  // strike overview" item above the regular search results.
+  const strikeMatch = useMemo(() => parseStrikeQuery(query), [query]);
+  const strikeHref = useMemo(() => {
+    if (!strikeMatch) return null;
+    const params = new URLSearchParams({
+      symbol: strikeMatch.symbol,
+      strike: String(strikeMatch.strike),
+    });
+    if (strikeMatch.expiry) params.set('expiry', strikeMatch.expiry);
+    return `/optionchain/strike?${params.toString()}`;
+  }, [strikeMatch]);
 
   // Debounced search
   useEffect(() => {
@@ -119,21 +205,45 @@ export function StockSearch({
     }
   }, [onSelect]);
 
+  /* Navigate to strike overview when the strike match item is selected */
+  const selectStrike = useCallback(() => {
+    if (!strikeHref) return;
+    if (typeof window !== 'undefined') {
+      window.location.href = strikeHref;
+    }
+  }, [strikeHref]);
+
+  /* Total items = strike match (if any) + regular results — for keyboard nav */
+  const totalItems = (strikeMatch ? 1 : 0) + results.length;
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!open || results.length === 0) {
-      if (e.key === 'Enter' && query.trim()) setOpen(true);
+    if (!open || totalItems === 0) {
+      if (e.key === 'Enter' && query.trim()) {
+        // If only the strike match is available, jump straight to it
+        if (strikeMatch && results.length === 0) {
+          e.preventDefault();
+          selectStrike();
+          return;
+        }
+        setOpen(true);
+      }
       return;
     }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlighted((h) => Math.min(h + 1, results.length - 1));
+      setHighlighted((h) => Math.min(h + 1, totalItems - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setHighlighted((h) => Math.max(h - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const r = results[highlighted];
-      if (r) selectResult(r);
+      if (strikeMatch && highlighted === 0) {
+        selectStrike();
+      } else {
+        const resultIdx = strikeMatch ? highlighted - 1 : highlighted;
+        const r = results[resultIdx];
+        if (r) selectResult(r);
+      }
     } else if (e.key === 'Escape') {
       setOpen(false);
       inputRef.current?.blur();
@@ -186,7 +296,42 @@ export function StockSearch({
       {/* Results dropdown */}
       {open && query.trim() && (
         <div className="absolute z-50 mt-2 w-full max-w-md card-soft p-1 max-h-[60vh] overflow-y-auto shadow-xl">
-          {results.length === 0 && !loading ? (
+          {/* Strike-match quick-link — shown above regular results */}
+          {strikeMatch && (
+            <button
+              onClick={selectStrike}
+              onMouseEnter={() => setHighlighted(0)}
+              className={cn(
+                'w-full flex items-center gap-3 rounded-lg p-2 text-left transition-colors mb-1',
+                'bg-tint-blue/40 border border-brand-primary/20',
+                highlighted === 0 && 'ring-1 ring-brand-primary/40'
+              )}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-tint-blue">
+                <Target className="h-4 w-4 text-brand-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-text-primary">
+                  Open {strikeMatch.symbol} {strikeMatch.strike} {strikeMatch.side} Overview
+                </p>
+                <p className="text-[11px] text-text-secondary truncate">
+                  Strike overview page · {strikeMatch.expiry ? `Expiry ${strikeMatch.expiry}` : 'default expiry'} · Buy/Sell buttons
+                </p>
+              </div>
+              <span className="pill bg-tint-blue text-brand-primary text-[9px] font-bold uppercase shrink-0">
+                <Layers className="h-2.5 w-2.5 mr-0.5" />
+                Strike
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 text-text-tertiary shrink-0" />
+            </button>
+          )}
+
+          {/* Divider if both strike match and results exist */}
+          {strikeMatch && results.length > 0 && (
+            <div className="border-t border-border my-1" />
+          )}
+
+          {results.length === 0 && !loading && !strikeMatch ? (
             <div className="px-4 py-6 text-center">
               <Search className="h-6 w-6 text-text-tertiary mx-auto mb-1" />
               <p className="text-sm font-medium text-text-secondary">No results for &ldquo;{query}&rdquo;</p>
@@ -194,16 +339,17 @@ export function StockSearch({
             </div>
           ) : (
             results.map((r, idx) => {
+              const itemIdx = strikeMatch ? idx + 1 : idx;
               const positive = (r.changePct ?? 0) >= 0;
               const isIdx = isIndexSymbol(r.symbol);
               return (
                 <button
                   key={`${r.symbol}-${idx}`}
                   onClick={() => selectResult(r)}
-                  onMouseEnter={() => setHighlighted(idx)}
+                  onMouseEnter={() => setHighlighted(itemIdx)}
                   className={cn(
                     'w-full flex items-center gap-3 rounded-lg p-2 text-left transition-colors',
-                    highlighted === idx ? 'bg-bg-surface-alt' : 'hover:bg-bg-surface-alt/50'
+                    highlighted === itemIdx ? 'bg-bg-surface-alt' : 'hover:bg-bg-surface-alt/50'
                   )}
                 >
                   <StockLogo

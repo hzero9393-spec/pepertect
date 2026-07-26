@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import {
   HelpCircle, Plus, Send, MessageSquare, Headphones, Sparkles,
   Ticket as TicketIcon, ChevronRight, Mail, FileText,
-  Search, Filter,
+  Search, Filter, Loader2, X,
 } from 'lucide-react';
 import type { SupportTicket } from '@/types';
 
@@ -26,6 +26,13 @@ export function SupportPage() {
   const [replyContent, setReplyContent] = useState('');
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+
+  /* Inline "Create New Ticket" state — toggled from within Your Tickets */
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newSubject, setNewSubject] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const fetchTickets = async () => {
     if (!token) return;
@@ -53,6 +60,38 @@ export function SupportPage() {
       fetchTickets();
     } catch {
       /* ignore */
+    }
+  };
+
+  /* ---------- Inline ticket creation ---------- */
+  const handleCreateTicket = async () => {
+    if (!newSubject.trim() || !newDescription.trim()) {
+      setCreateError('Both subject and description are required');
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const res = await fetch('/api/support', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ subject: newSubject.trim(), description: newDescription.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewSubject('');
+        setNewDescription('');
+        setShowCreateForm(false);
+        await fetchTickets();
+        // Auto-select the newly created ticket so user sees the conversation
+        if (data.data?.id) setSelectedTicket(data.data.id);
+      } else {
+        setCreateError(data.error || 'Failed to create ticket');
+      }
+    } catch {
+      setCreateError('Network error. Please try again.');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -112,35 +151,101 @@ export function SupportPage() {
         </div>
       </div>
 
-      {/* ============== CREATE TICKET CTA (compact) ============== */}
-      {/* Inline form removed — user clicks the prominent CTA below to open the
-          dedicated /support/new-ticket page where the full form lives. */}
-      <a
-        href="/support/new-ticket"
-        className="card-soft p-4 flex items-center gap-3 hover:bg-bg-surface-alt transition-colors group"
-      >
-        <div className="icon-tile bg-tint-blue">
-          <Plus className="h-5 w-5 text-brand-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm text-text-primary">Create a New Ticket</p>
-          <p className="text-[11px] text-text-secondary mt-0.5">
-            Open the dedicated ticket form to describe your issue in detail
-          </p>
-        </div>
-        <ChevronRight className="h-4 w-4 text-text-tertiary group-hover:text-brand-primary transition-colors shrink-0" />
-      </a>
-
-      {/* ============== YOUR TICKETS ============== */}
+      {/* ============== YOUR TICKETS (with inline create form) ============== */}
       <div>
         <div className="flex items-center justify-between px-1 mb-2">
           <h3 className="font-heading text-sm font-semibold text-text-primary">Your Tickets</h3>
-          <button className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary">
-            <Filter className="h-3 w-3" />
-            Filter
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateForm((v) => !v)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors',
+                showCreateForm
+                  ? 'bg-bg-surface-alt text-text-secondary border border-border'
+                  : 'bg-brand-primary text-white hover:bg-brand-primary-hover'
+              )}
+            >
+              {showCreateForm ? (
+                <>
+                  <X className="h-3 w-3" /> Cancel
+                </>
+              ) : (
+                <>
+                  <Plus className="h-3 w-3" /> New Ticket
+                </>
+              )}
+            </button>
+            <button className="hidden sm:flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary">
+              <Filter className="h-3 w-3" />
+              Filter
+            </button>
+          </div>
         </div>
+
         <div className="card-soft">
+          {/* Inline "Create New Ticket" form — collapses by default */}
+          {showCreateForm && (
+            <div className="border-b border-border bg-bg-surface-alt/40 p-3 space-y-3">
+              <div>
+                <label className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">
+                  Subject
+                </label>
+                <input
+                  type="text"
+                  value={newSubject}
+                  onChange={(e) => setNewSubject(e.target.value)}
+                  placeholder="Briefly describe your issue"
+                  className="mt-1 w-full h-10 px-3 rounded-lg border border-border bg-bg-base text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">
+                  Description
+                </label>
+                <textarea
+                  value={newDescription}
+                  onChange={(e) => setNewDescription(e.target.value)}
+                  placeholder="Provide details about your problem"
+                  rows={4}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-bg-base text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-primary/30 resize-none"
+                />
+              </div>
+              {createError && (
+                <p className="text-xs text-loss-red font-medium">{createError}</p>
+              )}
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setNewSubject('');
+                    setNewDescription('');
+                    setCreateError(null);
+                  }}
+                  className="h-9 px-3 rounded-lg border border-border text-xs font-semibold text-text-secondary hover:bg-bg-surface-alt"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateTicket}
+                  disabled={creating}
+                  className="h-9 px-4 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white text-xs font-bold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {creating ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-3.5 w-3.5" />
+                      Create Ticket
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Status filter tabs */}
           <div className="flex items-center border-b border-border px-2 overflow-x-auto no-scrollbar">
             {STATUS_FILTERS.map((f) => (
@@ -170,15 +275,23 @@ export function SupportPage() {
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-tint-blue mb-3">
                   <FileText className="h-8 w-8 text-brand-primary" />
                 </div>
-                <p className="font-heading text-sm font-semibold text-text-primary">No tickets yet</p>
-                <p className="text-xs text-text-secondary mt-0.5">You haven't raised any support tickets.</p>
-                <a
-                  href="/support/new-ticket"
-                  className="mt-4 rounded-lg border border-brand-primary text-brand-primary px-4 py-2 text-xs font-semibold hover:bg-tint-blue inline-flex items-center gap-1.5"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Create your first ticket
-                </a>
+                <p className="font-heading text-sm font-semibold text-text-primary">
+                  {showCreateForm ? 'Fill the form above to create one' : 'No tickets yet'}
+                </p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  {showCreateForm
+                    ? 'Subject and description are required.'
+                    : 'You haven\'t raised any support tickets. Click "New Ticket" above to start.'}
+                </p>
+                {!showCreateForm && (
+                  <button
+                    onClick={() => setShowCreateForm(true)}
+                    className="mt-4 rounded-lg bg-brand-primary text-white px-4 py-2 text-xs font-semibold hover:bg-brand-primary-hover inline-flex items-center gap-1.5"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Create your first ticket
+                  </button>
+                )}
               </div>
             ) : (
               <div className="space-y-2">
@@ -297,16 +410,16 @@ export function SupportPage() {
       <div>
         <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Need more help?</h3>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <a
-            href="/support/new-ticket"
-            className="card-soft p-4 hover:shadow-md transition-shadow group"
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="card-soft p-4 hover:shadow-md transition-shadow group text-left"
           >
             <div className="icon-tile bg-tint-blue mb-3">
               <Plus className="h-5 w-5 text-brand-primary" />
             </div>
             <p className="font-semibold text-sm text-text-primary">Create a Ticket</p>
-            <p className="text-[11px] text-text-secondary mt-0.5">Get a dedicated support thread</p>
-          </a>
+            <p className="text-[11px] text-text-secondary mt-0.5">Open the inline ticket form above</p>
+          </button>
           <a
             href="/support/help-center"
             className="card-soft p-4 hover:shadow-md transition-shadow group"

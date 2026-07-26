@@ -198,7 +198,10 @@ export async function POST(req: NextRequest) {
           });
         }
       } else {
-        // SELL: find open position and square off
+        // SELL: find open position and square off.
+        // IMPORTANT: brokerage is NOT charged on exit — it was already paid on the
+        // buy side. This ensures that a round-trip trade with no P&L restores the
+        // balance to exactly its pre-trade value (paper trading expectation).
         const pos = await db.position.findFirst({
           where: { userId: auth.userId, stockId: stock.id, symbol, status: 'OPEN' },
         });
@@ -212,21 +215,21 @@ export async function POST(req: NextRequest) {
           await db.portfolio.update({
             where: { userId: auth.userId },
             data: {
-              totalBalance: { increment: fillPrice * quantity - brokerage },
-              availableMargin: { increment: fillPrice * quantity - brokerage },
+              totalBalance: { increment: fillPrice * quantity },
+              availableMargin: { increment: fillPrice * quantity },
               investedAmount: { decrement: pos.investedAmt },
               totalPnl: { increment: pnl },
               realizedPnl: { increment: pnl },
             },
           });
-          // Record CREDIT transaction for the sell
+          // Record CREDIT transaction for the sell (no brokerage deduction)
           if (portfolioBefore) {
-            const newBalance = Number(portfolioBefore.totalBalance) + (fillPrice * quantity - brokerage);
+            const newBalance = Number(portfolioBefore.totalBalance) + (fillPrice * quantity);
             await db.transaction.create({
               data: {
                 portfolioId: portfolioBefore.id,
                 type: 'CREDIT',
-                amount: fillPrice * quantity - brokerage,
+                amount: fillPrice * quantity,
                 balance: newBalance,
                 description: `Sell ${symbol} · ${quantity} qty @ ₹${fillPrice.toFixed(2)}${pnl !== 0 ? ` · P&L ${pnl >= 0 ? '+' : ''}₹${pnl.toFixed(2)}` : ''}`,
                 reference: order.id,

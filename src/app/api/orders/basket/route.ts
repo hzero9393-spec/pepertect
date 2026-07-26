@@ -199,7 +199,8 @@ export async function POST(req: NextRequest) {
               });
             }
           } else {
-            // SELL leg — square off position if exists
+            // SELL leg — square off position if exists.
+            // Brokerage is NOT charged on exit — already paid on the buy side.
             const pos = await db.position.findFirst({
               where: { userId: auth.userId, stockId: stock.id, symbol: leg.symbol.toUpperCase(), status: 'OPEN' },
             });
@@ -213,20 +214,20 @@ export async function POST(req: NextRequest) {
               await db.portfolio.update({
                 where: { userId: auth.userId },
                 data: {
-                  totalBalance: { increment: leg.fillPrice * leg.quantity - brokerage },
-                  availableMargin: { increment: leg.fillPrice * leg.quantity - brokerage },
+                  totalBalance: { increment: leg.fillPrice * leg.quantity },
+                  availableMargin: { increment: leg.fillPrice * leg.quantity },
                   investedAmount: { decrement: pos.investedAmt },
                   totalPnl: { increment: pnl },
                   realizedPnl: { increment: pnl },
                 },
               });
               if (portfolioBefore) {
-                const newBalance = Number(portfolioBefore.totalBalance) + (leg.fillPrice * leg.quantity - brokerage);
+                const newBalance = Number(portfolioBefore.totalBalance) + (leg.fillPrice * leg.quantity);
                 await db.transaction.create({
                   data: {
                     portfolioId: portfolioBefore.id,
                     type: 'CREDIT',
-                    amount: leg.fillPrice * leg.quantity - brokerage,
+                    amount: leg.fillPrice * leg.quantity,
                     balance: newBalance,
                     description: `Sell ${leg.symbol.toUpperCase()} · ${leg.quantity} qty @ ₹${leg.fillPrice.toFixed(2)}${pnl !== 0 ? ` · P&L ${pnl >= 0 ? '+' : ''}₹${pnl.toFixed(2)}` : ''}`,
                     reference: order.id,

@@ -61,13 +61,15 @@ export async function POST(
       },
     });
 
-    // Fetch portfolio BEFORE update so we can record the running balance
+    // Fetch portfolio BEFORE update so we can record the running balance.
+    // Brokerage is NOT charged on exit — it was already paid on the buy side.
+    // This guarantees a round-trip trade with no P&L restores the balance exactly.
     const portfolioBefore = await db.portfolio.findUnique({ where: { userId: auth.userId } });
     await db.portfolio.update({
       where: { userId: auth.userId },
       data: {
-        totalBalance: { increment: orderValue - brokerage },
-        availableMargin: { increment: orderValue - brokerage },
+        totalBalance: { increment: orderValue },
+        availableMargin: { increment: orderValue },
         investedAmount: { decrement: Number(position.investedAmt) },
         totalPnl: { increment: pnl },
         realizedPnl: { increment: pnl },
@@ -78,12 +80,12 @@ export async function POST(
 
     // Record a CREDIT transaction so user can see money flowing back into the wallet
     if (portfolioBefore) {
-      const newBalance = Number(portfolioBefore.totalBalance) + (orderValue - brokerage);
+      const newBalance = Number(portfolioBefore.totalBalance) + orderValue;
       await db.transaction.create({
         data: {
           portfolioId: portfolioBefore.id,
           type: 'CREDIT',
-          amount: orderValue - brokerage,
+          amount: orderValue,
           balance: newBalance,
           description: `Exit ${position.symbol} · ${position.quantity} qty @ ₹${exitPrice.toFixed(2)}${pnl !== 0 ? ` · P&L ${pnl >= 0 ? '+' : ''}₹${pnl.toFixed(2)}` : ''}`,
           reference: position.id,

@@ -112,9 +112,11 @@ export function PortfolioPage() {
     );
   }
 
-  const totalBalance = portfolio?.totalBalance ?? 100000;
+  // Real portfolio values from /api/portfolio — no DEMO fallbacks.
+  // If the portfolio hasn't loaded yet, the loading skeleton above handles it.
+  const totalBalance = portfolio?.totalBalance ?? 0;
   const invested = portfolio?.investedAmount ?? 0;
-  const available = portfolio?.availableMargin ?? (totalBalance - invested);
+  const available = portfolio?.availableMargin ?? 0;
   const totalPnl = portfolio?.totalPnl ?? 0;
   const realized = portfolio?.realizedPnl ?? 0;
   const unrealized = portfolio?.unrealizedPnl ?? 0;

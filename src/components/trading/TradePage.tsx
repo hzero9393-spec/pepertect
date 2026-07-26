@@ -36,6 +36,9 @@ export function TradePage() {
   const [activeTab, setActiveTab] = useState<'orders' | 'trades'>('orders');
   const [liveStock, setLiveStock] = useState<Stock | null>(null);
   const [showMarginBreakdown, setShowMarginBreakdown] = useState(false);
+  /* Real portfolio balance — fetched from /api/portfolio so the user sees
+     their actual available margin, not a hard-coded DEMO value. */
+  const [portfolioBalance, setPortfolioBalance] = useState<number | null>(null);
   /* 3-way tab: place | basket | orders */
   const [mainTab, setMainTab] = useState<'place' | 'basket' | 'orders'>('place');
   /* Redirect state — when set, will redirect to /positions after delay */
@@ -85,14 +88,19 @@ export function TradePage() {
       if (!token) return;
       try {
         const headers = { Authorization: `Bearer ${token}` };
-        const [oRes, tRes] = await Promise.all([
+        const [oRes, tRes, pRes] = await Promise.all([
           fetch('/api/orders', { headers }),
           fetch('/api/trades', { headers }),
+          fetch('/api/portfolio', { headers }),
         ]);
         const oData = await oRes.json();
         const tData = await tRes.json();
+        const pData = await pRes.json();
         if (oData.success) setOrders(oData.data);
         if (tData.success) setTrades(tData.data);
+        if (pData.success && typeof pData.data?.availableMargin === 'number') {
+          setPortfolioBalance(pData.data.availableMargin);
+        }
       } catch (err) {
         console.error('Trade data error:', err);
       } finally {
@@ -135,6 +143,14 @@ export function TradePage() {
         const oRes = await fetch('/api/orders', { headers: { Authorization: `Bearer ${token}` } });
         const oData = await oRes.json();
         if (oData.success) setOrders(oData.data);
+        // Refresh the real portfolio balance so the user sees the updated margin
+        try {
+          const pRes2 = await fetch('/api/portfolio', { headers: { Authorization: `Bearer ${token}` } });
+          const pData2 = await pRes2.json();
+          if (pData2.success && typeof pData2.data?.availableMargin === 'number') {
+            setPortfolioBalance(pData2.data.availableMargin);
+          }
+        } catch { /* ignore */ }
 
         /* ---------- Post-order flow ----------
            1. Switch to "Orders" tab so user sees their order at the top
@@ -170,7 +186,9 @@ export function TradePage() {
   const qty = parseInt(quantity) || 0;
   const refPrice = liveStock?.ltp ?? (parseFloat(price) || 0);
   const orderValue = qty * refPrice;
-  const availableBalance = user?.virtualCapital ?? 100000;
+  // Real available margin from /api/portfolio — never falls back to a hard-coded
+  // DEMO value. If the fetch hasn't completed yet, show "—" instead.
+  const availableBalance = portfolioBalance;
   const pendingCount = orders.filter((o) => o.status === 'PENDING').length;
 
   return (
@@ -493,7 +511,9 @@ export function TradePage() {
                 <span className="text-xs text-text-secondary">Lot Size: 1</span>
                 <div className="flex-1 text-right">
                   <span className="text-xs text-text-secondary">Available Balance: </span>
-                  <span className="text-xs font-semibold text-profit-green font-mono">₹{formatNumber(availableBalance, 2)}</span>
+                  <span className="text-xs font-semibold text-profit-green font-mono">
+                    {availableBalance == null ? '—' : `₹${formatNumber(availableBalance, 2)}`}
+                  </span>
                 </div>
               </div>
             </div>
