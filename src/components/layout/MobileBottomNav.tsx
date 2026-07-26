@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils';
 import { usePathname } from 'next/navigation';
+import { useAuthStore } from '@/stores/useAuthStore';
 import {
   LayoutDashboard, TrendingUp, Briefcase, Eye, BarChart3,
 } from 'lucide-react';
@@ -23,7 +24,11 @@ const MOBILE_NAV_ITEMS: MobileNavItem[] = [
 
 export function MobileBottomNav() {
   const pathname = usePathname();
+  const { isAuthenticated } = useAuthStore();
   const activePath = pathname === '/' ? 'dashboard' : pathname.replace('/', '').split('/')[0];
+
+  // Don't render the bottom nav on public pages (landing / login / register)
+  if (!isAuthenticated) return null;
 
   return (
     <nav

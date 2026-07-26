@@ -134,7 +134,12 @@ export default function HomePage() {
   }
 
   const segment = pathname.replace('/', '').split('/')[0];
-  const isAuthPage = ['landing', 'login', 'register'].includes(segment);
+  // When unauthenticated, the root `/` (empty segment) is the public landing page —
+  // render it full-screen without the AppShell sidebar/header wrapper.
+  // When authenticated, `/` shows the Dashboard inside AppShell (handled above).
+  const isAuthPage =
+    ['landing', 'login', 'register'].includes(segment) ||
+    (segment === '' && !isAuthenticated);
 
   if (isAuthPage) {
     return <Page />;

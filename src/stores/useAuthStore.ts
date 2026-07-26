@@ -26,7 +26,14 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user, isAuthenticated: true }),
       setToken: (token) => set({ token }),
       login: (user, token) => set({ user, token, isAuthenticated: true, isLoading: false }),
-      logout: () => set({ user: null, token: null, isAuthenticated: false, isLoading: false }),
+      logout: () => {
+        set({ user: null, token: null, isAuthenticated: false, isLoading: false });
+        // Hard-navigate to the public landing page so the user sees the marketing site
+        // immediately after logout (instead of staying on a now-broken authenticated URL).
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+        }
+      },
       setLoading: (isLoading) => set({ isLoading }),
       updateTier: (tier) => set((state) => ({ user: state.user ? { ...state.user, tier } : null })),
       updateBalance: (virtualCapital) => set((state) => ({ user: state.user ? { ...state.user, virtualCapital } : null })),
