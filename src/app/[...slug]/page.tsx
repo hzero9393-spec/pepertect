@@ -6,6 +6,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/components/dashboard/DashboardPage';
 import { MarketPage } from '@/components/market/MarketPage';
 import { TradePage } from '@/components/trading/TradePage';
+import { OptionChainPage } from '@/components/trading/OptionChainPage';
 import { PositionsPage } from '@/components/portfolio/PositionsPage';
 import { WatchlistPage } from '@/components/market/WatchlistPage';
 import { LearningPage } from '@/components/learning/LearningPage';
@@ -23,6 +24,7 @@ const PAGE_MAP: Record<string, React.ComponentType> = {
   dashboard: DashboardPage,
   market: MarketPage,
   trade: TradePage,
+  optionchain: OptionChainPage,
   positions: PositionsPage,
   watchlist: WatchlistPage,
   learning: LearningPage,

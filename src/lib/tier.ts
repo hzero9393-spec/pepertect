@@ -6,7 +6,9 @@ const FEATURE_MATRIX: Record<string, Tier> = {
   futures_trading: 'PREMIUM',
   options_trading: 'PREMIUM',
   realtime_prices: 'PREMIUM',
-  option_chain: 'PREMIUM',
+  // Option chain is available to everyone — paper trading platform,
+  // and the user explicitly requested it for 4 indices across the app.
+  option_chain: 'FREE',
   auto_exit: 'PREMIUM',
   advanced_reports: 'PREMIUM',
   unlimited_watchlist: 'PREMIUM',

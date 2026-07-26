@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Activity,
   Layers,
+  ListTree,
   DollarSign,
   Clock,
   Share2,
@@ -18,7 +19,7 @@ import {
   ChevronLeft,
 } from 'lucide-react';
 import type { Stock } from '@/types';
-import { StockLogo } from '@/components/shared/StockLogo';
+import { StockLogo, isIndexSymbol } from '@/components/shared/StockLogo';
 
 interface Candle {
   t: number;
@@ -55,6 +56,20 @@ function getExtraStats(symbol: string, ltp: number) {
     '5Y': (rng(12) * 100),
   };
   return { yearLow, yearHigh, mcap, peRatio, divYield, beta, returns };
+}
+
+// The 4 indices that have an option chain page.
+// Maps the symbol shown on the indices list to the symbol used by the option chain API.
+const OPTION_CHAIN_INDEX_MAP: Record<string, string> = {
+  NIFTY: 'NIFTY',
+  SENSEX: 'SENSEX',
+  BANKNIFTY: 'BANKNIFTY',
+  NIFTYFS: 'FINNIFTY',
+  FINNIFTY: 'FINNIFTY',
+};
+
+function getOptionChainSymbol(symbol: string): string | null {
+  return OPTION_CHAIN_INDEX_MAP[symbol.toUpperCase()] ?? null;
 }
 
 export function StockDetailPage() {
@@ -187,6 +202,9 @@ export function StockDetailPage() {
   const isUp = changePct >= 0;
   const extra = getExtraStats(stock.symbol, ltp);
 
+  const optionChainSymbol = getOptionChainSymbol(stock.symbol);
+  const isIndex = isIndexSymbol(stock.symbol);
+
   return (
     <div className="space-y-4">
       {/* ============== BACK BUTTON (mobile) ============== */}
@@ -233,6 +251,18 @@ export function StockDetailPage() {
           </button>
         </div>
 
+        {/* For indices that have an option chain (NIFTY/SENSEX/BANKNIFTY/FINNIFTY):
+            show a prominent "View Option Chain" CTA above the watchlist row. */}
+        {optionChainSymbol && (
+          <a
+            href={`/optionchain?symbol=${optionChainSymbol}`}
+            className="mt-4 flex h-12 items-center justify-center gap-2 rounded-lg bg-brand-primary text-white font-bold text-sm hover:bg-brand-primary/90 transition-colors"
+          >
+            <ListTree className="h-4 w-4" />
+            View Option Chain
+          </a>
+        )}
+
         {/* Watchlist + BUY/SELL row */}
         <div className="mt-4 flex items-center gap-2">
           <button
@@ -253,18 +283,29 @@ export function StockDetailPage() {
             )}
             <span className="hidden sm:inline">{inWatchlist ? 'Watching' : 'Watchlist'}</span>
           </button>
-          <a href={`/trade?symbol=${stock.symbol}`} className="flex-1">
-            <button className="w-full h-11 rounded-lg bg-profit-green text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-profit-green/90">
-              <ArrowUp className="h-4 w-4" />
-              BUY
-            </button>
-          </a>
-          <a href={`/trade?symbol=${stock.symbol}&side=SELL`} className="flex-1">
-            <button className="w-full h-11 rounded-lg bg-loss-red text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-loss-red/90">
-              <ArrowDown className="h-4 w-4" />
-              SELL
-            </button>
-          </a>
+          {/* Indices aren't tradable as equity — hide BUY/SELL for them */}
+          {!isIndex && (
+            <>
+              <a href={`/trade?symbol=${stock.symbol}`} className="flex-1">
+                <button className="w-full h-11 rounded-lg bg-profit-green text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-profit-green/90">
+                  <ArrowUp className="h-4 w-4" />
+                  BUY
+                </button>
+              </a>
+              <a href={`/trade?symbol=${stock.symbol}&side=SELL`} className="flex-1">
+                <button className="w-full h-11 rounded-lg bg-loss-red text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-loss-red/90">
+                  <ArrowDown className="h-4 w-4" />
+                  SELL
+                </button>
+              </a>
+            </>
+          )}
+          {/* For indices without option chain support, show a disabled-looking placeholder */}
+          {isIndex && !optionChainSymbol && (
+            <div className="flex-1 h-11 rounded-lg bg-bg-surface-alt text-text-tertiary font-medium text-xs flex items-center justify-center px-3 text-center">
+              Index — not tradable as equity
+            </div>
+          )}
         </div>
       </div>
 
@@ -435,24 +476,37 @@ export function StockDetailPage() {
         </div>
       </div>
 
-      {/* ============== SECONDARY BUY/SELL (sticky bottom on mobile) ============== */}
-      <div className="card-soft p-3 sticky bottom-[80px] z-10 md:static">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text-secondary hidden sm:inline">Depth</span>
-          <a href={`/trade?symbol=${stock.symbol}`} className="flex-1">
-            <button className="w-full h-11 rounded-lg bg-profit-green text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-profit-green/90">
-              <ArrowUp className="h-4 w-4" />
-              BUY
-            </button>
-          </a>
-          <a href={`/trade?symbol=${stock.symbol}&side=SELL`} className="flex-1">
-            <button className="w-full h-11 rounded-lg bg-loss-red text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-loss-red/90">
-              <ArrowDown className="h-4 w-4" />
-              SELL
-            </button>
-          </a>
+      {/* ============== SECONDARY BUY/SELL (sticky bottom on mobile) — hidden for indices ============== */}
+      {!isIndex && (
+        <div className="card-soft p-3 sticky bottom-[80px] z-10 md:static">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-secondary hidden sm:inline">Depth</span>
+            <a href={`/trade?symbol=${stock.symbol}`} className="flex-1">
+              <button className="w-full h-11 rounded-lg bg-profit-green text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-profit-green/90">
+                <ArrowUp className="h-4 w-4" />
+                BUY
+              </button>
+            </a>
+            <a href={`/trade?symbol=${stock.symbol}&side=SELL`} className="flex-1">
+              <button className="w-full h-11 rounded-lg bg-loss-red text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-loss-red/90">
+                <ArrowDown className="h-4 w-4" />
+                SELL
+              </button>
+            </a>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* For supported indices, show a secondary sticky Option Chain CTA on mobile */}
+      {isIndex && optionChainSymbol && (
+        <a
+          href={`/optionchain?symbol=${optionChainSymbol}`}
+          className="card-soft p-3 sticky bottom-[80px] z-10 md:static flex items-center justify-center gap-2 bg-brand-primary text-white font-bold text-sm hover:bg-brand-primary/90"
+        >
+          <ListTree className="h-4 w-4" />
+          View {stock.symbol} Option Chain
+        </a>
+      )}
     </div>
   );
 }

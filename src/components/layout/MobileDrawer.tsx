@@ -7,7 +7,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import {
   X, Zap, LayoutDashboard, TrendingUp, BarChart3, Briefcase, Eye,
   GraduationCap, CreditCard, HelpCircle, Settings, User,
-  LogOut, ChevronRight, Sun, Moon, Bell,
+  LogOut, ChevronRight, Sun, Moon, Bell, ListTree,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -24,6 +24,7 @@ const PRIMARY_ITEMS: DrawerItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'market', label: 'Markets', icon: TrendingUp },
   { id: 'trade', label: 'Trade', icon: BarChart3 },
+  { id: 'optionchain', label: 'Option Chain', icon: ListTree },
   { id: 'positions', label: 'Positions', icon: Briefcase },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
 ];

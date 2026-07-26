@@ -29,6 +29,7 @@ export function Header() {
       dashboard: 'Dashboard',
       market: 'Markets',
       trade: 'Trade',
+      optionchain: 'Option Chain',
       positions: 'Positions',
       watchlist: 'Watchlist',
       learning: 'Learning',
