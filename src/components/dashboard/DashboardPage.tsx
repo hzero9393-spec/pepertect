@@ -117,14 +117,19 @@ export function DashboardPage() {
             <CardTitle className="font-heading text-base font-semibold flex items-center gap-2">
               Market Indices
               <div className="live-dot-green" />
+              <a href="/market" className="ml-auto text-xs text-brand-primary hover:underline">View All</a>
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
+            <div className="grid gap-2 sm:gap-3 sm:grid-cols-2">
               {indices.map((idx) => (
-                <div key={idx.id} className="flex items-center justify-between rounded-lg border border-border-default p-3">
-                  <div>
-                    <p className="font-heading text-sm font-semibold text-text-primary">{idx.name}</p>
+                <a
+                  key={idx.id}
+                  href={`/stock/${idx.symbol}`}
+                  className="group flex items-center justify-between rounded-lg border border-border-default p-3 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
+                >
+                  <div className="min-w-0">
+                    <p className="font-heading text-sm font-semibold text-text-primary group-hover:text-brand-primary">{idx.name}</p>
                     <p className="text-xs text-text-secondary">{idx.exchange}</p>
                   </div>
                   <div className="text-right">
@@ -135,7 +140,7 @@ export function DashboardPage() {
                       {idx.change >= 0 ? '+' : ''}{formatNumber(idx.change)} ({idx.changePct >= 0 ? '+' : ''}{idx.changePct.toFixed(2)}%)
                     </p>
                   </div>
-                </div>
+                </a>
               ))}
             </div>
           </CardContent>
@@ -159,8 +164,12 @@ export function DashboardPage() {
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
                 {positions.slice(0, 5).map((pos) => (
-                  <div key={pos.id} className="flex items-center justify-between rounded-md border border-border-default p-2.5">
-                    <div>
+                  <a
+                    key={pos.id}
+                    href={`/stock/${pos.symbol}`}
+                    className="flex items-center justify-between rounded-md border border-border-default p-2.5 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
+                  >
+                    <div className="min-w-0">
                       <p className="font-mono text-sm font-medium text-text-primary">{pos.symbol}</p>
                       <p className="text-xs text-text-secondary">{pos.quantity} @ {formatNumber(pos.avgPrice)}</p>
                     </div>
@@ -172,7 +181,7 @@ export function DashboardPage() {
                         {pos.pnlPct >= 0 ? '+' : ''}{pos.pnlPct.toFixed(1)}%
                       </p>
                     </div>
-                  </div>
+                  </a>
                 ))}
               </div>
             )}
@@ -208,8 +217,12 @@ export function DashboardPage() {
                   </thead>
                   <tbody>
                     {recentOrders.map((ord) => (
-                      <tr key={ord.id} className="border-b border-border-default/50">
-                        <td className="py-2 font-mono font-medium text-text-primary">{ord.symbol}</td>
+                      <tr key={ord.id} className="border-b border-border-default/50 hover:bg-bg-surface-alt/50">
+                        <td className="py-2">
+                          <a href={`/stock/${ord.symbol}`} className="font-mono font-medium text-text-primary hover:text-brand-primary">
+                            {ord.symbol}
+                          </a>
+                        </td>
                         <td className="py-2">
                           <span className={`font-medium ${ord.side === 'BUY' ? 'text-profit-green' : 'text-loss-red'}`}>
                             {ord.side}
@@ -236,7 +249,11 @@ export function DashboardPage() {
               {/* Mobile: cards */}
               <div className="sm:hidden space-y-2">
                 {recentOrders.map((ord) => (
-                  <div key={ord.id} className="rounded-lg border border-border-default p-3">
+                  <a
+                    key={ord.id}
+                    href={`/stock/${ord.symbol}`}
+                    className="block rounded-lg border border-border-default p-3 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
+                  >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</span>
@@ -264,7 +281,7 @@ export function DashboardPage() {
                         ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0)}
                       </span>
                     </div>
-                  </div>
+                  </a>
                 ))}
               </div>
             </>

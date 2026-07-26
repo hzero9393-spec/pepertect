@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { db } from '@/lib/db';
 
-const MOCK_PRICES: Record<string, { name: string; ltp: number; sector: string; lotSize: number }> = {
+const MOCK_PRICES: Record<string, { name: string; ltp: number; sector: string; lotSize: number; exchange?: string }> = {
   RELIANCE:     { name: 'Reliance Industries Ltd',        ltp: 1882.75, sector: 'Energy',        lotSize: 250 },
   TCS:          { name: 'Tata Consultancy Services Ltd',  ltp: 3945.60, sector: 'IT',            lotSize: 150 },
   INFY:         { name: 'Infosys Ltd',                   ltp: 1568.30, sector: 'IT',            lotSize: 300 },
@@ -23,6 +23,11 @@ const MOCK_PRICES: Record<string, { name: string; ltp: number; sector: string; l
   SUNPHARMA:    { name: 'Sun Pharmaceutical Industries', ltp: 1824.15, sector: 'Pharma',        lotSize: 700 },
   TITAN:        { name: 'Titan Company Ltd',             ltp: 3568.90, sector: 'Consumer',      lotSize: 175 },
   ADANIENT:     { name: 'Adani Enterprises Ltd',        ltp: 2890.45, sector: 'Conglomerate', lotSize: 250 },
+  // Indices — so /stock/NIFTY etc. don't 404 when clicked from dashboard
+  NIFTY:        { name: 'NIFTY 50 Index',                ltp: 24587.30, sector: 'Index',        lotSize: 50,  exchange: 'NSE' },
+  SENSEX:       { name: 'BSE SENSEX Index',              ltp: 80842.10, sector: 'Index',        lotSize: 10,  exchange: 'BSE' },
+  BANKNIFTY:    { name: 'NIFTY Bank Index',              ltp: 52134.55, sector: 'Index',        lotSize: 15,  exchange: 'NSE' },
+  NIFTYFS:      { name: 'NIFTY Financial Services Index', ltp: 23156.80, sector: 'Index',       lotSize: 25,  exchange: 'NSE' },
 };
 
 function generateMockOHLC(ltp: number) {
@@ -64,6 +69,7 @@ export async function GET(
           sector: mock.sector,
           lotSize: mock.lotSize,
           tickSize: 0.05,
+          exchange: mock.exchange || 'NSE',
           ...ohlc,
         },
       });

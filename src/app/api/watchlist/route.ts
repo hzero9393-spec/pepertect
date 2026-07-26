@@ -9,6 +9,8 @@ const MOCK_PRICES: Record<string, number> = {
   HINDUNILVR: 2534.10, KOTAKBANK: 1789.30, LT: 3542.65, AXISBANK: 1168.40,
   BAJFINANCE: 7234.50, MARUTI: 12450.80, TATAMOTORS: 978.35, WIPRO: 572.60,
   HCLTECH: 1712.40, SUNPHARMA: 1824.15, TITAN: 3568.90, ADANIENT: 2890.45,
+  // Indices
+  NIFTY: 24587.30, SENSEX: 80842.10, BANKNIFTY: 52134.55, NIFTYFS: 23156.80,
 };
 
 export async function GET(req: NextRequest) {
@@ -23,8 +25,14 @@ export async function GET(req: NextRequest) {
     });
 
     const items = watchlist.map((w) => {
-      const ltp = MOCK_PRICES[w.stock.symbol] ?? 0;
-      const close = Number(w.stock.close ?? 0);
+      const stockAny = w.stock as unknown as { ltp?: number | null; close?: number | null };
+      // Prefer the stock's stored ltp (set when stock detail was fetched),
+      // fall back to the static mock map.
+      const ltp =
+        stockAny.ltp != null
+          ? Number(stockAny.ltp)
+          : MOCK_PRICES[w.stock.symbol] ?? 0;
+      const close = Number(stockAny.close ?? 0);
       const change = ltp - close;
       const changePct = close > 0 ? (change / close) * 100 : 0;
       return {

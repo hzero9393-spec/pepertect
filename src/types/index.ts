@@ -57,6 +57,7 @@ export interface IndexData {
   id: string;
   name: string;
   symbol: string;
+  exchange?: string;
   lastPrice: number;
   change: number;
   changePct: number;
