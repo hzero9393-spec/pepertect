@@ -84,3 +84,45 @@ Stage Summary:
 - All 17 pages accessible via direct URL (no more 404s)
 - Full trade flow verified in real browser: register → login → trade → view position
 - Test account: browsertest_1785043240@pepertect.com / TestPass123!
+
+---
+Task ID: 4
+Agent: Main
+Task: Make website mobile responsive (user reported: 'Ye website mobile responsive nahi hai')
+
+Work Log:
+- Analyzed user's mobile screenshot via VLM — identified issues: double header (browser URL bar + app header), rigid table layout, text cutoffs (SUNPHARMA truncated), redundant navigation (both hamburger menu and bottom tabs), no safe area for notched phones
+- Reviewed Pepertect-App-Screenshots.pdf (121 pages of design mockups) — extracted mobile design intent: card layouts, bottom nav, segmented controls
+
+Changes made:
+1. layout.tsx — Added Viewport export with viewport-fit=cover, themeColor, PWA manifest, appleWebApp config
+2. public/manifest.json — Created PWA manifest (standalone display mode hides browser URL bar)
+3. globals.css — Added 60+ mobile utility classes: safe-area-inset vars, .safe-top/.safe-bottom/.safe-pb, .no-scrollbar, .pb-mobile-nav, .app-container, .clamp-1/.clamp-2, .hide-mobile/.show-mobile/.hide-tablet/.show-tablet, 16px input font on mobile (prevents iOS zoom)
+4. src/components/layout/MobileBottomNav.tsx (NEW) — 5-tab bottom nav (Home/Markets/Trade/Positions/Watchlist) with safe-area padding, only on mobile
+5. src/components/layout/MobileDrawer.tsx (NEW) — Slide-in drawer with hamburger trigger; shows all 10 nav items grouped (Trading/More/Account), theme toggle, logout, user profile card
+6. src/components/layout/Sidebar.tsx — Now hidden on mobile (md:flex); drawer takes over
+7. src/components/layout/Header.tsx — Compact mobile header with hamburger + search icon (opens full-screen search overlay when tapped); title truncates
+8. src/components/layout/AppShell.tsx — Uses MobileBottomNav + safe area padding for content; main content has app-container + max-width
+9. src/components/dashboard/DashboardPage.tsx — Recent Orders: desktop table + mobile cards
+10. src/components/market/MarketPage.tsx — Stocks: 1-col mobile, 3-col desktop; indices horizontal scroll with smaller cards
+11. src/components/market/WatchlistPage.tsx — Tighter padding, text truncation, 44px touch targets
+12. src/components/market/StockDetailPage.tsx — 2-col OHLC on mobile (was 4-col), price text scales down
+13. src/components/portfolio/PositionsPage.tsx — Wraps metadata on mobile, scales font sizes
+14. src/components/trading/TradePage.tsx — Rewrote with cn() utility for conditional classNames; orders/trades have desktop table + mobile card layouts
+15. src/components/auth/LandingPage.tsx — Hero text scales (text-4xl mobile → text-7xl desktop), CTAs full-width on mobile
+
+Testing (real mobile viewport 390x844 in agent-browser):
+- /login → centered card form ✓
+- /register → form fills + creates account → redirects to /dashboard ✓
+- /dashboard → compact header + bottom nav + dashboard content ✓
+- /markets → single-column stock cards with prices ✓
+- /trade → order form + tabbed history (cards on mobile) ✓
+- /positions → card with Exit button ✓
+- /watchlist → search + empty state ✓
+- Drawer (hamburger) → all 10 nav links + theme toggle + logout ✓
+
+Stage Summary:
+- Production URL: https://pepertect.vercel.app (now fully mobile responsive)
+- All 17 pages adapted for mobile
+- 11 mobile screenshots saved to /home/z/my-project/download/
+- VLM verified: layout is 'clean and professional' on mobile
