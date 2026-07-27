@@ -211,23 +211,13 @@ export function FreeTrialPage() {
                 <p className="mt-2 text-sm text-white/90">
                   Start your 30-day free trial now and unlock all PREMIUM features instantly.
                 </p>
-                <button
-                  onClick={startTrial}
-                  disabled={starting}
-                  className="mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-accent-gold text-brand-primary font-bold text-sm px-5 hover:bg-accent-gold/90 transition-colors disabled:opacity-60"
+                <a
+                  href="/onboarding"
+                  className="mt-3 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-accent-gold text-brand-primary font-bold text-sm px-5 hover:bg-accent-gold/90 transition-colors"
                 >
-                  {starting ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Starting...
-                    </>
-                  ) : (
-                    <>
-                      <Gift className="h-4 w-4" />
-                      Start Free Trial
-                    </>
-                  )}
-                </button>
+                  <Gift className="h-4 w-4" />
+                  Start Free Trial
+                </a>
               </>
             ) : (
               <p className="text-sm text-white/90">{status?.message || 'Loading...'}</p>
@@ -358,23 +348,13 @@ export function FreeTrialPage() {
           <p className="mt-1 text-xs text-text-secondary">
             No credit card. No auto-charge. Cancel anytime.
           </p>
-          <button
-            onClick={startTrial}
-            disabled={starting}
-            className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-primary text-white font-bold text-sm px-6 hover:bg-brand-primary-hover transition-colors disabled:opacity-60"
+          <a
+            href="/onboarding"
+            className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand-primary text-white font-bold text-sm px-6 hover:bg-brand-primary-hover transition-colors"
           >
-            {starting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Starting...
-              </>
-            ) : (
-              <>
-                <Gift className="h-4 w-4" />
-                Activate Free Trial
-              </>
-            )}
-          </button>
+            <Gift className="h-4 w-4" />
+            Activate Free Trial
+          </a>
         </div>
       )}
     </div>

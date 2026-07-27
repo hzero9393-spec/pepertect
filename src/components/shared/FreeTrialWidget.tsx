@@ -135,13 +135,12 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
         </a>
       );
     }
-    // eligible
+    // eligible — navigate to onboarding flow
     return (
-      <button
-        onClick={startTrial}
-        disabled={starting}
+      <a
+        href="/onboarding"
         className={cn(
-          'flex items-center gap-3 w-full rounded-xl bg-gradient-to-r from-accent-gold/20 to-brand-primary/10 border border-accent-gold/30 px-4 py-2.5 hover:from-accent-gold/30 hover:to-brand-primary/15 transition-colors disabled:opacity-60',
+          'flex items-center gap-3 w-full rounded-xl bg-gradient-to-r from-accent-gold/20 to-brand-primary/10 border border-accent-gold/30 px-4 py-2.5 hover:from-accent-gold/30 hover:to-brand-primary/15 transition-colors',
           className
         )}
       >
@@ -150,12 +149,8 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
           <span className="text-accent-gold font-semibold">30 Days Free PREMIUM</span>{' '}
           — claim now
         </p>
-        {starting ? (
-          <Loader2 className="h-3.5 w-3.5 text-accent-gold shrink-0 animate-spin" />
-        ) : (
-          <ArrowRight className="h-3.5 w-3.5 text-accent-gold shrink-0" />
-        )}
-      </button>
+        <ArrowRight className="h-3.5 w-3.5 text-accent-gold shrink-0" />
+      </a>
     );
   }
 
@@ -231,23 +226,13 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
         </p>
         {error && <p className="mt-2 text-xs text-loss-red font-medium">{error}</p>}
         <div className="mt-3 flex items-center gap-2">
-          <button
-            onClick={startTrial}
-            disabled={starting}
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brand-primary text-white text-xs font-bold px-3 hover:bg-brand-primary-hover transition-colors disabled:opacity-60"
+          <a
+            href="/onboarding"
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brand-primary text-white text-xs font-bold px-3 hover:bg-brand-primary-hover transition-colors"
           >
-            {starting ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Starting...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-3.5 w-3.5" />
-                Start Free Trial
-              </>
-            )}
-          </button>
+            <Sparkles className="h-3.5 w-3.5" />
+            Start Free Trial
+          </a>
           <a
             href="/free-trial"
             className="inline-flex h-9 items-center justify-center gap-1 text-xs font-semibold text-text-secondary hover:text-text-primary"
