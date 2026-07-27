@@ -265,3 +265,38 @@ Stage Summary:
   * OAuth start: https://pepertect.vercel.app/api/upstox/connect
   * Status page: https://pepertect.vercel.app/upstox-status
   * Worker: https://upstox-realtime.hzero9393.workers.dev
+
+---
+Task ID: final-token-fix
+Agent: main
+Task: Set up fresh Upstox access token, route all REST calls via Cloudflare Worker HTTP proxy, fix 'unknown scheme' bug, verify live data flowing on Vercel.
+
+Work Log:
+- Verified new Upstox access token (issued 2026-07-27 04:17 UTC, expires 22:00 UTC, ~18h validity)
+- Tested token directly against Upstox API: profile/LTP/quotes/historical all return 200 OK
+- Updated local .env with new UPSTOX_ACCESS_TOKEN
+- Pushed token to Cloudflare Worker via POST /refresh-token
+- Deployed updated Cloudflare Worker with new HTTP proxy endpoints:
+  - /ltp /quotes /ohlc /option-chain /historical /profile /instruments
+  - proxyToUpstox() reads token from Durable Object memory (set via /refresh-token)
+  - DO gets /get-token handler to expose current token
+- Created src/lib/upstox-worker-proxy.ts (typed helper for all worker calls)
+- Updated /api/market/live-quote — worker proxy primary, direct call fallback
+- Updated /api/market/option-chain — worker proxy for LTP + chain, fallback to alternate expiries
+- Updated /api/market/historical — worker proxy for daily candles
+- Updated /api/upstox/status — probes worker /profile to verify live token
+- Diagnosed Vercel "unknown scheme" error: NEXT_PUBLIC_UPSTOX_WS_URL=wss://...workers.dev/ws
+  → after .replace(/\/ws$/, '') became wss://...workers.dev
+  → Node fetch only accepts https:// (not wss://)
+- Fixed resolveWorkerUrl() to normalize wss:// → https:// and ws:// → http://
+- Added expiry fallback for option chain (Upstox returns [] for some weekly expiries)
+- Pushed 3 commits: 0f2fb1f → f11054a → 80c213d → 22358ef → 89a8718
+- Deployed worker version: 43ab0139-d31c-438a-9203-0d9c86a39796
+
+Stage Summary:
+- Vercel deployment is LIVE with all worker proxy endpoints
+- /api/upstox/status verifies: connected=true, worker.hasToken=true, liveProbe.status=ok
+- Live probe shows: email=hzero9393@gmail.com, userName=ASHISH KUMAR, user_id=5UC698
+- All Upstox REST calls now route via worker (no Vercel env var dependency)
+- LTP, historical candles (2477 RELIANCE candles verified), option chain all working
+- Token valid until 22:00 UTC today (~18 hours); user can re-authorize via /api/upstox/connect
