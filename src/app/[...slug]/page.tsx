@@ -35,6 +35,7 @@ import { LanguagePage } from '@/components/settings/LanguagePage';
 import { LandingPage } from '@/components/auth/LandingPage';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { RegisterPage } from '@/components/auth/RegisterPage';
+import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { StockDetailPage } from '@/components/market/StockDetailPage';
 
 const PAGE_MAP: Record<string, React.ComponentType> = {
@@ -60,6 +61,7 @@ const PAGE_MAP: Record<string, React.ComponentType> = {
   landing: LandingPage,
   login: LoginPage,
   register: RegisterPage,
+  onboarding: OnboardingFlow,
 };
 
 // Settings sub-pages — handle /settings/change-password, /settings/2fa, etc.
@@ -220,7 +222,7 @@ export default function HomePage() {
   // render it full-screen without the AppShell sidebar/header wrapper.
   // When authenticated, `/` shows the Dashboard inside AppShell (handled above).
   const isAuthPage =
-    ['landing', 'login', 'register'].includes(segment) ||
+    ['landing', 'login', 'register', 'onboarding'].includes(segment) ||
     (segment === '' && !isAuthenticated);
 
   if (isAuthPage) {

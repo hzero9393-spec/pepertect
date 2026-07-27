@@ -684,3 +684,32 @@ Stage Summary:
   - SMTP_HOST=smtp.gmail.com, SMTP_PORT=587
   - SMTP_USER=hzero9393@gmail.com, SMTP_PASS=<App Password>
   - Add these as Vercel env vars
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Build high-conversion onboarding flow for fintech paper trading web app
+
+Work Log:
+- Analyzed project structure: Next.js 16 App Router, SPA catch-all routing, shadcn/ui, Framer Motion installed
+- Added `/onboarding` route to catch-all SPA router ([...slug]/page.tsx) as full-screen page (no AppShell)
+- Created `OnboardingFlow.tsx` with 7 steps + final reward screen
+- Step 1: Name + Phone inputs with validation (+91 prefix, 10-digit)
+- Steps 2-7: Selection cards with auto-advance on click (Experience, Trading Style, Market, Capital, Goal, Risk)
+- Final Screen: Congratulations with animated ₹ counter (easeOutExpo, 2.5s), confetti, glow effects, unlock animation
+- Sound Engine: Web Audio API — click, select, tick, milestone, success sounds (no external files)
+- Progress Bar: Step indicators with pulse animation on current step
+- Dark fintech theme: #0B0F19 background, #111827 surface, blue accent, green/red for profit/loss
+- Framer Motion: Slide transitions, scale+glow on selection, spring animations
+- Created API endpoint `/api/onboarding/complete` to save data (name, phone, capital, preferences)
+- Fixed AnimatedCounter lint error (ref access during render)
+- Fixed dev server startup (removed DIRECT_URL requirement)
+- Verified full flow with Agent Browser: All 7 steps + reward screen working correctly
+
+Stage Summary:
+- Created: `src/components/onboarding/OnboardingFlow.tsx` (~1060 lines)
+- Created: `src/app/api/onboarding/complete/route.ts`
+- Modified: `src/app/[...slug]/page.tsx` (added onboarding route)
+- Modified: `prisma/schema.prisma` (removed required directUrl)
+- All 200 responses, no errors in dev log
+- Agent Browser verified: Complete flow working end-to-end
