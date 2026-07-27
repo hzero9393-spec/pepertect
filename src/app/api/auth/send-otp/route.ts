@@ -81,33 +81,39 @@ export async function POST(req: NextRequest) {
     // ── Try Email Methods ──
     let emailSent = false;
     let method = '';
+    let emailWithOtp = false; // true only if the email actually contains the OTP code
 
-    // METHOD 1: Nodemailer SMTP (Gmail, ElasticEmail, etc.)
+    // METHOD 1: Nodemailer SMTP (Gmail, ElasticEmail, etc.) — sends OUR OTP in email
     emailSent = await trySmtp(normalized, otp);
-    if (emailSent) method = 'smtp';
+    if (emailSent) { method = 'smtp'; emailWithOtp = true; }
 
-    // METHOD 2: Resend (limited to registered email on free plan)
+    // METHOD 2: Resend (limited to registered email on free plan) — sends OUR OTP
     if (!emailSent) {
       emailSent = await tryResend(normalized, otp);
-      if (emailSent) method = 'resend';
+      if (emailSent) { method = 'resend'; emailWithOtp = true; }
     }
 
-    // METHOD 3: Supabase generate_link (sends its own email — may show magic link)
+    // METHOD 3: Supabase generate_link (sends magic link — NOT our OTP code)
+    // We still try this so the user gets SOMETHING in their inbox
+    // But it does NOT count as emailWithOtp since the email shows a link, not the OTP
     if (!emailSent) {
       emailSent = await trySupabase(normalized);
       if (emailSent) method = 'supabase';
     }
 
-    console.log(`[SEND-OTP] Email: ${normalized}, OTP: ${otp}, Sent via: ${method || 'NONE'}, Length: ${otp.length}`);
+    console.log(`[SEND-OTP] Email: ${normalized}, OTP: ${otp}, Sent via: ${method || 'NONE'}, emailWithOtp: ${emailWithOtp}`);
 
     return NextResponse.json({
       success: true,
-      message: emailSent
+      message: emailWithOtp
         ? 'OTP sent to your email. Please check your inbox (and spam folder).'
-        : 'OTP generated (email service not configured).',
+        : emailSent
+          ? 'Email sent. Check screen for your verification code.'
+          : 'OTP generated. Configure SMTP for email delivery.',
       otpLength: 6,
-      // TEMP: Return OTP when email fails — remove after SMTP is configured
-      ...(process.env.NODE_ENV !== 'production' || !emailSent ? { _debug: otp } : {}),
+      // TEMP: Show OTP when email doesn't contain our OTP code
+      // Remove once SMTP (Gmail/etc.) is properly configured
+      ...(process.env.NODE_ENV !== 'production' || !emailWithOtp ? { _debug: otp } : {}),
     });
   } catch (error) {
     console.error('Send OTP error:', error);
