@@ -20,7 +20,7 @@ const MOBILE_NAV_ITEMS: MobileNavItem[] = [
   { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
   { id: 'market', label: 'Markets', icon: TrendingUp },
   { id: 'trade', label: 'Trade', icon: BarChart3 },
-  { id: 'positions', label: 'Positions', icon: Briefcase, href: '/position/stock', activeMatchers: ['/position', '/positions'] },
+  { id: 'positions', label: 'Positions', icon: Briefcase, href: '/positions', activeMatchers: ['/positions', '/position'] },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
 ];
 

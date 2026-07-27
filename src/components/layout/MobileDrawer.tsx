@@ -27,7 +27,7 @@ const PRIMARY_ITEMS: DrawerItem[] = [
   { id: 'market', label: 'Markets', icon: TrendingUp },
   { id: 'trade', label: 'Trade', icon: BarChart3 },
   { id: 'optionchain', label: 'Option Chain', icon: ListTree },
-  { id: 'positions', label: 'Positions', icon: Briefcase, href: '/position/stock', activeMatchers: ['/position', '/positions'] },
+  { id: 'positions', label: 'Positions', icon: Briefcase, href: '/positions', activeMatchers: ['/positions', '/position'] },
   { id: 'history', label: 'Wallet History', icon: Wallet },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
 ];

@@ -2,11 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateOrBypass } from '@/lib/dev-auth';
 import { db } from '@/lib/db';
 import { calculateBrokerage } from '@/lib/brokerage';
+import { getPlatformToken } from '@/lib/upstox';
 
-const MOCK_LTP: Record<string, number> = {
-  RELIANCE: 1882.75, TCS: 3945.60, INFY: 1568.30, HDFCBANK: 1685.20,
-  ICICIBANK: 1245.80, SBIN: 828.45, BHARTIARTL: 1620.50, ITC: 468.25,
-};
+/* NOTE: We intentionally do NOT use any hard-coded MOCK_LTP table here.
+ *
+ * BUG THIS FIXES: Previously this route used `MOCK_LTP[position.symbol] ?? Number(position.currentPrice)`.
+ * For an OPTIONS position (e.g. NIFTY 23900 CE):
+ *   - `position.symbol` = 'NIFTY' which is NOT in MOCK_LTP → undefined
+ *   - `position.currentPrice` = 0 (DB default, never updated by client)
+ *   - So `exitPrice = 0` → P&L = (0 - avgPrice) * qty = huge LOSS
+ *     e.g. (0 - 107.65) * 50 = -₹5,382 even though the user had +₹900 unrealized profit!
+ *
+ * FIX: The client (PositionsPage) sends the live LTP from its WebSocket subscription
+ * in the request body as `exitPrice`. We use that as the authoritative exit price.
+ *
+ * FALLBACK CHAIN (if client didn't send exitPrice):
+ *   1. Fetch live LTP from Upstox REST API using position.instrumentKey
+ *   2. Use stored position.currentPrice if > 0
+ *   3. Use position.avgPrice (worst case — produces P&L = 0, which is safe)
+ */
 
 export async function POST(
   req: NextRequest,
@@ -18,6 +32,17 @@ export async function POST(
   const { id } = await params;
 
   try {
+    /* Parse the request body — client may send { exitPrice } with the live LTP. */
+    let bodyExitPrice: number | undefined;
+    try {
+      const body = await req.json();
+      if (typeof body?.exitPrice === 'number' && body.exitPrice > 0) {
+        bodyExitPrice = body.exitPrice;
+      }
+    } catch {
+      /* Body may be empty (legacy callers) — that's fine, we'll fall back. */
+    }
+
     const position = await db.position.findFirst({
       where: { id, userId: auth.userId, status: 'OPEN' },
     });
@@ -26,7 +51,47 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Position not found' }, { status: 404 });
     }
 
-    const exitPrice = MOCK_LTP[position.symbol] ?? Number(position.currentPrice);
+    /* ---------- Resolve exit price (LIVE LTP at square-off time) ---------- */
+    let exitPrice: number;
+
+    if (bodyExitPrice && bodyExitPrice > 0) {
+      // Best: client sent the live WebSocket LTP — use it directly.
+      exitPrice = bodyExitPrice;
+    } else if (position.instrumentKey) {
+      // Fallback 1: fetch live LTP from Upstox REST API.
+      try {
+        const token = await getPlatformToken(req);
+        if (token) {
+          const url = `https://api.upstox.com/v2/market-quote/ltp?instrument_key=${encodeURIComponent(position.instrumentKey)}`;
+          const res = await fetch(url, {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+          });
+          if (res.ok) {
+            const json = await res.json();
+            // Upstox returns { data: { [instrumentKey]: { last_price: number } } }
+            const data = json?.data?.[position.instrumentKey];
+            if (data && typeof data.last_price === 'number' && data.last_price > 0) {
+              exitPrice = data.last_price;
+            } else {
+              exitPrice = Number(position.avgPrice); // give up → safe default
+            }
+          } else {
+            exitPrice = Number(position.avgPrice);
+          }
+        } else {
+          exitPrice = Number(position.avgPrice);
+        }
+      } catch {
+        exitPrice = Number(position.avgPrice);
+      }
+    } else if (Number(position.currentPrice) > 0) {
+      // Fallback 2: stored currentPrice (rarely set).
+      exitPrice = Number(position.currentPrice);
+    } else {
+      // Worst case: use avgPrice → P&L = 0. Safe but not accurate.
+      exitPrice = Number(position.avgPrice);
+    }
+
     const pnl = (exitPrice - Number(position.avgPrice)) * position.quantity * (position.side === 'LONG' ? 1 : -1);
     const orderValue = exitPrice * position.quantity;
     const brokerage = calculateBrokerage(orderValue);
@@ -39,6 +104,8 @@ export async function POST(
         exitReason: 'MANUAL',
         closedAt: new Date(),
         pnl,
+        /* Also store the exitPrice as currentPrice so any future reads see it. */
+        currentPrice: exitPrice,
       },
     });
 

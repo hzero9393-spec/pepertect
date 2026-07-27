@@ -201,13 +201,17 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   /* ---------- Auto-trigger SL / Target ---------- */
   // For each open position, check if live LTP has hit SL or Target.
   // If yes, call /api/positions/[id] to square off and log the auto-exit.
+  // CRITICAL: We send { exitPrice: ltp } in the POST body so the server uses
+  // the LIVE LTP at square-off time — NOT MOCK_LTP[symbol] (which was stale
+  // and missing for NIFTY, causing sell price = 0 → huge fake loss).
   const handleAutoSquareOff = async (pos: Position, reason: 'SL' | 'TARGET', ltp: number) => {
     if (exitedRef.current.has(pos.id)) return;
     exitedRef.current.add(pos.id);
     try {
       const res = await fetch(`/api/positions/${pos.id}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exitPrice: ltp }),
       });
       const data = await res.json();
       if (data.success) {
@@ -244,10 +248,19 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   }, [quotes, positions, optionKeyMap]);
 
   const handleSquareOff = async (posId: string) => {
+    // Look up the LIVE LTP for this position from the WebSocket quotes store.
+    // We send it as `exitPrice` in the POST body so the server uses the real
+    // market price at square-off time — NOT MOCK_LTP[symbol] (which was stale
+    // and missing for NIFTY, causing sell price = 0 → huge fake loss).
+    const pos = positions.find((p) => p.id === posId);
+    const liveKey = pos ? getLiveKeyForPosition(pos) : null;
+    const liveTick = liveKey ? quotes[liveKey] : undefined;
+    const exitPrice = liveTick?.ltp ?? pos?.avgPrice; // fallback to avgPrice if no live tick yet
     try {
       const res = await fetch(`/api/positions/${posId}`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exitPrice }),
       });
       const data = await res.json();
       if (data.success) {
@@ -269,12 +282,18 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     setExitingAll(true);
     let okCount = 0;
     let failCount = 0;
-    // Sequentially square off to avoid race conditions on portfolio margin
+    // Sequentially square off to avoid race conditions on portfolio margin.
+    // For each position, send the LIVE LTP as exitPrice so the server uses
+    // the real market price (not stale MOCK_LTP).
     for (const p of targets) {
+      const liveKey = getLiveKeyForPosition(p);
+      const liveTick = liveKey ? quotes[liveKey] : undefined;
+      const exitPrice = liveTick?.ltp ?? p.avgPrice;
       try {
         const res = await fetch(`/api/positions/${p.id}`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ exitPrice }),
         });
         const data = await res.json();
         if (data.success) {
@@ -387,12 +406,18 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     };
   }, [trades, positions, stockPositions, indexPositions, liveLtpByPosId]);
 
-  /* ---------- All-time totals for the active tab (extra context) ---------- */
+  /* ---------- All-time realized P&L ---------- */
+  // Per-tab (kept for backward compat if needed elsewhere).
   const allTimeRealized = useMemo(() => {
     return trades
       .filter((t) => (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
       .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
   }, [trades, activeTab]);
+
+  // Combined (Stock + Index) — shown in the single P&L hero card.
+  const allTimeRealizedCombined = useMemo(() => {
+    return trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+  }, [trades]);
 
   return (
     <div className="space-y-6">
@@ -477,10 +502,12 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         </div>
       )}
 
-      {/* ============== COMBINED TODAY'S P&L (Stock + Index, real-time) ==============
-       * User requirement: "today p&l same ho stock and index dono ka jaise
-       * stock main 1200 profite hua or index main 500 loss toh total today
-       * p&l 700 ho". This card shows the combined total across BOTH tabs. */}
+      {/* ============== TODAY'S P&L HERO CARD (combined Stock + Index, real-time) ==============
+       * User requirement: "sirf ek today p&l banane ko do nahi" — only ONE P&L card.
+       * Also: "stock and index dono ka profite loss ek main hi dekhe same time" —
+       * combined Stock + Index P&L in one card.
+       * This card shows the COMBINED total across both tabs in real-time using
+       * live WebSocket LTP for each open position. No separate per-tab card. */}
       <div className="card-soft p-4 relative overflow-hidden border-2 border-brand-primary/30">
         <div className="absolute -right-2 -top-2 opacity-40 pointer-events-none">
           <Layers className="h-20 w-20 text-brand-primary/20" />
@@ -489,7 +516,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           <div className="flex items-center gap-2">
             <Layers className="h-4 w-4 text-brand-primary" />
             <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Today's Total P&L · Stock + Index (Live)
+              Today's P&L · Stock + Index
             </p>
             {wsStatus === 'upstox_connected' && (
               <span className="inline-flex items-center gap-0.5 ml-auto text-[9px] font-bold uppercase text-profit-green">
@@ -522,56 +549,18 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
                 {combinedTodayStats.realized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(combinedTodayStats.realized), 2)}
               </span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ============== TODAY'S P&L HERO CARD (per-tab) ============== */}
-      <div className="card-soft p-4 relative overflow-hidden">
-        <div className="absolute -right-2 -top-2 opacity-50 pointer-events-none">
-          <CalendarDays className="h-20 w-20 text-brand-primary/20" />
-        </div>
-        <div className="relative">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-brand-primary" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Today's P&L · {activeTab === 'stock' ? 'Stock' : 'Index'} {wsStatus === 'upstox_connected' && (
-                <span className="inline-flex items-center gap-0.5 ml-1 text-[9px] font-bold uppercase text-profit-green">
-                  <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
-                  LIVE
-                </span>
-              )}
-            </p>
-          </div>
-          <p className={`mt-2 font-mono text-3xl sm:text-4xl font-bold tabular-nums ${getPnlColor(todayStats.total)}`}>
-            {todayStats.total >= 0 ? '+' : '−'}{formatINR(Math.abs(todayStats.total))}
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5">
-              <span className="text-text-tertiary">Realized:</span>
-              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(todayStats.realized)}`}>
-                {todayStats.realized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(todayStats.realized), 2)}
-              </span>
-            </div>
-            <span className="text-border">·</span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-text-tertiary">Unrealized:</span>
-              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(todayStats.unrealized)}`}>
-                {todayStats.unrealized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(todayStats.unrealized), 2)}
-              </span>
-            </div>
             <span className="text-border">·</span>
             <div className="flex items-center gap-1.5">
               <span className="text-text-tertiary">All-time realized:</span>
-              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(allTimeRealized)}`}>
-                {allTimeRealized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(allTimeRealized), 2)}
+              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(allTimeRealizedCombined)}`}>
+                {allTimeRealizedCombined >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(allTimeRealizedCombined), 2)}
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ============== SUMMARY GRID ============== */}
+      {/* ============== SUMMARY GRID (per-tab stats) ============== */}
       <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-border-default bg-bg-surface p-4">
           <p className="text-xs text-text-secondary">Open {activeTab === 'stock' ? 'Stock' : 'Index'} Positions</p>

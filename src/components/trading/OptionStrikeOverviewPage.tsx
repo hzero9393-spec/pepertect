@@ -384,7 +384,7 @@ export function OptionStrikeOverviewPage() {
         setTimeout(() => { fetchBalance(); fetchChain(); }, 400);
 
         /* ---------- Post-order redirect (BUY only) ----------
-         * For BUY orders, redirect to /position/index so the user immediately
+         * For BUY orders, redirect to /positions/index so the user immediately
          * sees their new OPTIONS position with the entry price = the actual
          * option premium they paid (e.g. ₹109 in the user's example), and
          * the live strike price streaming in real-time for the EXACT strike
@@ -395,7 +395,7 @@ export function OptionStrikeOverviewPage() {
         if (orderSide === 'BUY') {
           setRedirecting(true);
           setTimeout(() => {
-            window.location.href = '/position/index';
+            window.location.href = '/positions/index';
           }, 150);
         }
       } else {

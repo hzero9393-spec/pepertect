@@ -201,15 +201,15 @@ export function TradePage() {
 
         /* ---------- Post-order flow (5x faster) ----------
            1. Switch to "Orders" tab so user sees their order at the top
-           2. After 150ms (was 400ms), redirect to /position/stock page so
-           *    the user immediately sees their new position with the entry
+           2. After 150ms (was 400ms), redirect to /positions page so the
+           *    user immediately sees their new position with the entry
            *    price = the actual market price they paid, and the live
            *    stock price streaming in real-time. */
         setMainTab('orders');
         setActiveTab('orders');
         setRedirecting(true);
         setTimeout(() => {
-          window.location.href = '/position/stock';
+          window.location.href = '/positions';
         }, 150);
       } else {
         setMessage(data.error || 'Order failed');

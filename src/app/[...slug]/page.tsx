@@ -80,20 +80,25 @@ function resolvePage(pathname: string): React.ComponentType | null {
   if (segment === 'optionchain' && parts.length > 1 && parts[1] === 'strike') {
     return OptionStrikeOverviewPage;
   }
-  // Handle /position/stock and /position/index — new position-page URLs.
-  // User requirement: "url pe banao jaise https://pepertect.vercel.app/position/index/
-  // ya https://pepertect.vercel.app/stock or agar option chain mai trde le toh
-  // index main redirect ho or stock mai le toh stock main jaye position page pe".
-  // So /position/stock → PositionsPage with stock tab, /position/index → index tab.
-  // /positions (legacy) still works — defaults to stock tab.
+  // Handle /positions and /positions/index — position page URLs.
+  // User requirement: "agar option se tarde le toh https://pepertect.vercel.app/positions/index
+  // esa url ho or stock main ye url ho https://pepertect.vercel.app/positions
+  // taki refresh pe vahi page ho".
+  // So /positions → Stock tab (default), /positions/index → Index tab.
+  // On refresh, the URL determines which tab is shown — no falling back to stock.
+  if (segment === 'positions') {
+    if (parts.length > 1 && parts[1] === 'index') {
+      return () => <PositionsPage initialTab="index" />;
+    }
+    // /positions or /positions/stock → Stock tab
+    return () => <PositionsPage initialTab="stock" />;
+  }
+  // Legacy /position/stock and /position/index — redirect-friendly. Keep
+  // supporting them so old bookmarks still work.
   if (segment === 'position' && parts.length > 1 && parts[1] === 'index') {
     return () => <PositionsPage initialTab="index" />;
   }
   if (segment === 'position' && parts.length > 1 && parts[1] === 'stock') {
-    return () => <PositionsPage initialTab="stock" />;
-  }
-  // Legacy /positions — defaults to stock tab. Keeps existing nav links working.
-  if (segment === 'positions') {
     return () => <PositionsPage initialTab="stock" />;
   }
   // Handle /support/<sub-page> routes — dedicated support sub-pages
