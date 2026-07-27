@@ -98,11 +98,93 @@ export default {
       });
     }
 
-    return new Response('Upstox Realtime Worker. Use /ws for WebSocket.', {
+    // ----- HTTP proxy endpoints (REST → Upstox API) -----
+    // These allow the Next.js app to fetch live data from the worker using
+    // the token stored on the worker, removing the need to share env vars.
+    if (url.pathname === '/ltp' && request.method === 'GET') {
+      return proxyToUpstox(request, env, 'https://api.upstox.com/v2/market-quote/ltp', url.searchParams, corsHeaders(env));
+    }
+    if (url.pathname === '/quotes' && request.method === 'GET') {
+      return proxyToUpstox(request, env, 'https://api.upstox.com/v2/market-quote/quotes', url.searchParams, corsHeaders(env));
+    }
+    if (url.pathname === '/ohlc' && request.method === 'GET') {
+      return proxyToUpstox(request, env, 'https://api.upstox.com/v2/market-quote/ohlc', url.searchParams, corsHeaders(env));
+    }
+    if (url.pathname === '/full-quote' && request.method === 'GET') {
+      return proxyToUpstox(request, env, 'https://api.upstox.com/v2/market-quote/quotes', url.searchParams, corsHeaders(env));
+    }
+    if (url.pathname === '/option-chain' && request.method === 'GET') {
+      return proxyToUpstox(request, env, 'https://api.upstox.com/v2/option/chain', url.searchParams, corsHeaders(env));
+    }
+    if (url.pathname === '/historical' && request.method === 'GET') {
+      // Forward to historical candle endpoint, but the path includes instrument_key
+      // e.g. /historical?instrument_key=NSE_EQ|INE002A01018&interval=1d&from=...&to=...
+      const ik = url.searchParams.get('instrument_key') || '';
+      const interval = url.searchParams.get('interval') || '1d';
+      const from = url.searchParams.get('from') || '';
+      const to = url.searchParams.get('to') || '';
+      const target = `https://api.upstox.com/v2/historical-candle/${ik}/${interval}/${from}/${to}`;
+      return proxyToUpstox(request, env, target, null, corsHeaders(env));
+    }
+    if (url.pathname === '/profile' && request.method === 'GET') {
+      return proxyToUpstox(request, env, 'https://api.upstox.com/v2/user/profile', null, corsHeaders(env));
+    }
+    if (url.pathname === '/instruments' && request.method === 'GET') {
+      // Forwarded as-is — instruments API doesn't need auth, but we proxy for consistency
+      return proxyToUpstox(request, env, 'https://api.upstox.com/v2/instruments/' + (url.search || ''), null, corsHeaders(env));
+    }
+
+    return new Response('Upstox Realtime Worker. Endpoints: /ws /health /stats /debug /ltp /quotes /ohlc /option-chain /historical /profile /instruments /refresh-token', {
       headers: { 'Content-Type': 'text/plain', ...corsHeaders(env) },
     });
   },
 };
+
+// ---------------------------------------------------------------------------
+// HTTP proxy: forward request to Upstox REST API with the worker's token
+// ---------------------------------------------------------------------------
+async function proxyToUpstox(
+  request: Request,
+  env: Env,
+  url: string,
+  searchParams: URLSearchParams | null,
+  cors: Record<string, string>
+): Promise<Response> {
+  // Get current token from the Durable Object (in-memory) or fall back to env var
+  const doId = env.UPSTOX_FEED.idFromName('global');
+  const stub = env.UPSTOX_FEED.get(doId);
+  const tokenRes = await stub.fetch(new Request('https://do/get-token'));
+  const tokenJson = await tokenRes.json() as { token: string | null };
+  const token = tokenJson.token || env.UPSTOX_ACCESS_TOKEN;
+
+  if (!token) {
+    return new Response(JSON.stringify({
+      status: 'error',
+      errors: [{ errorCode: 'NO_TOKEN', message: 'Worker has no Upstox access token. POST /refresh-token first.' }],
+    }), { status: 401, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+
+  const finalUrl = searchParams ? `${url}?${searchParams.toString()}` : url;
+  try {
+    const res = await fetch(finalUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    const body = await res.text();
+    return new Response(body, {
+      status: res.status,
+      headers: { 'Content-Type': res.headers.get('Content-Type') || 'application/json', ...cors },
+    });
+  } catch (e: any) {
+    return new Response(JSON.stringify({
+      status: 'error',
+      errors: [{ errorCode: 'WORKER_FETCH_FAILED', message: e?.message || String(e) }],
+    }), { status: 502, headers: { 'Content-Type': 'application/json', ...cors } });
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Durable Object — maintains ONE Upstox WebSocket + N browser clients
@@ -183,6 +265,13 @@ export class UpstoxFeed {
         },
         logs: this.debugLogs.slice(0, 30),
       }), { headers: { 'Content-Type': 'application/json' } });
+    }
+
+    if (url.pathname === '/get-token' && request.method === 'GET') {
+      const token = this.currentToken || this.env.UPSTOX_ACCESS_TOKEN || null;
+      return new Response(JSON.stringify({ token }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     return new Response('Not found', { status: 404 });

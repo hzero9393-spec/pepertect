@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { getPlatformToken } from '@/lib/upstox';
+import { workerHistorical } from '@/lib/upstox-worker-proxy';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
 
 /**
@@ -46,14 +47,35 @@ function hashSeed(s: string): number {
 }
 
 async function fetchUpstoxHistorical(
-  token: string,
+  token: string | null,
   instrumentKey: string,
   interval: string,
   days: number
 ): Promise<Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }> | null> {
+  const today = new Date();
+  const toDate = today.toISOString().split('T')[0];
+
+  // --- Primary: Worker proxy ---
+  const r = await workerHistorical(instrumentKey, interval, toDate, toDate);
+  if (r.ok && r.data?.candles && Array.isArray(r.data.candles)) {
+    const candles = r.data.candles;
+    if (candles.length > 0) {
+      const sorted = [...candles].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+      const sliced = sorted.slice(-days);
+      return sliced.map((c) => ({
+        date: typeof c[0] === 'string' ? c[0].split('T')[0] : String(c[0]),
+        open: parseFloat(c[1]),
+        high: parseFloat(c[2]),
+        low:  parseFloat(c[3]),
+        close: parseFloat(c[4]),
+        volume: typeof c[5] === 'number' ? c[5] : parseInt(c[5] || '0', 10) || 0,
+      }));
+    }
+  }
+
+  // --- Fallback: direct Upstox call ---
+  if (!token) return null;
   try {
-    const today = new Date();
-    const toDate = today.toISOString().split('T')[0];
     const url = `https://api.upstox.com/v2/historical-candle/${encodeURIComponent(instrumentKey)}/${interval}/${toDate}`;
     const res = await fetch(url, {
       headers: {
@@ -67,10 +89,7 @@ async function fetchUpstoxHistorical(
     const json = await res.json();
     const candles = json?.data?.candles;
     if (!Array.isArray(candles) || candles.length === 0) return null;
-    // candles format: [timestamp, open, high, low, close, volume, ?]
-    // sort oldest → newest
     const sorted = [...candles].sort((a, b) => (a[0] < b[0] ? -1 : 1));
-    // take last `days` candles
     const sliced = sorted.slice(-days);
     return sliced.map((c) => ({
       date: typeof c[0] === 'string' ? c[0].split('T')[0] : String(c[0]),
@@ -136,14 +155,14 @@ export async function GET(req: NextRequest) {
   const intervalRaw = sp.get('interval') || '1d';
   const upstoxInterval = INTERVAL_MAP[intervalRaw] || 'day';
 
-  // 1) Try Upstox real data if token + instrument key available
+  // 1) Try Upstox real data via worker proxy (primary) or direct call (fallback)
   const token = await getPlatformToken(req);
   const instrumentKey = getUpstoxKey(symbol);
 
   let candles: Array<{ date: string; open: number; high: number; low: number; close: number; volume: number }> | null = null;
   let realData = false;
 
-  if (token && instrumentKey) {
+  if (instrumentKey) {
     candles = await fetchUpstoxHistorical(token, instrumentKey, upstoxInterval, days);
     if (candles && candles.length > 0) realData = true;
   }

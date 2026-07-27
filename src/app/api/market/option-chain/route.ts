@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest } from '@/lib/api-auth';
 import { hasFeature } from '@/lib/tier';
 import { getPlatformToken } from '@/lib/upstox';
+import { workerOptionChain, workerLtp } from '@/lib/upstox-worker-proxy';
 import {
   getUpcomingExpiries,
   findExpiry,
@@ -82,14 +83,22 @@ function hashSeed(s: string): number {
 }
 
 /**
- * Try to fetch real option chain data from Upstox.
- * Returns null if Upstox is not connected or fetch fails.
+ * Try to fetch real option chain via the Cloudflare Worker proxy (preferred),
+ * fall back to direct Upstox call with env token if worker fails.
+ * Returns null if both paths fail.
  */
 async function fetchUpstoxOptionChain(
-  token: string,
+  token: string | null,
   indexKey: string,
   expiry: string
 ): Promise<any | null> {
+  // --- Primary: Worker proxy ---
+  const r = await workerOptionChain(indexKey, expiry);
+  if (r.ok && Array.isArray(r.data) && r.data.length > 0) {
+    return r.data;
+  }
+  // --- Fallback: direct Upstox call ---
+  if (!token) return null;
   try {
     const url = `https://api.upstox.com/v2/option/chain?instrument_key=${encodeURIComponent(indexKey)}&expiry_date=${expiry}`;
     const res = await fetch(url, {
@@ -109,9 +118,20 @@ async function fetchUpstoxOptionChain(
 }
 
 /**
- * Try to fetch real spot price from Upstox.
+ * Try to fetch real spot price via the Cloudflare Worker proxy (preferred),
+ * fall back to direct Upstox call with env token if worker fails.
  */
-async function fetchUpstoxLtp(token: string, indexKey: string): Promise<number | null> {
+async function fetchUpstoxLtp(token: string | null, indexKey: string): Promise<number | null> {
+  // --- Primary: Worker proxy ---
+  const r = await workerLtp([indexKey]);
+  if (r.ok && r.data) {
+    const key = Object.keys(r.data)[0];
+    if (key && typeof r.data[key]?.last_price === 'number') {
+      return r.data[key].last_price;
+    }
+  }
+  // --- Fallback: direct Upstox call ---
+  if (!token) return null;
   try {
     const url = `https://api.upstox.com/v2/market-quote/ltp?instrument_key=${encodeURIComponent(indexKey)}`;
     const res = await fetch(url, {
