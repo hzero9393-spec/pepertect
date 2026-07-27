@@ -62,7 +62,14 @@ export function DashboardPage() {
   const [optionKeyMap, setOptionKeyMap] = useState<Map<string, string | null>>(new Map());
   useEffect(() => {
     const optPositions = positions.filter(
-      (p) => p.status === 'OPEN' && p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry
+      (p) =>
+        p.status === 'OPEN' &&
+        p.segment === 'OPTIONS' &&
+        p.strikePrice != null &&
+        p.optionType &&
+        p.expiry &&
+        /* Skip positions that already have a stored instrumentKey. */
+        !p.instrumentKey
     );
     if (optPositions.length === 0) {
       setOptionKeyMap(new Map());
@@ -83,8 +90,11 @@ export function DashboardPage() {
     return () => { cancelled = true; };
   }, [positions]);
 
-  // Helper: get the right Upstox key to subscribe to for a position
+  // Helper: get the right Upstox key to subscribe to for a position.
+  // Prefers the stored instrumentKey (instant); falls back to option-chain
+  // resolution for legacy positions.
   function getLiveKeyForPosition(p: Position): string | null {
+    if (p.instrumentKey) return p.instrumentKey;
     if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
       return optionKeyMap.get(p.id) ?? null;
     }

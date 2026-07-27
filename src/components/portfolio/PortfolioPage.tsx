@@ -60,11 +60,21 @@ export function PortfolioPage() {
 
   /* Resolved option-strike instrument keys — same pattern as PositionsPage.
    * Without this, OPTIONS positions would subscribe to the underlying index
-   * spot price instead of the option's premium, producing absurd P&L. */
+   * spot price instead of the option's premium, producing absurd P&L.
+   *
+   * OPTIMIZATION: Positions created with the new instrumentKey field already
+   * have their key stored — we skip the option-chain fetch for those. */
   const [optionKeyMap, setOptionKeyMap] = useState<Map<string, string | null>>(new Map());
   useEffect(() => {
     const optPositions = positions.filter(
-      (p) => p.status === 'OPEN' && p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry
+      (p) =>
+        p.status === 'OPEN' &&
+        p.segment === 'OPTIONS' &&
+        p.strikePrice != null &&
+        p.optionType &&
+        p.expiry &&
+        /* Skip positions that already have a stored instrumentKey. */
+        !p.instrumentKey
     );
     if (optPositions.length === 0) {
       setOptionKeyMap(new Map());
@@ -85,8 +95,11 @@ export function PortfolioPage() {
     return () => { cancelled = true; };
   }, [positions]);
 
-  // Helper: resolve the right Upstox key to subscribe to for a position
+  // Helper: resolve the right Upstox key to subscribe to for a position.
+  // Prefers the stored instrumentKey (instant); falls back to option-chain
+  // resolution for legacy positions.
   function getLiveKeyForPosition(p: Position): string | null {
+    if (p.instrumentKey) return p.instrumentKey;
     if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
       return optionKeyMap.get(p.id) ?? null;
     }

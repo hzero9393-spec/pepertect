@@ -81,8 +81,10 @@ export function PositionsPage() {
       }
     };
     fetchPositions();
-    // Auto-refresh every 10s to update LTP/PnL (24h retention is enforced server-side)
-    const id = setInterval(fetchPositions, 10000);
+    // Auto-refresh every 5s as a safety net (live ticks handle real-time P&L).
+    // Was 10s — reduced to 5s for faster position state sync (SL/TGT triggers,
+    // auto-squareoff, etc.). Live LTP itself updates via WebSocket every ~800ms.
+    const id = setInterval(fetchPositions, 5000);
     return () => clearInterval(id);
   }, [token]);
 
@@ -90,14 +92,26 @@ export function PositionsPage() {
    * When positions change, fetch option chains to map each OPTIONS position
    * to its actual Upstox instrument_key (e.g. NSE_FO|63811 for a real
    * NIFTY strike). EQUITY positions skip this — they use getUpstoxKey(symbol).
-   */
+   *
+   * OPTIMIZATION: Positions created AFTER the instrumentKey field was added
+   * to the schema already have their key stored — we skip the option-chain
+   * fetch entirely for those. Only legacy positions (or rare edge cases where
+   * the client didn't pass instrumentKey) need to be resolved. */
   useEffect(() => {
     if (positions.length === 0) return;
     const optionPositions = positions.filter(
-      (p) => p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry
+      (p) =>
+        p.segment === 'OPTIONS' &&
+        p.strikePrice != null &&
+        p.optionType &&
+        p.expiry &&
+        /* Skip positions that already have a stored instrumentKey — they
+         * were created with the new code path and don't need resolution. */
+        !p.instrumentKey
     );
     if (optionPositions.length === 0) {
       setOptionKeyMap(new Map());
+      setResolvingOptionKeys(false);
       return;
     }
     let cancelled = false;
@@ -126,21 +140,26 @@ export function PositionsPage() {
   /* ---------- Helper: resolve the live-tick instrument key for a position ----------
    * Returns the right Upstox key to subscribe to:
    *   - EQUITY → getUpstoxKey(symbol) e.g. "NSE_EQ|INE002A01018"
-   *   - OPTIONS → resolved strike key e.g. "NSE_FO|63811" (or synthetic fallback)
-   *   - FUTURES → getUpstoxKey(symbol) (TODO: future instrument key resolution)
-   */
+   *   - OPTIONS/FUTURES → pos.instrumentKey (stored at order time) if present,
+   *                       else fall back to resolved strike key from option chain.
+   *                       If neither is available yet, returns null so we don't
+   *                       accidentally subscribe to the underlying index spot
+   *                       price (which would show absurd P&L). */
   function getLiveKeyForPosition(p: Position): string | null {
-    if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
-      // Use the resolved strike key if available; otherwise fall back to underlying
-      // (better than nothing — at least the UI doesn't break before resolution completes).
-      const resolved = optionKeyMap.get(p.id);
-      if (resolved) return resolved;
+    // For OPTIONS/FUTURES: prefer the stored instrumentKey (instant — no fetch).
+    if (p.segment === 'OPTIONS' || p.segment === 'FUTURES') {
+      if (p.instrumentKey) return p.instrumentKey;
+      // Fall back to resolved key from option chain (legacy positions).
+      if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
+        const resolved = optionKeyMap.get(p.id);
+        if (resolved) return resolved;
+      }
       // While resolving, return null so we don't accidentally subscribe to the
       // underlying index spot price (which would show absurd P&L).
       return null;
     }
-    // EQUITY or FUTURES: use underlying symbol lookup
-    return getUpstoxKey(p.symbol);
+    // EQUITY: use stored key if present, else resolve from symbol.
+    return p.instrumentKey ?? getUpstoxKey(p.symbol);
   }
 
   /* ---------- Subscribe to live quotes for all open positions ---------- */

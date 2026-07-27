@@ -105,6 +105,12 @@ export interface Position {
   optionType: OptionType | null;
   strikePrice: number | null;
   expiry: string | null;
+  /* Upstox instrument_key for the EXACT instrument this position tracks.
+   * For OPTIONS: the strike's CE/PE leg key (e.g. "NSE_FO|63811")
+   * For EQUITY:  the stock's ISIN-based key (e.g. "NSE_EQ|INE002A01018")
+   * Stored at order-placement time so the PositionsPage can subscribe to
+   * live ticks for the exact instrument WITHOUT re-fetching the option chain. */
+  instrumentKey: string | null;
   stopLoss: number | null;
   target: number | null;
   status: PositionStatus;

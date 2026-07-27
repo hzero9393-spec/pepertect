@@ -151,6 +151,10 @@ export function TradePage() {
     setSubmitting(true);
     setMessage('');
     try {
+      /* Resolve the Upstox instrument_key for this stock so the server can
+       * store it on the Position row. PositionsPage then subscribes to live
+       * ticks for this EXACT instrument — no lookup needed. */
+      const upstoxKey = getUpstoxKey(symbol.toUpperCase()) ?? null;
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -161,6 +165,12 @@ export function TradePage() {
           type: orderType,
           quantity: parseInt(quantity),
           price: orderType !== 'MARKET' ? parseFloat(price) : undefined,
+          /* For MARKET EQUITY orders, pass the live LTP as the fill price so
+           * the position's avgPrice = actual market price at execution time
+           * (not a stale MOCK_LTP value). This matches the user's expectation
+           * that "entry price = the market price I saw when I clicked BUY". */
+          ...(orderType === 'MARKET' && liveTick?.ltp ? { price: liveTick.ltp } : {}),
+          instrumentKey: upstoxKey,
           /* Stop-loss / target — only sent for BUY (opening a position).
              Server stores them on the Position row; PositionsPage reads them
              and triggers square-off when LTP hits either level. */
@@ -189,15 +199,16 @@ export function TradePage() {
           }
         } catch { /* ignore */ }
 
-        /* ---------- Post-order flow ----------
+        /* ---------- Post-order flow (5x faster) ----------
            1. Switch to "Orders" tab so user sees their order at the top
-           2. After 1.5s, redirect to /positions page to see the new position */
+           2. After 400ms (was 1.5s), redirect to /positions page to see the
+           *    new position with live LTP streaming for the exact instrument. */
         setMainTab('orders');
         setActiveTab('orders');
         setRedirecting(true);
         setTimeout(() => {
           window.location.href = '/positions';
-        }, 1500);
+        }, 400);
       } else {
         setMessage(data.error || 'Order failed');
       }

@@ -202,6 +202,15 @@ model Position {
   optionType   String?                        // CE, PE
   strikePrice  Float?
   expiry       DateTime?
+  /* Upstox instrument_key for the EXACT instrument this position tracks.
+   * For OPTIONS: e.g. "NSE_FO|63811" (the strike's CE/PE leg key)
+   * For EQUITY:  e.g. "NSE_EQ|INE002A01018" (the stock's ISIN-based key)
+   * For FUTURES: e.g. "NSE_FO|..." (the future contract key)
+   * Stored at order-placement time so the PositionsPage can subscribe to
+   * live ticks for the exact instrument WITHOUT needing to re-fetch the
+   * option chain to resolve the strike's key. Old positions (pre-this-field)
+   * will have null and fall back to the option-instrument-resolver. */
+  instrumentKey String?
   stopLoss     Float?
   target       Float?
   status       String   @default("OPEN")      // OPEN, CLOSED, SQUAREDOFF

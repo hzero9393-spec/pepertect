@@ -107,6 +107,7 @@ export async function GET(req: NextRequest) {
         avgPrice: Number(p.avgPrice),
         investedAmt: Number(p.investedAmt),
         strikePrice: p.strikePrice ? Number(p.strikePrice) : null,
+        instrumentKey: p.instrumentKey ?? null,
       };
     });
 

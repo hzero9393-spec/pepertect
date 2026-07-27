@@ -223,6 +223,10 @@ export function OptionStrikeOverviewPage() {
   const [lots, setLots] = useState(1);
   const [placing, setPlacing] = useState(false);
   const [orderResult, setOrderResult] = useState<{ ok: boolean; message: string } | null>(null);
+  /* When true, shows a full-screen overlay "Opening position…" and redirects
+   * to /positions after a short delay so the user sees their new position
+   * with the live strike price updating in real-time. */
+  const [redirecting, setRedirecting] = useState(false);
 
   const fetchChain = useCallback(async () => {
     if (!token) return;
@@ -364,6 +368,10 @@ export function OptionStrikeOverviewPage() {
           optionType: side,
           strikePrice: strikeRow.strikePrice,
           expiry: data.expiry,
+          /* Pass the strike's actual Upstox instrument_key so the server
+           * stores it on the Position row. PositionsPage then subscribes to
+           * live ticks for this EXACT strike (no option-chain re-fetch). */
+          instrumentKey: activeLeg.instrumentKey ?? null,
         }),
       });
       const j = await res.json();
@@ -374,6 +382,20 @@ export function OptionStrikeOverviewPage() {
         });
         // Refresh balance + chain after a beat
         setTimeout(() => { fetchBalance(); fetchChain(); }, 400);
+
+        /* ---------- Post-order redirect (BUY only) ----------
+         * For BUY orders, redirect to /positions so the user immediately sees
+         * their new position with the entry price = the actual market price
+         * they paid (₹109 in the user's example), and the live strike price
+         * streaming in real-time.
+         * SELL orders square off an existing position — show inline success
+         * but stay on the page so the user can keep trading the chain. */
+        if (orderSide === 'BUY') {
+          setRedirecting(true);
+          setTimeout(() => {
+            window.location.href = '/positions';
+          }, 400);
+        }
       } else {
         setOrderResult({ ok: false, message: j.error || 'Order failed' });
       }
@@ -402,6 +424,23 @@ export function OptionStrikeOverviewPage() {
 
   return (
     <div className="space-y-3">
+      {/* ============== REDIRECTING OVERLAY (after BUY order) ============== */}
+      {redirecting && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="card-soft p-6 flex flex-col items-center gap-3 max-w-xs">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-tint-green">
+              <CheckCircle2 className="h-6 w-6 text-profit-green" />
+            </div>
+            <p className="text-sm font-semibold text-text-primary text-center">
+              Position Opened
+            </p>
+            <p className="text-xs text-text-secondary text-center">
+              Entry: ₹{activeLeg?.lastPrice.toFixed(2)} · Redirecting to Positions…
+            </p>
+            <Loader2 className="h-4 w-4 animate-spin text-brand-primary" />
+          </div>
+        </div>
+      )}
       {/* ============== BACK + BREADCRUMB ============== */}
       <a
         href={`/optionchain?symbol=${encodeURIComponent(symbol)}`}

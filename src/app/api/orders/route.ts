@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { symbol, segment, side, type, orderType: orderTypeRaw, quantity, price, stopLoss, target, optionType, strikePrice, expiry } = body;
+    const { symbol, segment, side, type, orderType: orderTypeRaw, quantity, price, stopLoss, target, optionType, strikePrice, expiry, instrumentKey } = body;
     const orderType = orderTypeRaw ?? type; // accept both `orderType` and `type`
 
     // Feature check
@@ -154,7 +154,14 @@ export async function POST(req: NextRequest) {
 
           await db.position.update({
             where: { id: existingPos.id },
-            data: { quantity: totalQty, avgPrice: newAvg, investedAmt: Number(newAvg) * totalQty },
+            data: {
+              quantity: totalQty,
+              avgPrice: newAvg,
+              investedAmt: Number(newAvg) * totalQty,
+              /* If the existing position didn't have an instrumentKey (created
+               * before this field was added), set it now from the incoming order. */
+              ...(instrumentKey && !existingPos.instrumentKey ? { instrumentKey } : {}),
+            },
           });
         } else {
           await db.position.create({
@@ -170,6 +177,11 @@ export async function POST(req: NextRequest) {
               optionType: optionType ?? null,
               strikePrice: strikePrice ?? null,
               expiry: expiry ? new Date(expiry) : null,
+              /* Store the Upstox instrument_key passed by the client so the
+               * PositionsPage can subscribe to live ticks for the EXACT
+               * instrument (e.g. NSE_FO|63811 for NIFTY 32900 CE) without
+               * needing to re-fetch the option chain to resolve the key. */
+              instrumentKey: instrumentKey ?? null,
               stopLoss: stopLoss ?? null,
               target: target ?? null,
             },
