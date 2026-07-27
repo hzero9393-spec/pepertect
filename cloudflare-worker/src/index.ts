@@ -191,7 +191,7 @@ async function proxyToUpstox(
 // ---------------------------------------------------------------------------
 export class UpstoxFeed {
   // Bump this when forcing DO to reload with new code
-  static VERSION = 'v3-decoder-fix';
+  static VERSION = 'v4-decode-fix-control-msgs';
   
   private state: DurableObjectState;
   private env: Env;
@@ -561,6 +561,7 @@ export class UpstoxFeed {
   private binaryMsgCount = 0;
   private gzipMsgCount = 0;
   private failedDecodeCount = 0;
+  private controlMsgCount = 0;
 
   private handleUpstoxMessage(raw: ArrayBuffer | string) {
     // Try JSON first (for control messages)
@@ -580,24 +581,30 @@ export class UpstoxFeed {
 
     // Binary protobuf decode
     try {
-      const tick = decodeUpstoxTick(raw);
-      if (tick) {
+      const result = decodeUpstoxTick(raw);
+      if (result.tick) {
         this.tickCount++;
         // Log every 30s with stats — don't spam logs
         const now = Date.now();
         if (now - this.lastTickLogTime > 30000) {
-          this.log('info', `Tick stats: total=${this.tickCount} binary=${this.binaryMsgCount} gzip=${this.gzipMsgCount} failed=${this.failedDecodeCount}`);
+          this.log('info', `Tick stats: total=${this.tickCount} binary=${this.binaryMsgCount} gzip=${this.gzipMsgCount} failed=${this.failedDecodeCount} control=${this.controlMsgCount}`);
           this.lastTickLogTime = now;
         }
-        this.broadcastTick(tick);
-      } else {
+        this.broadcastTick(result.tick);
+      } else if (!result.decoded) {
+        // True decode failure (not a valid protobuf message)
         this.failedDecodeCount++;
         // Log first few failed decodes for debugging
         if (this.failedDecodeCount <= 3) {
           const preview = Array.from(bytes.slice(0, 30)).map(b => b.toString(16).padStart(2, '0')).join(' ');
           this.log('warn', `Decode failed (#${this.failedDecodeCount}): len=${bytes.length} first_byte=${bytes[0]} preview=${preview}`);
         }
+      } else {
+        // Valid non-tick message (init, ack, control) — track count
+        this.controlMsgCount++;
       }
+      // If result.decoded is true but tick is null, it was a valid
+      // control/init/ack message — don't count as failure.
     } catch (e) {
       this.failedDecodeCount++;
     }
@@ -751,10 +758,15 @@ interface UpstoxTick {
 //   24 = oiDayLow
 //   25 = ltt            (last trade time, alt field)
 // ---------------------------------------------------------------------------
-function decodeUpstoxTick(raw: ArrayBuffer | string): UpstoxTick | null {
-  if (typeof raw === 'string') return null;
-  const bytes = new Uint8Array(raw);
-  if (bytes.length < 2) return null;
+interface DecodeResult {
+  tick: UpstoxTick | null;
+  decoded: boolean;  // true if message was valid protobuf (even if not a tick)
+}
+
+function decodeUpstoxTick(raw: ArrayBuffer | string): DecodeResult {
+ if (typeof raw === 'string') return { tick: null, decoded: false };
+ const bytes = new Uint8Array(raw);
+ if (bytes.length < 2) return { tick: null, decoded: false };
 
   // Try decoding as FeedResponse wrapper first.
   // If the first byte is 0x08 (field 1, wireType 0 = varint), this is a
@@ -765,24 +777,28 @@ function decodeUpstoxTick(raw: ArrayBuffer | string): UpstoxTick | null {
   // 0x08 = field 1, wireType 0 (varint) → FeedResponse wrapper
   if (firstByte === 0x08) {
     const feed = parseFeedResponse(bytes);
-    if (!feed) return null;
+    if (!feed) return { tick: null, decoded: false };
     // Only decode the data payload for live-tick messages.
     // Per Upstox proto: type values are 1=init, 2=ack, 3=unsub_ack,
     // 4=system_status, 5=live_data, 6=invalid.
     // We only care about type=5 (live tick data).
+    // Valid control messages (type 1-4, 6) are NOT decode failures.
     if (feed.type === 5 && feed.data && feed.data.length > 0) {
-      return parseProtobufTick(feed.data);
+      const tick = parseProtobufTick(feed.data);
+      return { tick, decoded: true };
     }
-    return null;
+    return { tick: null, decoded: true };  // Valid non-tick message
   }
 
   // 0x0a = field 1, wireType 2 (length-delimited) → direct LiveTickData
   if (firstByte === 0x0a) {
-    return parseProtobufTick(bytes);
+    const tick = parseProtobufTick(bytes);
+    return { tick, decoded: tick !== null };
   }
 
   // Unknown format — try as direct protobuf
-  return parseProtobufTick(bytes);
+  const tick = parseProtobufTick(bytes);
+  return { tick, decoded: tick !== null };
 }
 
 interface FeedResponse {

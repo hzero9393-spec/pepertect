@@ -45,7 +45,7 @@ function UpstoxStatusContent() {
             <div className="bg-zinc-950/50 rounded-lg p-4 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-zinc-500">Token valid for:</span>
-                <span className="font-mono">{expiresIn ? `${Math.floor(Number(expiresIn) / 3600)} hours` : '24 hours'}</span>
+                <span className="font-mono">{(expiresIn && !isNaN(Number(expiresIn))) ? `${Math.floor(Number(expiresIn) / 3600)} hours` : '24 hours'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-500">Worker status:</span>
