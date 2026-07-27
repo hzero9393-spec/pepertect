@@ -300,3 +300,75 @@ Stage Summary:
 - All Upstox REST calls now route via worker (no Vercel env var dependency)
 - LTP, historical candles (2477 RELIANCE candles verified), option chain all working
 - Token valid until 22:00 UTC today (~18 hours); user can re-authorize via /api/upstox/connect
+
+---
+Task ID: real-time-data-all-pages
+Agent: main
+Task: Wire real-time live data (WebSocket ticks via Cloudflare Worker) into ALL pages — Watchlist, Trade, Stocks, Overview, Option Chain, Positions, Portfolio, Dashboard.
+
+Work Log:
+- Verified Upstox token fresh, profile + LTP APIs returning 200 OK
+- Pushed token to Cloudflare Worker — `upstoxReady: true` confirmed
+- Enhanced `useLiveQuote` hook (src/hooks/useLiveQuote.ts):
+  * Module-level singleton WebSocket (already existed)
+  * NEW: REST polling fallback — if WS doesn't open within 4s OR closes, automatically polls /api/market/live-quote every 5s for all subscribed keys
+  * NEW: Stores quotes in module-level `quotesStore` so all components share state
+  * NEW: `useLiveTick(symbol)` convenience hook + `useLiveQuotesFor(keys[])`
+  * Auto-reconnect with exponential backoff (1s → 30s cap)
+  * Heartbeat ping every 25s
+- Created new LivePrice component (src/components/shared/LivePrice.tsx):
+  * `LivePriceText` — auto-subscribes by symbol or instrumentKey, shows formatted LTP
+  * `LiveChangeBadge` — pill showing ▲/▼ + changePct
+  * `LiveTickPulse` — small green/red pulsing dot when ticks are flowing
+  * `useLivePrice(symbol, fallback)` — hook returning live tick with fallback
+- Enhanced option-chain API (src/app/api/market/option-chain/route.ts):
+  * Each strike row now returns `ce.instrumentKey` and `pe.instrumentKey`
+  * For real Upstox strikes: uses `call_options.instrument_key` / `put_options.instrument_key`
+  * For synthetic strikes: builds deterministic `NSE_FO|<symbol>YYMMDD<strike>CE/PE` key
+- Enhanced live-quote API (src/app/api/market/live-quote/route.ts):
+  * Accepts `instrument_keys` (plural) alias in addition to `instrument_key`
+  * Always returns full quote (OHLC + net_change + volume + OI) so polling fallback is rich
+- Removed duplicate ISIN entries in upstox-instruments.ts (8 keys were duplicated with wrong ISINs)
+
+Wired live ticks into 8 pages:
+1. WatchlistPage — stocks + option strikes + underlying spot; live LTP + change%; LIVE pulse
+2. MarketPage — indices strip + visible stocks (paginated subscription); LIVE badge in header
+3. StockDetailPage — OHLC grid now uses live tick values (LTP was already wired)
+4. TradePage — live LTP in stock strip; refPrice uses live LTP for order value calc
+5. OptionChainPage — ALL strikes' CE+PE legs + underlying spot; AUTO-SCROLLS to ATM strike on load; re-computes ITM/OTM based on live spot
+6. OptionStrikeOverviewPage — underlying + selected strike's CE/PE legs; LIVE badge
+7. PortfolioPage — holdings table shows live LTP + live P&L per row; Total P&L hero shows LIVE total
+8. DashboardPage — Open Positions card uses live LTP + P&L (indices already wired)
+
+Build & Deploy:
+- TypeScript check passed (only pre-existing errors remain in next.config.ts, auth.ts, zod, LandingPage)
+- Next.js build succeeded — all routes compiled
+- Committed as 6b36d91 and pushed to GitHub origin/main
+- Vercel auto-deployed — verified live-quote endpoint returns full quotes with OHLC + net_change
+- Worker stats: upstoxReady=true, hasToken=true
+- Token re-pushed to worker to ensure freshness
+
+Stage Summary:
+- ✅ Real-time data infrastructure COMPLETE: WebSocket → Cloudflare Worker → Upstox, with REST polling fallback
+- ✅ All 8 user-facing pages now subscribe to live ticks and update without refresh
+- ✅ Option chain auto-scrolls to ATM strike on page load
+- ✅ Option chain re-computes ITM/OTM based on live spot price
+- ✅ Portfolio P&L updates in real-time as ticks flow
+- ✅ Dashboard Open Positions card shows live LTP + P&L
+- ✅ Watchlist shows live LTP for both stocks AND option strikes (with underlying spot)
+- ✅ Resilient: if WS fails, REST polling kicks in within 4s; if WS reconnects, polling stops
+- ✅ Shared singleton: one WebSocket connection serves all components (refcounted)
+- Files modified (12) + new (1):
+  * src/hooks/useLiveQuote.ts (enhanced with REST polling fallback)
+  * src/components/shared/LivePrice.tsx (NEW — reusable live price components)
+  * src/app/api/market/option-chain/route.ts (per-strike instrument keys)
+  * src/app/api/market/live-quote/route.ts (full quote always + plural alias)
+  * src/lib/upstox-instruments.ts (removed duplicate ISINs)
+  * src/components/market/WatchlistPage.tsx
+  * src/components/market/MarketPage.tsx
+  * src/components/market/StockDetailPage.tsx
+  * src/components/trading/TradePage.tsx
+  * src/components/trading/OptionChainPage.tsx
+  * src/components/trading/OptionStrikeOverviewPage.tsx
+  * src/components/portfolio/PortfolioPage.tsx
+  * src/components/dashboard/DashboardPage.tsx
