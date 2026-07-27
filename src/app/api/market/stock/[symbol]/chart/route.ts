@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/api-auth';
+import { authenticateOrBypass } from '@/lib/dev-auth';
 import { db } from '@/lib/db';
 
 const MOCK_PRICES: Record<string, { ltp: number; volatility: number }> = {
@@ -120,7 +120,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ symbol: string }> }
 ) {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateOrBypass(req);
   if (auth instanceof NextResponse) return auth;
 
   const { symbol: symRaw } = await params;

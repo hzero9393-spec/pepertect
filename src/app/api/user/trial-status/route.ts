@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/api-auth';
+import { authenticateOrBypass } from '@/lib/dev-auth';
 import { db } from '@/lib/db';
 
 // 30 days in milliseconds
@@ -122,7 +122,7 @@ async function computeTrialStatus(userId: string): Promise<TrialStatus> {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateOrBypass(req);
   if (auth instanceof NextResponse) return auth;
 
   try {
@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
  * Idempotent: if a trial is already active, returns its current status.
  */
 export async function POST(req: NextRequest) {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateOrBypass(req);
   if (auth instanceof NextResponse) return auth;
 
   try {

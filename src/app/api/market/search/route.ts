@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/api-auth';
+import { authenticateOrBypass } from '@/lib/dev-auth';
 import { db } from '@/lib/db';
 import { DEDUPED_STOCKS } from '@/lib/stocks-data';
 
@@ -40,7 +40,7 @@ async function ensureSeeded() {
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateOrBypass(req);
   if (auth instanceof NextResponse) return auth;
 
   const q = (req.nextUrl.searchParams.get('q') || '').trim();

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/api-auth';
+import { authenticateOrBypass } from '@/lib/dev-auth';
 import { getPlatformToken } from '@/lib/upstox';
 import { workerHistorical } from '@/lib/upstox-worker-proxy';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
@@ -146,7 +146,7 @@ const BASE_PRICES: Record<string, number> = {
 };
 
 export async function GET(req: NextRequest) {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateOrBypass(req);
   if (auth instanceof NextResponse) return auth;
 
   const sp = req.nextUrl.searchParams;

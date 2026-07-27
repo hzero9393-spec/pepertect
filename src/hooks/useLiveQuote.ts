@@ -66,6 +66,12 @@ let pollingTimer: ReturnType<typeof setInterval> | null = null;
 let pollingActive = false;
 let wsOpenTime = 0;
 let lastPollTime = 0;
+// Track the last time we received a tick via WebSocket. If WS reports "open"
+// but no ticks have arrived within 15s, we (re)start REST polling so the UI
+// still gets fresh data. This handles the case where the Cloudflare Worker's
+// outbound WS to Upstox connects but receives no ticks.
+let lastWsTickTime = 0;
+let wsHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 function setStatus(s: ConnectionStatus) {
   lastStatus = s;
@@ -106,9 +112,13 @@ async function pollOnce() {
       if (!res.ok) continue;
       const json = await res.json();
       if (!json?.success || !json?.data) continue;
-      // data is a map of instrumentKey -> {last_price, ohlc: {open, high, low, close}, net_change, ...}
+      // Upstox returns data keyed by colon-form (e.g. "NSE_INDEX:Nifty 50")
+      // but our subscription keys use pipe-form (e.g. "NSE_INDEX|Nifty 50").
+      // The /api/market/live-quote route normalizes keys to pipe-form, but
+      // as defense-in-depth we also try colon-form lookup here.
       for (const k of batch) {
-        const d = json.data[k];
+        const colonKey = k.replace(/\|/g, ':');
+        const d = json.data[k] ?? json.data[colonKey];
         if (!d) continue;
         const ltp = typeof d.last_price === 'number' ? d.last_price : undefined;
         const close = d.ohlc?.close;
@@ -148,8 +158,8 @@ function startPolling() {
   }
   // Immediate poll
   pollOnce();
-  // Then every 5s
-  pollingTimer = setInterval(pollOnce, 5000);
+  // Then every 4s for near-real-time updates when WS isn't delivering
+  pollingTimer = setInterval(pollOnce, 4000);
 }
 
 function stopPolling() {
@@ -188,7 +198,11 @@ function ensureWs() {
     clearTimeout(fallbackStarter);
     setStatus('open');
     reconnectAttempts = 0;
-    stopPolling(); // stop REST fallback if it was running
+    // NOTE: We intentionally do NOT call stopPolling() here.
+    // The CF Worker's outbound WS to Upstox may report "open" but receive
+    // zero ticks (known CF Workers limitation). We keep REST polling active
+    // until we receive at least one real WS tick, then stop polling.
+    // The health-check interval below handles this transition.
     // Re-subscribe all keys
     if (subscribers.size > 0) {
       const keys = Array.from(subscribers.keys());
@@ -200,13 +214,30 @@ function ensureWs() {
       pendingSubscribes.clear();
       wsSingleton?.send(JSON.stringify({ type: 'subscribe', symbols: keys }));
     }
-    // Start heartbeat
+    // Start heartbeat (client → worker)
     if (!pingTimer) {
       pingTimer = setInterval(() => {
         if (wsSingleton?.readyState === WebSocket.OPEN) {
           wsSingleton.send(JSON.stringify({ type: 'ping' }));
         }
       }, 25000);
+    }
+    // Start WS health check — if no ticks arrive within 15s of WS opening,
+    // ensure REST polling is running (the WS may be silently broken).
+    if (!wsHealthCheckTimer) {
+      // Give WS a 6s head-start to deliver its first tick before checking
+      wsHealthCheckTimer = setInterval(() => {
+        if (!pollingActive && Date.now() - lastWsTickTime > 15000) {
+          // WS is open but hasn't delivered a tick in 15s — start polling
+          console.warn('[useLiveQuote] WS open but no ticks for 15s, starting REST polling fallback');
+          startPolling();
+        } else if (pollingActive && Date.now() - lastWsTickTime < 5000) {
+          // WS is delivering ticks again — stop polling
+          console.log('[useLiveQuote] WS ticks resumed, stopping REST polling');
+          stopPolling();
+          if (lastStatus === 'polling') setStatus('upstox_connected');
+        }
+      }, 6000);
     }
   });
 
@@ -215,11 +246,19 @@ function ensureWs() {
       const msg = JSON.parse(event.data);
       if (msg.type === 'tick' && msg.data?.instrumentKey) {
         const tick = msg.data as LiveTick;
+        lastWsTickTime = Date.now();
         applyTick(tick);
+        // If polling is still running, stop it now — WS is delivering
+        if (pollingActive) {
+          stopPolling();
+          if (lastStatus === 'polling') setStatus('upstox_connected');
+        }
       } else if (msg.type === 'upstox_connected') {
         setStatus('upstox_connected');
       } else if (msg.type === 'upstox_disconnected') {
         setStatus('upstox_disconnected');
+        // Upstox upstream disconnected — restart polling as a safety net
+        if (!pollingActive) startPolling();
       } else if (msg.type === 'error') {
         console.warn('[useLiveQuote] Worker error:', msg);
       }
@@ -233,6 +272,7 @@ function ensureWs() {
     setStatus('closed');
     wsSingleton = null;
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    if (wsHealthCheckTimer) { clearInterval(wsHealthCheckTimer); wsHealthCheckTimer = null; }
     if (wsRefcount > 0) {
       scheduleReconnect();
       startPolling();
@@ -366,6 +406,7 @@ export function useLiveQuote(): UseLiveQuoteResult {
         try { wsSingleton.close(); } catch {}
         wsSingleton = null;
         if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+        if (wsHealthCheckTimer) { clearInterval(wsHealthCheckTimer); wsHealthCheckTimer = null; }
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         stopPolling();
       }

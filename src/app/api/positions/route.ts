@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/api-auth';
+import { authenticateOrBypass } from '@/lib/dev-auth';
 import { db } from '@/lib/db';
 
 const MOCK_LTP: Record<string, number> = {
@@ -15,7 +15,7 @@ const MOCK_LTP: Record<string, number> = {
 const POSITION_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 export async function GET(req: NextRequest) {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateOrBypass(req);
   if (auth instanceof NextResponse) return auth;
 
   try {

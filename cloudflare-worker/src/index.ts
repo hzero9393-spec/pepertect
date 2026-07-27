@@ -424,32 +424,45 @@ export class UpstoxFeed {
       const wsUrl = authData.data.authorizedRedirectUri;
       this.log('info', `Got Upstox WS URL: ${wsUrl.substring(0, 100)}...`);
 
-      // Try multiple connection strategies since Cloudflare Workers has quirks
-      // with outbound WebSocket connections.
+      // Cloudflare Workers DOES NOT support `new WebSocket(url)` for outbound
+      // connections — the constructor exists but events never fire. The only
+      // supported pattern is `fetch()` with an `Upgrade: websocket` header,
+      // which returns a Response with a `.webSocket` property.
+      // The wss:// URL must be converted to https:// for fetch().
       let upstoxWs: WebSocket | null = null;
 
-      // Strategy 1: Direct WebSocket constructor with wss:// URL
-      try {
-        this.log('info', 'Strategy 1: Trying new WebSocket(wssUrl)...');
-        upstoxWs = new WebSocket(wsUrl);
-      } catch (e1) {
-        this.log('error', `Strategy 1 failed: ${String(e1).substring(0, 200)}`);
+      const httpsUrl = wsUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://');
+      this.log('info', `fetch(${httpsUrl.substring(0, 80)}...) with Upgrade: websocket`);
 
-        // Strategy 2: fetch() with https:// URL + Upgrade header
-        try {
-          const httpsUrl = wsUrl.replace(/^wss:\/\//, 'https://').replace(/^ws:\/\//, 'http://');
-          this.log('info', `Strategy 2: Trying fetch(${httpsUrl.substring(0, 80)}...) with Upgrade`);
-          const upgradeRes = await fetch(httpsUrl, {
-            headers: { 'Upgrade': 'websocket' },
-          });
-          if (upgradeRes.webSocket) {
-            upstoxWs = upgradeRes.webSocket;
-            this.log('info', 'Strategy 2 succeeded');
-          } else {
-            this.log('error', `Strategy 2: no webSocket in response: ${upgradeRes.status}`);
+      try {
+        const upgradeRes = await fetch(httpsUrl, {
+          headers: {
+            'Upgrade': 'websocket',
+            'Connection': 'Upgrade',
+          },
+        });
+        if (upgradeRes.webSocket) {
+          upstoxWs = upgradeRes.webSocket;
+          this.log('info', 'WebSocket upgrade accepted by Cloudflare');
+        } else {
+          this.log('error', `No webSocket in response: status=${upgradeRes.status}`);
+          // Fallback: try direct new WebSocket (rarely works on CF Workers,
+          // but worth trying as a last resort)
+          try {
+            upstoxWs = new WebSocket(wsUrl);
+            this.log('info', 'Fallback: trying new WebSocket(wssUrl)');
+          } catch (e1) {
+            this.log('error', `Fallback new WebSocket() failed: ${String(e1).substring(0, 200)}`);
           }
-        } catch (e2) {
-          this.log('error', `Strategy 2 failed: ${String(e2).substring(0, 200)}`);
+        }
+      } catch (e) {
+        this.log('error', `fetch() upgrade failed: ${String(e).substring(0, 200)}`);
+        // Last-resort fallback
+        try {
+          upstoxWs = new WebSocket(wsUrl);
+          this.log('info', 'Last-resort: trying new WebSocket(wssUrl)');
+        } catch (e1) {
+          this.log('error', `Last-resort new WebSocket() failed: ${String(e1).substring(0, 200)}`);
         }
       }
 
@@ -596,6 +609,12 @@ export class UpstoxFeed {
   }
 
   private broadcastTick(tick: UpstoxTick) {
+    // Upstox sometimes returns instrumentKey in colon-form (e.g. "NSE_INDEX:Nifty 50")
+    // but our clients subscribe using pipe-form (e.g. "NSE_INDEX|Nifty 50").
+    // Normalize so the right clients receive the tick.
+    if (tick.instrumentKey) {
+      tick.instrumentKey = tick.instrumentKey.replace(/:/g, '|');
+    }
     const text = JSON.stringify({
       type: 'tick',
       data: tick,

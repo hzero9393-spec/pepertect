@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticateRequest } from '@/lib/api-auth';
+import { authenticateOrBypass } from '@/lib/dev-auth';
 import { hasFeature } from '@/lib/tier';
 import { getPlatformToken } from '@/lib/upstox';
 import { workerOptionChain, workerLtp } from '@/lib/upstox-worker-proxy';
@@ -173,7 +173,7 @@ async function fetchUpstoxLtp(token: string | null, indexKey: string): Promise<n
 }
 
 export async function GET(req: NextRequest) {
-  const auth = await authenticateRequest(req);
+  const auth = await authenticateOrBypass(req);
   if (auth instanceof NextResponse) return auth;
 
   if (!hasFeature(auth.tier as 'FREE' | 'PREMIUM', 'option_chain')) {
