@@ -6,7 +6,7 @@ import { FREE_VIRTUAL_CAPITAL } from '@/lib/tier';
 const JWT_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 interface GoogleTokenBody {
-  token: string;
+  token: string; // Google ID token (JWT) from the client
 }
 
 export async function POST(req: NextRequest) {
@@ -20,33 +20,54 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Mock Google OAuth verification — in production, call Google's tokeninfo endpoint
-    // For now, derive a mock identity from the provided token
-    const googleId = `google_${Buffer.from(body.token.slice(0, 16)).toString('hex')}`;
-    const mockEmail = `user_${googleId.slice(-8)}@pepertect.mock.google.com`;
-    const mockName = `Google User ${googleId.slice(-6).toUpperCase()}`;
+    // Verify the Google ID token by calling Google's tokeninfo endpoint
+    const googleTokenInfoUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${body.token}`;
+    const tokenRes = await fetch(googleTokenInfoUrl);
+    const tokenData = await tokenRes.json();
+
+    if (!tokenData.sub || !tokenData.email) {
+      console.error('Google token verification failed:', tokenData);
+      return NextResponse.json(
+        { success: false, error: 'Invalid Google token. Please try again.' },
+        { status: 401 }
+      );
+    }
+
+    const googleId = tokenData.sub;
+    const email = tokenData.email;
+    const name = tokenData.name || email.split('@')[0];
+    const picture = tokenData.picture || null;
 
     // Find existing user by googleId or email
     const existingUser = await db.user.findFirst({
       where: {
         OR: [
           { googleId },
-          { email: mockEmail },
+          { email },
         ],
       },
     });
 
     let user;
     if (existingUser) {
-      user = existingUser;
+      // If user exists but googleId is not set, update it
+      if (!existingUser.googleId) {
+        user = await db.user.update({
+          where: { id: existingUser.id },
+          data: { googleId, avatar: picture || existingUser.avatar },
+        });
+      } else {
+        user = existingUser;
+      }
     } else {
       // Create new user from Google auth
       user = await db.user.create({
         data: {
-          email: mockEmail,
-          name: mockName,
+          email,
+          name,
           passwordHash: null,
           googleId,
+          avatar: picture || null,
           role: 'USER',
           tier: 'FREE',
           virtualCapital: FREE_VIRTUAL_CAPITAL,

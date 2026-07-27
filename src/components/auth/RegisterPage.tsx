@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Zap, FileText, ChevronDown, ChevronUp, ExternalLink, Check } from 'lucide-react';
+import { Zap, FileText, ChevronDown, ChevronUp, ExternalLink, Check, Loader2 } from 'lucide-react';
 
 export function RegisterPage() {
   const { login } = useAuthStore();
@@ -16,6 +16,7 @@ export function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   /* Legal acceptance — required before account creation */
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -68,6 +69,77 @@ export function RegisterPage() {
     }
   };
 
+  /* ---------- Google Sign-In ---------- */
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+  const [googleScriptLoaded, setGoogleScriptLoaded] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const existingScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
+    if (existingScript) {
+      setGoogleScriptLoaded(true);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => setGoogleScriptLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+
+  useEffect(() => {
+    if (!googleScriptLoaded || !googleBtnRef.current || typeof window === 'undefined') return;
+    // @ts-expect-error google is injected by the GSI script
+    if (window.google?.accounts?.id) {
+      googleBtnRef.current.innerHTML = '';
+      // @ts-expect-error google is injected by the GSI script
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        theme: 'outline',
+        size: 'large',
+        width: '100%',
+        text: 'signup_with',
+        logo_alignment: 'center',
+      });
+    }
+  }, [googleScriptLoaded]);
+
+  useEffect(() => {
+    if (!googleScriptLoaded || typeof window === 'undefined') return;
+    // @ts-expect-error google is injected by the GSI script
+    if (window.google?.accounts?.id) {
+      // @ts-expect-error google is injected by the GSI script
+      window.google.accounts.id.initialize({
+        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
+        callback: handleGoogleCredentialResponse,
+      });
+    }
+  }, [googleScriptLoaded]);
+
+  const handleGoogleCredentialResponse = async (response: { credential: string }) => {
+    setGoogleLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: response.credential }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        login(data.user, data.token);
+        window.history.pushState({}, '', '/dashboard');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      } else {
+        setError(data.error || 'Google sign-up failed');
+      }
+    } catch {
+      setError('Network error during Google sign-up');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg-base px-4 py-8">
       <Card className="w-full max-w-md">
@@ -79,6 +151,26 @@ export function RegisterPage() {
           <CardDescription>Start paper trading with ₹1,00,000 virtual capital</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Google Sign-In — show at top for quick signup */}
+          {googleLoading ? (
+            <div className="flex items-center justify-center gap-2 py-2.5 text-sm text-text-secondary mb-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Creating account with Google…
+            </div>
+          ) : (
+            <>
+              <div ref={googleBtnRef} className="mb-4" />
+              <div className="relative mb-4">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t border-border" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-bg-surface px-2 text-text-tertiary">or sign up with email</span>
+                </div>
+              </div>
+            </>
+          )}
+
           <form onSubmit={handleRegister} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="name">Full Name</Label>
@@ -225,7 +317,7 @@ export function RegisterPage() {
             <Button
               type="submit"
               className="w-full bg-brand-primary hover:bg-brand-primary-hover text-white disabled:opacity-50"
-              disabled={loading || !acceptedTerms || !acceptedPrivacy}
+              disabled={loading || googleLoading || !acceptedTerms || !acceptedPrivacy}
             >
               {loading ? 'Creating Account...' : 'Create Account'}
             </Button>
