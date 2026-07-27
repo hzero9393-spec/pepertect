@@ -659,3 +659,28 @@ Work Log:
 Stage Summary:
 - Modified: PositionsPage.tsx (added TradeHistory section + TradeHistoryList + DetailRow components)
 - Trades are filtered per active tab and displayed as clickable expandable cards
+---
+Task ID: otp-fix-jul28
+Agent: main
+Task: Fix Email OTP verification flow — OTP mismatch between Supabase and local DB
+
+Work Log:
+- Diagnosed root cause: Supabase generate_link sends its OWN OTP (8-digit) via email, but old code stored a locally generated 6-digit OTP in DB → MISMATCH
+- Fixed send-otp/route.ts: Now generates our own 6-digit OTP, stores in PlatformSetting, tries to send via SMTP/Resend/Supabase
+- Fixed Resend error handling: Resend SDK returns {id, error} without throwing — was treating errors as success
+- Added emailWithOtp flag: Only SMTP and Resend count as "real OTP delivery" (Supabase magic link doesn't)
+- Added Nodemailer SMTP support for Gmail/ElasticEmail/Brevo
+- Added temporary _debug field in API response: Shows OTP when no real email delivery configured
+- Fixed RegisterPage.tsx: Dynamic OTP length, debug OTP banner for testing
+- Fixed verify-otp/route.ts: Added logging for debugging
+- Deployed to Vercel via git push
+- Tested full flow on production: Send OTP → Verify OTP → SUCCESS
+  - Email: gj251147@gmail.com → OTP: 350111 → Verified successfully
+
+Stage Summary:
+- Full OTP flow working on production (pepertect.vercel.app)
+- OTP shown on screen via _debug banner (for testing)
+- Pending: User needs to set up Gmail App Password for real email delivery via SMTP
+  - SMTP_HOST=smtp.gmail.com, SMTP_PORT=587
+  - SMTP_USER=hzero9393@gmail.com, SMTP_PASS=<App Password>
+  - Add these as Vercel env vars
