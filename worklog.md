@@ -214,3 +214,54 @@ Stage Summary:
   Market page, Stock Detail page, and Option Chain page will all show data immediately.
 - ⚠️ Live LTP + real option chain strikes + WebSocket ticks: still need fresh Upstox
   token (expired 5h ago). User should visit /upstox-status → Re-authorize.
+
+---
+Task ID: deploy-to-vercel-and-token-refresh
+Agent: main
+Task: Deploy fixes to Vercel production + setup Upstox token refresh
+
+Work Log:
+- Pushed 3 unpushed commits to GitHub origin/main:
+  * 53be801 — option-chain + historical + upstox-instruments updates
+  * bd19368 — Cloudflare worker + frontend integration files
+  * 6074d10 — stocks route 3-tier fallback + upstox.ts resilience
+- Vercel auto-deployed via GitHub integration (took ~60-90 seconds)
+- Verified production endpoints:
+  * https://pepertect.vercel.app/api/market/stocks → 434 stocks (source=db)
+    Vercel has a real PostgreSQL DB seeded with full universe
+  * /api/market/stock/RELIANCE → LTP ₹1856.38 ✅
+  * /api/market/historical?symbol=RELIANCE → 10 REAL Upstox candles ✅
+  * /api/market/option-chain × 4 indices → 31 strikes each ✅
+- Made additional fix: token priority in src/lib/upstox.ts
+  * OLD: env var (UPSTOX_ACCESS_TOKEN) → priority 1, always wins
+  * NEW: DB-stored token → priority 1, env var demoted to priority 3
+  * Reason: env var token is stale (expired 5h ago); when user does OAuth
+    refresh, the fresh DB token must take precedence or refresh appears broken
+  * Committed as 3c0e887 and pushed
+- Generated Upstox OAuth authorize URL for user:
+  https://api.upstox.com/v2/login/authorization/dialog?response_type=code
+    &client_id=ba78a999-08c9-4d1a-a628-89788c39147d
+    &redirect_uri=https%3A%2F%2Fpepertect.vercel.app%2Fcallback
+- Or simpler: user logs into pepertect.vercel.app, then visits
+  /api/upstox/connect (which builds the same URL and redirects)
+
+Stage Summary:
+- ✅ Production deploy successful — Market page now shows 434 stocks, Option
+  Chain page shows 31 strikes per index × 4 indices
+- ✅ Stop-loss data (historical OHLC) is REAL on production (Upstox daily candles)
+- ✅ Token priority fix pushed — when user does OAuth refresh, fresh DB token
+  will override the stale env var
+- ⏳ User action needed: visit OAuth URL to refresh Upstox token. After login:
+    1. Upstox redirects to /callback?code=XXX
+    2. /callback exchanges code for fresh 24h token
+    3. Token stored in DB (UpstoxToken table)
+    4. Token pushed to Cloudflare Worker (hot reload)
+    5. Worker reconnects to Upstox WebSocket
+    6. Live LTP + real option chain strikes + WebSocket ticks all resume
+- Files changed this session:
+  * src/lib/upstox.ts (token priority: DB > env)
+- Production URLs:
+  * Website: https://pepertect.vercel.app
+  * OAuth start: https://pepertect.vercel.app/api/upstox/connect
+  * Status page: https://pepertect.vercel.app/upstox-status
+  * Worker: https://upstox-realtime.hzero9393.workers.dev
