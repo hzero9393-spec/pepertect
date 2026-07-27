@@ -413,3 +413,63 @@ Stage Summary:
 - DEPLOYMENT: Worker redeployed to Cloudflare; Next.js app pushed to GitHub and auto-deployed to Vercel. Both deployments verified successful.
 - REMAINING KNOWN ISSUE: WebSocket upstream from worker to Upstox receives only init/ack messages (no live ticks) — appears to be a CF Workers outbound WebSocket limitation. The REST polling fallback (every 4s) delivers real data, so users see live prices on all pages.
 - ARTIFACTS: Worker deployed at https://upstox-realtime.hzero9393.workers.dev (version 5a8e4252). Next.js app at https://pepertect.vercel.app (commit f0c2cc3).
+
+---
+Task ID: 5x-speed-and-position-options-fix
+Agent: main
+Task: Two user-reported issues:
+  1. Live data is too slow — make it 5x faster.
+  2. Position page shows wrong P&L for OPTIONS positions: bought NIFTY 32900 CE at ₹100, position page shows live price 1200 (wrong) → P&L ₹1.2L (wrong). Fix so the EXACT strike's premium (not the underlying spot) is used.
+
+Work Log:
+- Diagnosed root cause of position-page bug:
+  * PositionsPage.tsx line 431: `const liveKey = getUpstoxKey(pos.symbol)` — for an OPTIONS position, `pos.symbol = 'NIFTY'` returns the underlying INDEX key (`NSE_INDEX|Nifty 50`), NOT the strike's instrument key.
+  * Result: live tick subscription was for NIFTY SPOT (~24,000) instead of the option premium (~₹100), producing absurd P&L.
+  * Also positions/route.ts line 73: `currentPrice = MOCK_LTP[p.symbol]` — for OPTIONS positions, MOCK_LTP['NIFTY'] = 24318.20 (spot price, not premium).
+- Created new helper `src/lib/option-instrument-resolver.ts`:
+  * `resolveOptionInstrumentKeys(positions)` — fetches option chains for each unique (symbol, expiry) pair and looks up the strike's CE/PE instrument_key (e.g. NSE_FO|63811).
+  * Results cached per (symbol, expiry) for 5 min — repeated position-page loads are instant.
+  * Falls back to deterministic synthetic key (e.g. NSE_FO|NIFTY26072832900CE) if chain fetch fails or strike not found.
+  * Single batched call per unique (symbol, expiry) — N positions with same expiry = 1 fetch.
+- Updated PositionsPage.tsx:
+  * Added `optionKeyMap` state + useEffect that resolves option strike keys when positions change.
+  * Added `getLiveKeyForPosition(pos)` helper: returns resolved strike key for OPTIONS, getUpstoxKey(symbol) for EQUITY.
+  * Subscription effect uses `getLiveKeyForPosition` instead of `getUpstoxKey`.
+  * Render-time live tick lookup uses `getLiveKeyForPosition`.
+  * Auto-trigger SL/TGT effect uses `getLiveKeyForPosition`.
+  * Added "Resolving live option-strike instrument keys…" loader badge.
+- Applied the same fix pattern to PortfolioPage.tsx and DashboardPage.tsx (both had the same bug — they also subscribe to live ticks for open positions and would have shown absurd P&L for OPTIONS).
+- Updated positions/route.ts:
+  * For OPTIONS/FUTURES positions: never use `MOCK_LTP[p.symbol]` (which is the underlying spot) as currentPrice fallback. Use `p.currentPrice` if > 0, else `p.avgPrice` (premium paid) — so server-side P&L is 0 until the live tick arrives.
+  * For EQUITY: unchanged behavior (MOCK_LTP fallback still used for static display).
+  * Same fix applied to the 24h auto-squareoff branch (line 32) — OPTIONS positions should never be liquidated at the underlying spot price.
+- Speed up REST polling 5x in `src/hooks/useLiveQuote.ts`:
+  * Polling interval: 4000ms → 800ms (true 5x faster).
+  * Throttle (min time between polls): 3000ms → 600ms.
+  * WS fallback starter (grace period before polling kicks in): 4000ms → 2000ms so users see live data sooner on first page load.
+  * Upstox Plus plan rate limit is ~25 req/s for LTP and ~10 req/s for quotes — 800ms cadence with batches of 20 keys stays well within limits.
+
+Build & Deploy:
+- TypeScript check passed (only pre-existing errors in next.config.ts, auth.ts, zod, LandingPage remain — same as before).
+- Next.js build succeeded — all routes compiled.
+- Committed as 292193b and pushed to GitHub origin/main.
+- Vercel auto-deploy triggered.
+- Verified production endpoints respond:
+  * `https://pepertect.vercel.app/` → HTTP 200
+  * `/api/positions` → 401 auth required (expected — endpoint is live)
+  * `/api/market/live-quote?instrument_key=NSE_FO|63811` → returns full quote (OHLC + depth) for the NIFTY 21100 CE option strike — confirms worker proxy can fetch real option premiums.
+
+Stage Summary:
+- ✅ Position page now subscribes to the actual option strike's instrument key (e.g. NSE_FO|63811) instead of the underlying index spot price. Live P&L reflects the option premium, not the spot.
+- ✅ Server-side fallback for OPTIONS positions: currentPrice = avgPrice (premium paid) → P&L shows 0 until the live tick arrives, instead of absurd spot-based P&L.
+- ✅ Same fix applied to PortfolioPage and DashboardPage (both had the same bug).
+- ✅ Live data refresh is now 5x faster: 800ms polling cadence (was 4s) + 2s grace period before polling kicks in (was 4s).
+- ✅ All 3 affected pages (Positions, Portfolio, Dashboard) show a brief "Resolving live option-strike instrument keys…" loader while strike keys are being fetched on initial load.
+- Files changed (6):
+  * src/lib/option-instrument-resolver.ts (NEW — 175 lines)
+  * src/hooks/useLiveQuote.ts (5x polling speedup)
+  * src/app/api/positions/route.ts (no spot price for OPTIONS)
+  * src/components/portfolio/PositionsPage.tsx (use strike key)
+  * src/components/portfolio/PortfolioPage.tsx (use strike key)
+  * src/components/dashboard/DashboardPage.tsx (use strike key)
+- Production: https://pepertect.vercel.app — commit 292193b deployed.
