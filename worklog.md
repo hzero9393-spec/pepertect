@@ -584,3 +584,28 @@ Stage Summary:
 - Live data confirmed flowing on production.
 - Files: src/app/upstox-status/page.tsx, cloudflare-worker/src/index.ts
 - Production: https://pepertect.vercel.app — commit eacd0ce
+---
+Task ID: auto-refresh-upstox-token
+Agent: main
+Task: User asked how many times per day they need to manually reconnect Upstox
+
+Work Log:
+- Implemented auto-refresh using Upstox refresh_token grant_type.
+- StoredToken now includes refreshToken field; getStoredToken returns it from DB.
+- getActiveToken detects when access_token is within 5 min of expiry and calls
+  refreshTokenAuto() automatically (no user action needed).
+- refreshTokenAuto() flow:
+  1. POST to https://api.upstox.com/v2/login/authorization/token
+     with grant_type=refresh_token + client_id + client_secret + refresh_token
+  2. Receives new access_token + new refresh_token + expires_in
+  3. Stores new token in DB (overwrites old)
+  4. Pushes new token to Cloudflare Worker (WS reconnects immediately)
+- Refresh tokens never expire (only access tokens do), so this works forever.
+
+Stage Summary:
+- Before: User had to manually click "Reconnect Upstox" every 24 hours.
+- After: User only needs to manually reconnect ONCE during initial setup.
+         After that, tokens auto-refresh forever — no manual action needed.
+- Token auto-refresh also auto-pushes new token to CF Worker (WS hot reload).
+- File changed: src/lib/upstox.ts
+- Production: https://pepertect.vercel.app — commit f8d74d4
