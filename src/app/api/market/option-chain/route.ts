@@ -263,6 +263,13 @@ export async function GET(req: NextRequest) {
     pe: OptionLeg;
   }> = [];
 
+  // Helper: build a deterministic synthetic option instrument key for fallback rows.
+  // Format mirrors Upstox's NSE_FO scheme so WS subscriptions are stable per strike.
+  function synthOptionKey(strike: number, side: 'CE' | 'PE'): string {
+    const yymmdd = expiry.replace(/-/g, '').slice(2); // e.g. 2026-07-30 -> 260730
+    return `NSE_FO|${normalized}${yymmdd}${strike}${side}`;
+  }
+
   for (const { strike, upstoxRow } of strikeInputs) {
     const diff = spot - strike;
     const ceIntrinsic = Math.max(0, diff);
@@ -274,6 +281,9 @@ export async function GET(req: NextRequest) {
     let ceIv: number, peIv: number;
     let ceChg: number, peChg: number;
     let ceChgPct: number, peChgPct: number;
+
+    let ceInstrumentKey: string | null = null;
+    let peInstrumentKey: string | null = null;
 
     if (upstoxRow) {
       // Real Upstox data for this strike
@@ -289,6 +299,8 @@ export async function GET(req: NextRequest) {
       peChg = upstoxRow.put_options?.market_data?.net_change ?? 0;
       ceChgPct = ceLtp > 0 ? (ceChg / ceLtp) * 100 : 0;
       peChgPct = peLtp > 0 ? (peChg / peLtp) * 100 : 0;
+      ceInstrumentKey = upstoxRow.call_options?.instrument_key ?? null;
+      peInstrumentKey = upstoxRow.put_options?.instrument_key ?? null;
     } else {
       // Fallback (no Upstox data) — use seeded random
       const fallback = fallbackLeg(spot, strike, cfg.step, dte, normalized, expiry, diff);
@@ -317,6 +329,7 @@ export async function GET(req: NextRequest) {
         change: parseFloat(ceChg.toFixed(2)),
         changePct: parseFloat(ceChgPct.toFixed(2)),
         intrinsic: parseFloat(ceIntrinsic.toFixed(2)),
+        instrumentKey: ceInstrumentKey ?? synthOptionKey(strike, 'CE'),
       },
       pe: {
         lastPrice: parseFloat(peLtp.toFixed(2)),
@@ -326,6 +339,7 @@ export async function GET(req: NextRequest) {
         change: parseFloat(peChg.toFixed(2)),
         changePct: parseFloat(peChgPct.toFixed(2)),
         intrinsic: parseFloat(peIntrinsic.toFixed(2)),
+        instrumentKey: peInstrumentKey ?? synthOptionKey(strike, 'PE'),
       },
     });
   }
@@ -408,4 +422,5 @@ interface OptionLeg {
   change: number;
   changePct: number;
   intrinsic: number;
+  instrumentKey?: string | null;
 }

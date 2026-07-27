@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { cn, formatINR, formatNumber } from '@/lib/utils';
 import {
@@ -13,6 +13,8 @@ import type { Portfolio, Position, IndexData, Order, Trade } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 import { Sparkline } from '@/components/shared/Sparkline';
+import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { getUpstoxKey, INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 
 // Deterministic mini-series for sparklines based on symbol
 function getMiniSeries(symbol: string, positive: boolean): number[] {
@@ -51,6 +53,10 @@ export function PortfolioPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'holdings' | 'analytics' | 'history'>('holdings');
 
+  /* Live WebSocket quotes for all open positions */
+  const { quotes, subscribe, unsubscribe } = useLiveQuote();
+  const subscribedRef = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const fetchData = async () => {
       if (!token) return;
@@ -78,6 +84,51 @@ export function PortfolioPage() {
     };
     fetchData();
   }, [token]);
+
+  // Subscribe to live ticks for all open position symbols
+  useEffect(() => {
+    const wanted = new Set<string>();
+    for (const p of positions) {
+      if (p.status !== 'OPEN') continue;
+      const k = getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol];
+      if (k) wanted.add(k);
+    }
+    const newKeys = Array.from(wanted).filter((k) => !subscribedRef.current.has(k));
+    const stale = Array.from(subscribedRef.current).filter((k) => !wanted.has(k));
+    if (newKeys.length > 0) {
+      subscribe(newKeys);
+      newKeys.forEach((k) => subscribedRef.current.add(k));
+    }
+    if (stale.length > 0) {
+      unsubscribe(stale);
+      stale.forEach((k) => subscribedRef.current.delete(k));
+    }
+  }, [positions, subscribe, unsubscribe]);
+
+  useEffect(() => {
+    return () => {
+      if (subscribedRef.current.size > 0) {
+        unsubscribe(Array.from(subscribedRef.current));
+        subscribedRef.current.clear();
+      }
+    };
+  }, [unsubscribe]);
+
+  /* Compute live total P&L using live ticks — falls back to API pnl */
+  const livePnl = useMemo(() => {
+    let total = 0;
+    let anyLive = false;
+    for (const p of positions) {
+      if (p.status !== 'OPEN') continue;
+      const k = getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol];
+      const tick = k ? quotes[k] : undefined;
+      const ltp = tick?.ltp ?? p.currentPrice ?? p.avgPrice;
+      if (tick) anyLive = true;
+      const pnl = (ltp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+      total += pnl;
+    }
+    return { total, anyLive };
+  }, [positions, quotes]);
 
   // Sector allocation derived from open positions
   const sectorAlloc: SectorAllocation[] = useMemo(() => {
@@ -169,10 +220,13 @@ export function PortfolioPage() {
           icon={totalPnlPositive ? TrendingUp : TrendingDown}
           iconBg={totalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
           iconColor={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
-          label="Total P&L"
+          label={livePnl.anyLive ? 'Total P&L · LIVE' : 'Total P&L'}
           value={
             <span className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
-              {totalPnlPositive ? '+' : ''}{formatINR(totalPnl)}
+              {totalPnlPositive ? '+' : ''}{formatINR(livePnl.anyLive ? (realized + livePnl.total) : totalPnl)}
+              {livePnl.anyLive && (
+                <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse align-middle" />
+              )}
             </span>
           }
           subtext={`${totalPnlPositive ? '+' : ''}${totalPnlPct.toFixed(2)}% return`}
@@ -290,8 +344,17 @@ export function PortfolioPage() {
                   </thead>
                   <tbody>
                     {positions.map((pos) => {
-                      const positive = pos.pnl >= 0;
-                      const value = (pos.currentPrice || pos.avgPrice) * pos.quantity;
+                      // Live tick lookup
+                      const liveKey = getUpstoxKey(pos.symbol) || INDEX_TO_UPSTOX_KEY[pos.symbol];
+                      const tick = liveKey ? quotes[liveKey] : undefined;
+                      const liveLtp = tick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
+                      const livePnlRow = (liveLtp - pos.avgPrice) * pos.quantity * (pos.side === 'LONG' ? 1 : -1);
+                      const livePnlPct = pos.avgPrice > 0
+                        ? (livePnlRow / (pos.avgPrice * pos.quantity)) * 100
+                        : 0;
+                      const positive = livePnlRow >= 0;
+                      const value = liveLtp * pos.quantity;
+                      const isLive = !!tick?.timestamp && Date.now() - tick.timestamp < 30000;
                       return (
                         <tr
                           key={pos.id}
@@ -301,19 +364,24 @@ export function PortfolioPage() {
                             <a href={`/stock/${pos.symbol}`} className="flex items-center gap-2">
                               <StockLogo symbol={pos.symbol} size="sm" rounded="md" />
                               <div className="min-w-0">
-                                <p className="font-mono text-sm font-semibold text-text-primary truncate">{pos.symbol}</p>
+                                <p className="font-mono text-sm font-semibold text-text-primary truncate">
+                                  {pos.symbol}
+                                  {isLive && (
+                                    <span className="ml-1 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                                  )}
+                                </p>
                                 <p className="text-[10px] text-text-tertiary">{pos.segment}</p>
                               </div>
                             </a>
                           </td>
                           <td className="px-3 py-3 text-right font-mono text-sm tabular-nums text-text-primary">{pos.quantity}</td>
                           <td className="px-3 py-3 text-right font-mono text-sm tabular-nums text-text-secondary">₹{formatNumber(pos.avgPrice, 2)}</td>
-                          <td className="px-3 py-3 text-right font-mono text-sm tabular-nums text-text-primary">₹{formatNumber(pos.currentPrice || pos.avgPrice, 2)}</td>
+                          <td className="px-3 py-3 text-right font-mono text-sm tabular-nums text-text-primary">₹{formatNumber(liveLtp, 2)}</td>
                           <td className="px-3 py-3 text-right font-mono text-sm font-semibold tabular-nums text-text-primary">₹{formatNumber(value, 0)}</td>
                           <td className={cn('px-3 py-3 text-right font-mono text-sm font-semibold tabular-nums', positive ? 'text-profit-green' : 'text-loss-red')}>
-                            {positive ? '+' : ''}₹{formatNumber(pos.pnl, 2)}
+                            {positive ? '+' : ''}₹{formatNumber(livePnlRow, 2)}
                             <div className={cn('text-[10px]', positive ? 'text-profit-green' : 'text-loss-red')}>
-                              {positive ? '+' : ''}{(pos.pnlPct ?? 0).toFixed(2)}%
+                              {positive ? '+' : ''}{livePnlPct.toFixed(2)}%
                             </div>
                           </td>
                         </tr>

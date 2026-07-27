@@ -13,7 +13,7 @@
  * watchlist at /api/watchlist is no longer used by this page.
  */
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatNumber, cn } from '@/lib/utils';
 import {
@@ -27,6 +27,8 @@ import {
   itemFingerprint, subscribe,
 } from '@/lib/multi-watchlist';
 import { getUpcomingExpiries, findExpiry, type ExpiryIndex } from '@/lib/expiry-calendar';
+import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { getUpstoxKey, INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 
 interface StockSearchHit {
   symbol: string;
@@ -447,6 +449,7 @@ export function WatchlistPage() {
               <h3 className="font-heading text-sm font-semibold text-text-primary">
                 {activeGroup.name} <span className="text-text-tertiary font-normal">· {activeGroup.items.length}</span>
               </h3>
+              <LiveStatusBadge />
             </div>
             {activeGroup.items.length === 0 ? (
               <div className="flex flex-col items-center py-8 text-center">
@@ -461,15 +464,7 @@ export function WatchlistPage() {
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {activeGroup.items.map((item) => (
-                  <WatchlistItemRow
-                    key={itemFingerprint(item)}
-                    item={item}
-                    onRemove={() => removeItemFromGroup(userId, activeGroup.id, itemFingerprint(item))}
-                  />
-                ))}
-              </div>
+              <WatchlistItems items={activeGroup.items} userId={userId} activeGroupId={activeGroup.id} />
             )}
           </div>
         </div>
@@ -478,16 +473,120 @@ export function WatchlistPage() {
   );
 }
 
+/* ---------- Live connection status pill ---------- */
+function LiveStatusBadge() {
+  const { status } = useLiveQuote();
+  const isLive = status === 'upstox_connected' || status === 'open';
+  const isPolling = status === 'polling';
+  if (!isLive && !isPolling) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-text-tertiary">
+        <span className="inline-flex h-1.5 w-1.5 rounded-full bg-text-tertiary/40" />
+        Connecting…
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-profit-green">
+      <span className="inline-flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
+      {isLive ? 'LIVE' : 'LIVE'} · {isPolling ? 'polling' : 'ws'}
+    </span>
+  );
+}
+
+/* ---------- Items list with batched live subscription ---------- */
+function WatchlistItems({
+  items,
+  userId,
+  activeGroupId,
+}: {
+  items: WatchlistItem[];
+  userId: string;
+  activeGroupId: string;
+}) {
+  const { quotes, subscribe, unsubscribe } = useLiveQuote();
+  const subscribedRef = useRef<Set<string>>(new Set());
+
+  // Build the list of instrument keys we want to subscribe to:
+  // - For STOCK items: getUpstoxKey(symbol)
+  // - For OPTION_STRIKE items: build a deterministic synthetic key for the strike
+  //   (NSE_FO|<symbol>YYMMDD<strike>CE/PE) — same format as the option-chain route.
+  //   Plus the underlying index key so we can show the spot price too.
+  const instrumentKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const item of items) {
+      if (item.type === 'STOCK') {
+        const k = getUpstoxKey(item.symbol);
+        if (k) keys.add(k);
+      } else {
+        // Option strike — subscribe to underlying index + the CE/PE option
+        const idxKey = INDEX_TO_UPSTOX_KEY[item.symbol];
+        if (idxKey) keys.add(idxKey);
+        const yymmdd = (item.expiry || '').replace(/-/g, '').slice(2);
+        keys.add(`NSE_FO|${item.symbol}${yymmdd}${item.strike}${item.side}`);
+      }
+    }
+    return Array.from(keys);
+  }, [items]);
+
+  useEffect(() => {
+    if (instrumentKeys.length === 0) return;
+    const newKeys = instrumentKeys.filter((k) => !subscribedRef.current.has(k));
+    const staleKeys = Array.from(subscribedRef.current).filter((k) => !instrumentKeys.includes(k));
+    if (newKeys.length > 0) {
+      subscribe(newKeys);
+      newKeys.forEach((k) => subscribedRef.current.add(k));
+    }
+    if (staleKeys.length > 0) {
+      unsubscribe(staleKeys);
+      staleKeys.forEach((k) => subscribedRef.current.delete(k));
+    }
+    return () => {
+      // Don't unsubscribe on every re-render — only on unmount
+    };
+  }, [instrumentKeys, subscribe, unsubscribe]);
+
+  useEffect(() => {
+    return () => {
+      if (subscribedRef.current.size > 0) {
+        unsubscribe(Array.from(subscribedRef.current));
+        subscribedRef.current.clear();
+      }
+    };
+  }, [unsubscribe]);
+
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <WatchlistItemRow
+          key={itemFingerprint(item)}
+          item={item}
+          quotes={quotes}
+          onRemove={() => removeItemFromGroup(userId, activeGroupId, itemFingerprint(item))}
+        />
+      ))}
+    </div>
+  );
+}
+
 /* ---------- Single item row ---------- */
 
 function WatchlistItemRow({
   item,
+  quotes,
   onRemove,
 }: {
   item: WatchlistItem;
+  quotes: Record<string, any>;
   onRemove: () => void;
 }) {
   if (item.type === 'STOCK') {
+    const upstoxKey = getUpstoxKey(item.symbol);
+    const tick = upstoxKey ? quotes[upstoxKey] : undefined;
+    const ltp = tick?.ltp ?? 0;
+    const changePct = tick?.changePct ?? 0;
+    const isUp = (tick?.change ?? 0) >= 0;
+    const isLive = !!tick?.timestamp && Date.now() - tick.timestamp < 30000;
     return (
       <div className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 hover:bg-bg-surface-alt/50 transition-colors">
         <a href={`/stock/${item.symbol}`} className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -497,6 +596,31 @@ function WatchlistItemRow({
             {item.name && <p className="text-xs text-text-secondary truncate">{item.name}</p>}
           </div>
         </a>
+        <div className="text-right shrink-0 mr-1">
+          {ltp > 0 ? (
+            <>
+              <p className={cn(
+                'font-mono text-sm font-bold tabular-nums',
+                tick ? 'text-text-primary' : 'text-text-secondary'
+              )}>
+                ₹{formatNumber(ltp, 2)}
+              </p>
+              {tick && (
+                <p className={cn(
+                  'font-mono text-[10px] tabular-nums font-semibold',
+                  isUp ? 'text-profit-green' : 'text-loss-red'
+                )}>
+                  {isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-[11px] text-text-tertiary">—</p>
+          )}
+          {isLive && (
+            <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse mt-0.5" />
+          )}
+        </div>
         <button
           onClick={onRemove}
           className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-loss-red/10 hover:text-loss-red transition-colors shrink-0"
@@ -512,6 +636,15 @@ function WatchlistItemRow({
   const href = `/optionchain/strike?symbol=${encodeURIComponent(item.symbol)}&expiry=${encodeURIComponent(item.expiry)}&strike=${item.strike}`;
   const idxInfo = INDICES.find((i) => i.symbol === item.symbol);
   const expEntry = findExpiry(item.symbol as ExpiryIndex, item.expiry);
+  const idxKey = INDEX_TO_UPSTOX_KEY[item.symbol];
+  const idxTick = idxKey ? quotes[idxKey] : undefined;
+  const yymmdd = (item.expiry || '').replace(/-/g, '').slice(2);
+  const optKey = `NSE_FO|${item.symbol}${yymmdd}${item.strike}${item.side}`;
+  const optTick = quotes[optKey];
+  const ltp = optTick?.ltp ?? 0;
+  const changePct = optTick?.changePct ?? 0;
+  const isUp = (optTick?.change ?? 0) >= 0;
+  const isLive = !!optTick?.timestamp && Date.now() - optTick.timestamp < 30000;
   return (
     <div className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 hover:bg-bg-surface-alt/50 transition-colors">
       <a href={href} className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -537,9 +670,39 @@ function WatchlistItemRow({
             <Clock className="h-3 w-3" />
             {formatExpiry(item.expiry)}
             {expEntry?.label && <span className="text-text-tertiary">· {expEntry.label}</span>}
+            {idxTick?.ltp && (
+              <span className="ml-1 font-mono text-text-tertiary">
+                · spot ₹{formatNumber(idxTick.ltp, 0)}
+              </span>
+            )}
           </p>
         </div>
       </a>
+      <div className="text-right shrink-0 mr-1">
+        {ltp > 0 ? (
+          <>
+            <p className={cn(
+              'font-mono text-sm font-bold tabular-nums',
+              optTick ? 'text-text-primary' : 'text-text-secondary'
+            )}>
+              ₹{formatNumber(ltp, 2)}
+            </p>
+            {optTick && (
+              <p className={cn(
+                'font-mono text-[10px] tabular-nums font-semibold',
+                isUp ? 'text-profit-green' : 'text-loss-red'
+              )}>
+                {isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-[11px] text-text-tertiary">—</p>
+        )}
+        {isLive && (
+          <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse mt-0.5" />
+        )}
+      </div>
       <button
         onClick={onRemove}
         className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-loss-red/10 hover:text-loss-red transition-colors shrink-0"

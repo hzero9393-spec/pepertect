@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatNumber, getPnlColor, formatOrderStatus, cn } from '@/lib/utils';
 import { hasFeature } from '@/lib/tier';
@@ -12,6 +12,8 @@ import {
 import type { Order, Trade, Stock } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { BasketPage } from '@/components/trading/BasketPage';
+import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { getUpstoxKey } from '@/lib/upstox-instruments';
 
 const POPULAR_STOCKS = [
   'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN',
@@ -54,6 +56,28 @@ export function TradePage() {
   const [defaultOrderType, setDefaultOrderType] = useState<'MARKET' | 'LIMIT' | 'SL'>('MARKET');
   const [defaultQty, setDefaultQty] = useState(1);
   const [confirmBefore, setConfirmBefore] = useState(false);
+
+  /* Live WebSocket tick — subscribes to the selected symbol */
+  const { quotes, subscribe, unsubscribe } = useLiveQuote();
+  const subscribedKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const k = symbol ? getUpstoxKey(symbol.toUpperCase()) : null;
+    if (subscribedKeyRef.current && subscribedKeyRef.current !== k) {
+      unsubscribe([subscribedKeyRef.current]);
+      subscribedKeyRef.current = null;
+    }
+    if (k) {
+      subscribe([k]);
+      subscribedKeyRef.current = k;
+    }
+    return () => {
+      if (subscribedKeyRef.current) {
+        unsubscribe([subscribedKeyRef.current]);
+        subscribedKeyRef.current = null;
+      }
+    };
+  }, [symbol, subscribe, unsubscribe]);
+  const liveTick = symbol ? quotes[getUpstoxKey(symbol.toUpperCase()) ?? ''] : undefined;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -197,7 +221,7 @@ export function TradePage() {
   };
 
   const qty = parseInt(quantity) || 0;
-  const refPrice = liveStock?.ltp ?? (parseFloat(price) || 0);
+  const refPrice = liveTick?.ltp ?? liveStock?.ltp ?? (parseFloat(price) || 0);
   const orderValue = qty * refPrice;
   // Real available margin from /api/portfolio — never falls back to a hard-coded
   // DEMO value. If the fetch hasn't completed yet, show "—" instead.
@@ -389,7 +413,7 @@ export function TradePage() {
               </div>
             </div>
 
-            {/* Live stock strip */}
+            {/* Live stock strip — uses WebSocket live tick if available */}
             {liveStock && (
               <div className="rounded-xl border border-border bg-bg-base p-3">
                 <div className="flex items-center justify-between">
@@ -401,16 +425,22 @@ export function TradePage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-mono text-base font-bold tabular-nums text-text-primary">
-                      ₹{formatNumber(liveStock.ltp ?? 0)}
+                    <p className={cn(
+                      'font-mono text-base font-bold tabular-nums',
+                      liveTick ? 'text-text-primary' : 'text-text-secondary'
+                    )}>
+                      ₹{formatNumber(liveTick?.ltp ?? liveStock.ltp ?? 0)}
+                      {liveTick && (
+                        <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse align-middle" />
+                      )}
                     </p>
                     <p
                       className={cn(
                         'font-mono text-xs tabular-nums',
-                        (liveStock.changePct ?? 0) >= 0 ? 'text-profit-green' : 'text-loss-red'
+                        ((liveTick?.change ?? liveStock.change) ?? 0) >= 0 ? 'text-profit-green' : 'text-loss-red'
                       )}
                     >
-                      {(liveStock.change ?? 0) >= 0 ? '+' : ''}{formatNumber(liveStock.change ?? 0)} ({(liveStock.changePct ?? 0) >= 0 ? '+' : ''}{(liveStock.changePct ?? 0).toFixed(2)}%)
+                      {((liveTick?.change ?? liveStock.change) ?? 0) >= 0 ? '+' : ''}{formatNumber((liveTick?.change ?? liveStock.change) ?? 0)} ({((liveTick?.changePct ?? liveStock.changePct) ?? 0) >= 0 ? '+' : ''}{((liveTick?.changePct ?? liveStock.changePct) ?? 0).toFixed(2)}%)
                     </p>
                   </div>
                 </div>

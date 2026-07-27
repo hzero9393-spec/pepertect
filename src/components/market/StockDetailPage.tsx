@@ -401,13 +401,13 @@ export function StockDetailPage() {
           </div>
         </div>
 
-        {/* OHLC grid 2x3 */}
+        {/* OHLC grid 2x3 — uses live tick values when available */}
         <div className="mt-4 grid grid-cols-3 gap-x-3 gap-y-3 border-t border-border pt-3">
-          <OhlcCell label="Open"  value={`₹${formatNumber(stock.open ?? 0)}`} />
-          <OhlcCell label="High"  value={`₹${formatNumber(stock.high ?? 0)}`} accent="text-profit-green" />
-          <OhlcCell label="Low"   value={`₹${formatNumber(stock.low ?? 0)}`} accent="text-loss-red" />
-          <OhlcCell label="Close" value={`₹${formatNumber(stock.close ?? 0)}`} />
-          <OhlcCell label="Volume" value={formatNumber(stock.volume ?? 0, 0)} />
+          <OhlcCell label="Open"  value={`₹${formatNumber(liveTick?.open ?? stock.open ?? 0)}`} />
+          <OhlcCell label="High"  value={`₹${formatNumber(liveTick?.high ?? stock.high ?? 0)}`} accent="text-profit-green" />
+          <OhlcCell label="Low"   value={`₹${formatNumber(liveTick?.low ?? stock.low ?? 0)}`} accent="text-loss-red" />
+          <OhlcCell label="Close" value={`₹${formatNumber(liveTick?.close ?? stock.close ?? 0)}`} />
+          <OhlcCell label="Volume" value={formatNumber(liveTick?.volume ?? stock.volume ?? 0, 0)} />
           <OhlcCell label="Lot Size" value={String(stock.lotSize ?? 1)} />
         </div>
       </div>

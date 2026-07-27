@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatNumber, cn } from '@/lib/utils';
 import {
@@ -20,6 +20,8 @@ import {
   getUpcomingExpiries,
   type ExpiryIndex,
 } from '@/lib/expiry-calendar';
+import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 
 /**
  * Look up the human-readable label (e.g. "Jan W1", "Mar Monthly") for an
@@ -48,6 +50,7 @@ interface OptionLeg {
   change: number;
   changePct: number;
   intrinsic: number;
+  instrumentKey?: string | null;
 }
 
 interface StrikeRow {
@@ -184,6 +187,49 @@ export function OptionChainPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /* Live WebSocket quotes — subscribes to underlying index + all CE/PE
+     instrument keys in the chain. The hook handles its own polling fallback
+     when WebSocket isn't connected. */
+  const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
+  const subscribedRef = useRef<Set<string>>(new Set());
+
+  // Re-subscribe whenever the chain data changes (new strikes loaded)
+  useEffect(() => {
+    if (!data) return;
+    const underlyingKey = data.upstoxKey || INDEX_TO_UPSTOX_KEY[symbol];
+    const wanted = new Set<string>();
+    if (underlyingKey) wanted.add(underlyingKey);
+    for (const row of data.strikes) {
+      if (row.ce?.instrumentKey) wanted.add(row.ce.instrumentKey);
+      if (row.pe?.instrumentKey) wanted.add(row.pe.instrumentKey);
+    }
+    const newKeys = Array.from(wanted).filter((k) => !subscribedRef.current.has(k));
+    const stale = Array.from(subscribedRef.current).filter((k) => !wanted.has(k));
+    if (newKeys.length > 0) {
+      subscribe(newKeys);
+      newKeys.forEach((k) => subscribedRef.current.add(k));
+    }
+    if (stale.length > 0) {
+      unsubscribe(stale);
+      stale.forEach((k) => subscribedRef.current.delete(k));
+    }
+  }, [data, symbol, subscribe, unsubscribe]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (subscribedRef.current.size > 0) {
+        unsubscribe(Array.from(subscribedRef.current));
+        subscribedRef.current.clear();
+      }
+    };
+  }, [unsubscribe]);
+
+  // Compute live spot price from underlying index tick
+  const underlyingKey = data?.upstoxKey || INDEX_TO_UPSTOX_KEY[symbol];
+  const underlyingTick = underlyingKey ? quotes[underlyingKey] : undefined;
+  const liveSpot = underlyingTick?.ltp ?? data?.spot ?? 0;
+
   /* ---------- Strike search state ----------
      When the user types e.g. "24500 CE" (without an explicit expiry date),
      we show a dropdown listing all 4 upcoming expiries for that strike+side.
@@ -295,9 +341,9 @@ export function OptionChainPage() {
   const strikeOverviewHref = (s: string, exp: string, strike: number) =>
     `/optionchain/strike?symbol=${encodeURIComponent(s)}&expiry=${encodeURIComponent(exp)}&strike=${strike}`;
 
-  const spot = data?.spot ?? 0;
+  const spot = (liveSpot || data?.spot) ?? 0;
   const atm = data?.atm ?? 0;
-  const spotPositive = (data?.spot ?? 0) >= (data?.spot ?? 0); // placeholder, real change shown below
+  const spotPositive = (underlyingTick?.change ?? 0) >= 0;
 
   // Approximate change vs previous close — derive from seed-stable spot
   // The API doesn't return yesterday's close, so we just show the spot + ATM.
@@ -406,16 +452,30 @@ export function OptionChainPage() {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <p className="font-mono text-2xl sm:text-3xl font-bold tabular-nums text-text-primary">
+            <p className={cn(
+              'font-mono text-2xl sm:text-3xl font-bold tabular-nums',
+              underlyingTick ? 'text-text-primary' : 'text-text-secondary'
+            )}>
               {formatNumber(spot, 2)}
+              {underlyingTick && (
+                <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-profit-green animate-pulse align-middle" />
+              )}
             </p>
+            {underlyingTick && (
+              <p className={cn(
+                'font-mono text-[11px] tabular-nums font-semibold mt-0.5',
+                spotPositive ? 'text-profit-green' : 'text-loss-red'
+              )}>
+                {spotPositive ? '▲' : '▼'} {Math.abs(underlyingTick.change ?? 0).toFixed(2)} ({(underlyingTick.changePct ?? 0).toFixed(2)}%)
+              </p>
+            )}
             <p className="text-[11px] text-text-tertiary mt-0.5">
               <Clock className="inline h-3 w-3 mr-0.5" />
               {data
                 ? `${data.dte}d to expiry`
                 : 'Loading…'}
             </p>
-            {data?.realData && (
+            {(data?.realData || underlyingTick) && (
               <span className="inline-flex items-center gap-0.5 mt-1 px-1.5 py-0.5 rounded-full bg-tint-green text-profit-green text-[9px] font-bold uppercase tracking-wide">
                 <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
                 Live Upstox
@@ -559,7 +619,7 @@ export function OptionChainPage() {
             <p className="text-sm text-text-secondary">No data available</p>
           </div>
         ) : (
-          <OptionChainTable data={data} />
+          <OptionChainTable data={data} quotes={quotes} liveSpot={liveSpot} />
         )}
       </div>
     </div>
@@ -599,12 +659,39 @@ function SummaryCell({
   );
 }
 
-function OptionChainTable({ data }: { data: ChainResponse }) {
+function OptionChainTable({
+  data,
+  quotes,
+  liveSpot,
+}: {
+  data: ChainResponse;
+  quotes: Record<string, any>;
+  liveSpot?: number;
+}) {
   const { strikes, atm, symbol, expiry } = data;
+  const atmRowRef = useRef<HTMLTableRowElement | null>(null);
+  const scrolledRef = useRef(false);
+
+  /* Auto-scroll the ATM strike into view once on initial render.
+     We use a flag so that switching expiry re-triggers the scroll. */
+  useEffect(() => {
+    if (atmRowRef.current && !scrolledRef.current) {
+      atmRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      scrolledRef.current = true;
+    }
+  }, [atm]);
+
+  // Reset scroll flag when expiry changes
+  useEffect(() => {
+    scrolledRef.current = false;
+  }, [expiry]);
 
   // Build the strike overview URL — clicking the strike price opens a focused page
   const strikeHref = (strike: number) =>
     `/optionchain/strike?symbol=${encodeURIComponent(symbol)}&expiry=${encodeURIComponent(expiry)}&strike=${strike}`;
+
+  // Recompute ITM/OTM using live spot if available
+  const effectiveSpot = liveSpot && liveSpot > 0 ? liveSpot : data.spot;
 
   return (
     <div className="overflow-x-auto">
@@ -637,15 +724,33 @@ function OptionChainTable({ data }: { data: ChainResponse }) {
         </thead>
         <tbody>
           {strikes.map((row) => {
+            // Recompute ITM status from live spot
+            const diff = effectiveSpot - row.strikePrice;
+            const itm = diff > 0 ? 'CE' : diff < 0 ? 'PE' : null;
             const isAtm = row.strikePrice === atm;
-            const isCeItm = row.itm === 'CE';
-            const isPeItm = row.itm === 'PE';
-            const ceUp = row.ce.change >= 0;
-            const peUp = row.pe.change >= 0;
+            const isCeItm = itm === 'CE';
+            const isPeItm = itm === 'PE';
+
+            // Live ticks for CE / PE
+            const ceTick = row.ce.instrumentKey ? quotes[row.ce.instrumentKey] : undefined;
+            const peTick = row.pe.instrumentKey ? quotes[row.pe.instrumentKey] : undefined;
+            const ceLtp = ceTick?.ltp ?? row.ce.lastPrice;
+            const peLtp = peTick?.ltp ?? row.pe.lastPrice;
+            const ceOi = ceTick?.oi ?? row.ce.oi;
+            const peOi = peTick?.oi ?? row.pe.oi;
+            const ceVol = ceTick?.volume ?? row.ce.volume;
+            const peVol = peTick?.volume ?? row.pe.volume;
+            const ceChange = ceTick?.change ?? row.ce.change;
+            const peChange = peTick?.change ?? row.pe.change;
+            const ceUp = ceChange >= 0;
+            const peUp = peChange >= 0;
+            const ceLive = !!ceTick?.timestamp && Date.now() - ceTick.timestamp < 30000;
+            const peLive = !!peTick?.timestamp && Date.now() - peTick.timestamp < 30000;
 
             return (
               <tr
                 key={row.strikePrice}
+                ref={isAtm ? atmRowRef : undefined}
                 className={cn(
                   'border-b border-border/60 transition-colors hover:bg-bg-surface-alt/50',
                   isAtm && 'bg-tint-blue/40'
@@ -656,13 +761,13 @@ function OptionChainTable({ data }: { data: ChainResponse }) {
                   'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
                   isCeItm && 'bg-profit-green/[0.06]'
                 )}>
-                  {formatOi(row.ce.oi)}
+                  {formatOi(ceOi)}
                 </td>
                 <td className={cn(
                   'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-tertiary',
                   isCeItm && 'bg-profit-green/[0.06]'
                 )}>
-                  {formatOi(row.ce.volume)}
+                  {formatOi(ceVol)}
                 </td>
                 <td className={cn(
                   'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
@@ -677,7 +782,10 @@ function OptionChainTable({ data }: { data: ChainResponse }) {
                   <span className={cn(ceUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] mr-1')}>
                     {ceUp ? '▲' : '▼'}
                   </span>
-                  {formatNumber(row.ce.lastPrice, 2)}
+                  {formatNumber(ceLtp, 2)}
+                  {ceLive && (
+                    <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                  )}
                 </td>
 
                 {/* STRIKE — clickable, opens strike overview page */}
@@ -705,10 +813,13 @@ function OptionChainTable({ data }: { data: ChainResponse }) {
                   'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold',
                   isPeItm ? 'text-loss-red bg-loss-red/[0.06]' : 'text-text-primary'
                 )}>
-                  {formatNumber(row.pe.lastPrice, 2)}
+                  {formatNumber(peLtp, 2)}
                   <span className={cn(peUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] ml-1')}>
                     {peUp ? '▲' : '▼'}
                   </span>
+                  {peLive && (
+                    <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                  )}
                 </td>
                 <td className={cn(
                   'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
@@ -720,13 +831,13 @@ function OptionChainTable({ data }: { data: ChainResponse }) {
                   'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-tertiary',
                   isPeItm && 'bg-loss-red/[0.06]'
                 )}>
-                  {formatOi(row.pe.volume)}
+                  {formatOi(peVol)}
                 </td>
                 <td className={cn(
                   'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
                   isPeItm && 'bg-loss-red/[0.06]'
                 )}>
-                  {formatOi(row.pe.oi)}
+                  {formatOi(peOi)}
                 </td>
               </tr>
             );

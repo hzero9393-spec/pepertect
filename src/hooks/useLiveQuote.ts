@@ -3,10 +3,15 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 
 /**
- * Upstox realtime WebSocket client.
+ * Upstox realtime WebSocket client with REST polling fallback.
  *
  * Connects to the Cloudflare Worker at NEXT_PUBLIC_UPSTOX_WS_URL
  * (default: wss://upstox-realtime.hzero9393.workers.dev/ws).
+ *
+ * If the WebSocket is not connected within 4 seconds, or after a disconnect,
+ * the hook transparently falls back to polling /api/market/live-quote every 5s
+ * for all currently-subscribed instrument keys. The moment the WebSocket
+ * reconnects, polling stops.
  *
  * Usage:
  *   const { quotes, status, subscribe, unsubscribe } = useLiveQuote();
@@ -38,7 +43,8 @@ export type ConnectionStatus =
   | 'upstox_connected'
   | 'upstox_disconnected'
   | 'closed'
-  | 'error';
+  | 'error'
+  | 'polling';
 
 const WS_URL =
   process.env.NEXT_PUBLIC_UPSTOX_WS_URL ||
@@ -49,15 +55,109 @@ let wsSingleton: WebSocket | null = null;
 let wsRefcount = 0;
 const subscribers = new Map<string, Set<(tick: LiveTick) => void>>();
 const statusListeners = new Set<(status: ConnectionStatus) => void>();
+const quotesStore: Record<string, LiveTick> = {};
+const quotesListeners = new Set<() => void>();
 let lastStatus: ConnectionStatus = 'idle';
 let reconnectAttempts = 0;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pingTimer: ReturnType<typeof setInterval> | null = null;
 let pendingSubscribes: Set<string> = new Set();
+let pollingTimer: ReturnType<typeof setInterval> | null = null;
+let pollingActive = false;
+let wsOpenTime = 0;
+let lastPollTime = 0;
 
 function setStatus(s: ConnectionStatus) {
   lastStatus = s;
   statusListeners.forEach((cb) => cb(s));
+}
+
+function emitQuotesChanged() {
+  quotesListeners.forEach((cb) => cb());
+}
+
+function applyTick(tick: LiveTick) {
+  if (!tick?.instrumentKey) return;
+  const prev = quotesStore[tick.instrumentKey];
+  if (prev && prev.ltp === tick.ltp && prev.timestamp === tick.timestamp) return;
+  quotesStore[tick.instrumentKey] = { ...prev, ...tick };
+  const set = subscribers.get(tick.instrumentKey);
+  if (set) set.forEach((cb) => cb(tick));
+  emitQuotesChanged();
+}
+
+// ---------------------------------------------------------------------------
+// REST polling fallback — used when WebSocket is not connected
+// ---------------------------------------------------------------------------
+async function pollOnce() {
+  if (subscribers.size === 0) return;
+  const now = Date.now();
+  if (now - lastPollTime < 3000) return; // throttle to once per 3s
+  lastPollTime = now;
+  const keys = Array.from(subscribers.keys());
+  // Batch in groups of 20 to avoid huge URL length
+  for (let i = 0; i < keys.length; i += 20) {
+    const batch = keys.slice(i, i + 20);
+    const params = new URLSearchParams();
+    params.set('instrument_keys', batch.join(','));
+    params.set('full', '1');
+    try {
+      const res = await fetch(`/api/market/live-quote?${params.toString()}`);
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (!json?.success || !json?.data) continue;
+      // data is a map of instrumentKey -> {last_price, ohlc: {open, high, low, close}, net_change, ...}
+      for (const k of batch) {
+        const d = json.data[k];
+        if (!d) continue;
+        const ltp = typeof d.last_price === 'number' ? d.last_price : undefined;
+        const close = d.ohlc?.close;
+        const change = typeof d.net_change === 'number'
+          ? d.net_change
+          : (ltp != null && close != null ? ltp - close : undefined);
+        const changePct = (change != null && close && close > 0)
+          ? (change / close) * 100
+          : undefined;
+        applyTick({
+          instrumentKey: k,
+          ltp,
+          change,
+          changePct,
+          open: d.ohlc?.open,
+          high: d.ohlc?.high,
+          low: d.ohlc?.low,
+          close,
+          volume: d.volume,
+          oi: d.oi,
+          bid: d.bid,
+          ask: d.ask,
+          timestamp: Date.now(),
+        });
+      }
+    } catch {
+      // ignore — will retry next interval
+    }
+  }
+}
+
+function startPolling() {
+  if (pollingActive) return;
+  pollingActive = true;
+  if (lastStatus !== 'error' && lastStatus !== 'closed') {
+    setStatus('polling');
+  }
+  // Immediate poll
+  pollOnce();
+  // Then every 5s
+  pollingTimer = setInterval(pollOnce, 5000);
+}
+
+function stopPolling() {
+  if (pollingTimer) {
+    clearInterval(pollingTimer);
+    pollingTimer = null;
+  }
+  pollingActive = false;
 }
 
 function ensureWs() {
@@ -68,16 +168,27 @@ function ensureWs() {
   setStatus('connecting');
   try {
     wsSingleton = new WebSocket(WS_URL);
+    wsOpenTime = Date.now();
   } catch (e) {
     console.error('[useLiveQuote] WebSocket ctor failed:', e);
     setStatus('error');
     scheduleReconnect();
+    startPolling();
     return;
   }
 
+  // If WS doesn't open within 4s, start polling fallback (don't wait)
+  const fallbackStarter = setTimeout(() => {
+    if (wsSingleton?.readyState !== WebSocket.OPEN) {
+      if (!pollingActive) startPolling();
+    }
+  }, 4000);
+
   wsSingleton.addEventListener('open', () => {
+    clearTimeout(fallbackStarter);
     setStatus('open');
     reconnectAttempts = 0;
+    stopPolling(); // stop REST fallback if it was running
     // Re-subscribe all keys
     if (subscribers.size > 0) {
       const keys = Array.from(subscribers.keys());
@@ -104,8 +215,7 @@ function ensureWs() {
       const msg = JSON.parse(event.data);
       if (msg.type === 'tick' && msg.data?.instrumentKey) {
         const tick = msg.data as LiveTick;
-        const set = subscribers.get(tick.instrumentKey);
-        if (set) set.forEach((cb) => cb(tick));
+        applyTick(tick);
       } else if (msg.type === 'upstox_connected') {
         setStatus('upstox_connected');
       } else if (msg.type === 'upstox_disconnected') {
@@ -119,15 +229,19 @@ function ensureWs() {
   });
 
   wsSingleton.addEventListener('close', () => {
+    clearTimeout(fallbackStarter);
     setStatus('closed');
     wsSingleton = null;
     if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
-    if (wsRefcount > 0) scheduleReconnect();
+    if (wsRefcount > 0) {
+      scheduleReconnect();
+      startPolling();
+    }
   });
 
   wsSingleton.addEventListener('error', () => {
     setStatus('error');
-    // The close handler will schedule reconnect
+    // The close handler will schedule reconnect + start polling
   });
 }
 
@@ -152,6 +266,14 @@ function subscribeKeys(keys: string[], cb: (tick: LiveTick) => void) {
     // Queue for when WS opens
     keys.forEach((k) => pendingSubscribes.add(k));
     ensureWs();
+    // Also start polling immediately so user sees data while WS connects
+    if (!pollingActive) {
+      // Give WS a brief grace period; polling will start automatically after 4s if WS not open
+      // But if user just subscribed and WS is closed, start polling now
+      if (wsSingleton?.readyState !== WebSocket.CONNECTING) {
+        startPolling();
+      }
+    }
   }
 }
 
@@ -164,6 +286,8 @@ function unsubscribeKeys(keys: string[], cb: (tick: LiveTick) => void) {
       if (set.size === 0) {
         subscribers.delete(k);
         toRemove.push(k);
+        // Also clean up stored quote
+        delete quotesStore[k];
       }
     }
   }
@@ -181,27 +305,36 @@ export interface UseLiveQuoteResult {
 }
 
 export function useLiveQuote(): UseLiveQuoteResult {
-  const [quotes, setQuotes] = useState<Record<string, LiveTick>>({});
+  // useSyncExternalStore-like pattern: subscribe to changes via listeners
+  const [, setVersion] = useState(0);
   const [status, setStatusState] = useState<ConnectionStatus>(lastStatus);
   const subscribedRef = useRef<Set<string>>(new Set());
   const cbRef = useRef<(tick: LiveTick) => void>(() => {});
+  const mountedRef = useRef(true);
 
-  // Update callback ref each render so we always have fresh closure
-  cbRef.current = (tick: LiveTick) => {
-    setQuotes((prev) => {
-      if (prev[tick.instrumentKey]?.ltp === tick.ltp && prev[tick.instrumentKey]?.timestamp === tick.timestamp) {
-        return prev; // no change
-      }
-      return { ...prev, [tick.instrumentKey]: tick };
-    });
-  };
+  // Force re-render whenever quotes change (but throttled)
+  useEffect(() => {
+    const listener = () => {
+      if (mountedRef.current) setVersion((v) => v + 1);
+    };
+    quotesListeners.add(listener);
+    return () => { quotesListeners.delete(listener); };
+  }, []);
 
   // Subscribe to status changes
   useEffect(() => {
-    const listener = (s: ConnectionStatus) => setStatusState(s);
+    const listener = (s: ConnectionStatus) => {
+      if (mountedRef.current) setStatusState(s);
+    };
     statusListeners.add(listener);
     return () => { statusListeners.delete(listener); };
   }, []);
+
+  // Update callback ref each render so we always have fresh closure
+  cbRef.current = (tick: LiveTick) => {
+    // Quotes are stored in module-level quotesStore; we just trigger re-render
+    setVersion((v) => v + 1);
+  };
 
   const subscribe = useCallback((keys: string[]) => {
     const newKeys = keys.filter((k) => !subscribedRef.current.has(k));
@@ -217,9 +350,11 @@ export function useLiveQuote(): UseLiveQuoteResult {
 
   // Keep WS alive while mounted
   useEffect(() => {
+    mountedRef.current = true;
     wsRefcount++;
     ensureWs();
     return () => {
+      mountedRef.current = false;
       wsRefcount--;
       // Unsubscribe all keys this hook subscribed to
       const all = Array.from(subscribedRef.current);
@@ -232,11 +367,18 @@ export function useLiveQuote(): UseLiveQuoteResult {
         wsSingleton = null;
         if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        stopPolling();
       }
     };
   }, []);
 
-  return { quotes, status, subscribe, unsubscribe, ready: status === 'upstox_connected' || status === 'open' };
+  return {
+    quotes: quotesStore,
+    status,
+    subscribe,
+    unsubscribe,
+    ready: status === 'upstox_connected' || status === 'open',
+  };
 }
 
 // Convenience: auto-subscribe on mount
@@ -250,4 +392,31 @@ export function useLiveQuotesFor(instrumentKeys: string[]): Record<string, LiveT
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyStr]);
   return quotes;
+}
+
+/**
+ * Convenience: subscribe by stock/index symbol (auto-resolves to Upstox key).
+ * Returns the live tick for that symbol, or undefined.
+ */
+export function useLiveTick(symbol: string | null | undefined): LiveTick | undefined {
+  const { quotes, subscribe, unsubscribe } = useLiveQuote();
+  // Lazy-import to avoid circular deps in some build setups
+  const getUpstoxKey = (s: string) => {
+    // We do a runtime require here so this hook can be used in any context
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const mod = require('@/lib/upstox-instruments');
+      return mod.getUpstoxKey(s);
+    } catch {
+      return null;
+    }
+  };
+  const key = symbol ? getUpstoxKey(symbol) : null;
+  useEffect(() => {
+    if (!key) return;
+    subscribe([key]);
+    return () => unsubscribe([key]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return key ? quotes[key] : undefined;
 }

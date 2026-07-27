@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatNumber, formatINR, cn } from '@/lib/utils';
 import {
@@ -26,6 +26,8 @@ import {
 import { StockLogo } from '@/components/shared/StockLogo';
 import { findExpiry, type ExpiryIndex } from '@/lib/expiry-calendar';
 import { addOptionStrikeToGroup } from '@/lib/multi-watchlist';
+import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 
 // ---- Types (mirror OptionChainPage) ----------------------------------------
 
@@ -37,6 +39,7 @@ interface OptionLeg {
   change: number;
   changePct: number;
   intrinsic: number;
+  instrumentKey?: string | null;
 }
 
 interface StrikeRow {
@@ -60,6 +63,8 @@ interface ChainResponse {
   expiries: string[];
   dte: number;
   strikes: StrikeRow[];
+  realData?: boolean;
+  upstoxKey?: string;
 }
 
 const INDICES = [
@@ -173,13 +178,51 @@ export function OptionStrikeOverviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [side, setSide] = useState<Side>('CE');
 
+  const { symbol, expiry: initialExpiry, strike: targetStrike } = initialParams;
+  const [expiry, setExpiry] = useState<string | null>(initialExpiry || null);
+
+  /* Live WebSocket quotes — subscribe to underlying index + selected strike's CE/PE */
+  const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
+  const subscribedRef = useRef<Set<string>>(new Set());
+
+  // Subscribe to live ticks for underlying index + the CE/PE legs of the strike row
+  useEffect(() => {
+    if (!data) return;
+    const underlyingKey = data.upstoxKey || INDEX_TO_UPSTOX_KEY[symbol];
+    const wanted = new Set<string>();
+    if (underlyingKey) wanted.add(underlyingKey);
+    const sr = data.strikes.find((r) => r.strikePrice === targetStrike) ||
+      data.strikes.reduce<StrikeRow | null>((best, r) => {
+        if (!best) return r;
+        return Math.abs(r.strikePrice - targetStrike) < Math.abs(best.strikePrice - targetStrike) ? r : best;
+      }, null);
+    if (sr?.ce?.instrumentKey) wanted.add(sr.ce.instrumentKey);
+    if (sr?.pe?.instrumentKey) wanted.add(sr.pe.instrumentKey);
+    const newKeys = Array.from(wanted).filter((k) => !subscribedRef.current.has(k));
+    const stale = Array.from(subscribedRef.current).filter((k) => !wanted.has(k));
+    if (newKeys.length > 0) {
+      subscribe(newKeys);
+      newKeys.forEach((k) => subscribedRef.current.add(k));
+    }
+    if (stale.length > 0) {
+      unsubscribe(stale);
+      stale.forEach((k) => subscribedRef.current.delete(k));
+    }
+  }, [data, symbol, targetStrike, subscribe, unsubscribe]);
+
+  useEffect(() => {
+    return () => {
+      if (subscribedRef.current.size > 0) {
+        unsubscribe(Array.from(subscribedRef.current));
+        subscribedRef.current.clear();
+      }
+    };
+  }, [unsubscribe]);
+
   /* Inline order placement state */
   const [lots, setLots] = useState(1);
   const [placing, setPlacing] = useState(false);
   const [orderResult, setOrderResult] = useState<{ ok: boolean; message: string } | null>(null);
-
-  const { symbol, expiry: initialExpiry, strike: targetStrike } = initialParams;
-  const [expiry, setExpiry] = useState<string | null>(initialExpiry || null);
 
   const fetchChain = useCallback(async () => {
     if (!token) return;
@@ -240,8 +283,10 @@ export function OptionStrikeOverviewPage() {
 
   const idxInfo = INDICES.find((i) => i.symbol === symbol) ?? INDICES[0];
 
-  // Moneyness calculations
-  const spot = data?.spot ?? 0;
+  // Live spot price — prefer WebSocket tick, fall back to API spot
+  const underlyingKey = data?.upstoxKey || INDEX_TO_UPSTOX_KEY[symbol];
+  const underlyingTick = underlyingKey ? quotes[underlyingKey] : undefined;
+  const spot = underlyingTick?.ltp ?? data?.spot ?? 0;
   const moneyness = useMemo(() => {
     if (!strikeRow) return null;
     const k = strikeRow.strikePrice;
@@ -253,10 +298,23 @@ export function OptionStrikeOverviewPage() {
     };
   }, [strikeRow, spot]);
 
-  // Active leg
-  const activeLeg: OptionLeg | null = strikeRow ? (side === 'CE' ? strikeRow.ce : strikeRow.pe) : null;
+  // Active leg — overlay live tick on top of API data
+  const baseActiveLeg: OptionLeg | null = strikeRow ? (side === 'CE' ? strikeRow.ce : strikeRow.pe) : null;
+  const activeLegInstrumentKey = baseActiveLeg?.instrumentKey;
+  const activeLegTick = activeLegInstrumentKey ? quotes[activeLegInstrumentKey] : undefined;
+  const activeLeg: OptionLeg | null = baseActiveLeg
+    ? {
+        ...baseActiveLeg,
+        lastPrice: activeLegTick?.ltp ?? baseActiveLeg.lastPrice,
+        oi: activeLegTick?.oi ?? baseActiveLeg.oi,
+        volume: activeLegTick?.volume ?? baseActiveLeg.volume,
+        change: activeLegTick?.change ?? baseActiveLeg.change,
+        changePct: activeLegTick?.changePct ?? baseActiveLeg.changePct,
+      }
+    : null;
   const activeItm = strikeRow ? (side === 'CE' ? strikeRow.itm === 'CE' : strikeRow.itm === 'PE') : false;
   const legUp = (activeLeg?.change ?? 0) >= 0;
+  const legLive = !!activeLegTick?.timestamp && Date.now() - activeLegTick.timestamp < 30000;
 
   // Greeks for the active leg
   const greeks = useMemo(() => {
@@ -403,9 +461,23 @@ export function OptionStrikeOverviewPage() {
           </div>
           <div className="text-right shrink-0">
             <p className="text-[10px] text-text-tertiary uppercase">Spot</p>
-            <p className="font-mono text-base font-bold tabular-nums text-text-primary">
+            <p className={cn(
+              'font-mono text-base font-bold tabular-nums',
+              underlyingTick ? 'text-text-primary' : 'text-text-secondary'
+            )}>
               {formatNumber(spot, 2)}
+              {underlyingTick && (
+                <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse align-middle" />
+              )}
             </p>
+            {underlyingTick && (
+              <p className={cn(
+                'font-mono text-[10px] tabular-nums font-semibold',
+                (underlyingTick.change ?? 0) >= 0 ? 'text-profit-green' : 'text-loss-red'
+              )}>
+                {(underlyingTick.change ?? 0) >= 0 ? '▲' : '▼'} {Math.abs(underlyingTick.change ?? 0).toFixed(2)} ({(underlyingTick.changePct ?? 0).toFixed(2)}%)
+              </p>
+            )}
             <button
               onClick={handleAddToWatchlist}
               className={cn(
@@ -485,10 +557,19 @@ export function OptionStrikeOverviewPage() {
             <div className="card-soft p-3">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] uppercase tracking-wide text-text-tertiary">
+                  <p className="text-[10px] uppercase tracking-wide text-text-tertiary inline-flex items-center gap-1.5">
                     {side === 'CE' ? 'CALL' : 'PUT'} · LTP
+                    {legLive && (
+                      <span className="inline-flex items-center gap-0.5 text-profit-green text-[9px] font-bold">
+                        <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                        LIVE
+                      </span>
+                    )}
                   </p>
-                  <p className="mt-0.5 font-mono text-2xl font-bold tabular-nums text-text-primary">
+                  <p className={cn(
+                    'mt-0.5 font-mono text-2xl font-bold tabular-nums',
+                    legLive ? 'text-text-primary' : 'text-text-secondary'
+                  )}>
                     ₹{formatNumber(activeLeg.lastPrice, 2)}
                   </p>
                   <div className="mt-0.5 flex items-center gap-1">

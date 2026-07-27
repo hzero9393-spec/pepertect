@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatINR, formatNumber, cn, getInitials, formatOrderStatus } from '@/lib/utils';
 import { getVirtualCapitalForTier } from '@/lib/tier';
@@ -13,6 +13,7 @@ import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { Sparkline } from '@/components/shared/Sparkline';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
+import { getUpstoxKey } from '@/lib/upstox-instruments';
 
 // Map our internal index symbols to Upstox instrument keys
 const INDEX_TO_UPSTOX_KEY: Record<string, string> = {
@@ -50,19 +51,47 @@ export function DashboardPage() {
   const tierFallback = user?.tier === 'PREMIUM' ? 100000 : 10000;
 
   // Live quotes via WebSocket (Cloudflare Worker → Upstox)
-  const { quotes, subscribe, status: wsStatus } = useLiveQuote();
+  const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
+  const subscribedRef = useRef<Set<string>>(new Set());
 
-  // Compute Upstox instrument keys for the loaded indices
-  const indexKeys = useMemo(() => {
-    return indices
-      .map((i) => INDEX_TO_UPSTOX_KEY[i.symbol])
-      .filter(Boolean) as string[];
-  }, [indices]);
+  // Compute Upstox instrument keys for the loaded indices + open positions
+  const allKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const i of indices) {
+      const k = INDEX_TO_UPSTOX_KEY[i.symbol];
+      if (k) keys.add(k);
+    }
+    for (const p of positions) {
+      if (p.status !== 'OPEN') continue;
+      const k = getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol];
+      if (k) keys.add(k);
+    }
+    return Array.from(keys);
+  }, [indices, positions]);
 
-  // Subscribe to live quotes whenever the index list changes
+  // Subscribe to live quotes whenever keys change
   useEffect(() => {
-    if (indexKeys.length > 0) subscribe(indexKeys);
-  }, [indexKeys, subscribe]);
+    if (allKeys.length === 0) return;
+    const newKeys = allKeys.filter((k) => !subscribedRef.current.has(k));
+    const stale = Array.from(subscribedRef.current).filter((k) => !allKeys.includes(k));
+    if (newKeys.length > 0) {
+      subscribe(newKeys);
+      newKeys.forEach((k) => subscribedRef.current.add(k));
+    }
+    if (stale.length > 0) {
+      unsubscribe(stale);
+      stale.forEach((k) => subscribedRef.current.delete(k));
+    }
+  }, [allKeys, subscribe, unsubscribe]);
+
+  useEffect(() => {
+    return () => {
+      if (subscribedRef.current.size > 0) {
+        unsubscribe(Array.from(subscribedRef.current));
+        subscribedRef.current.clear();
+      }
+    };
+  }, [unsubscribe]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -299,7 +328,16 @@ export function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {positions.slice(0, 3).map((pos) => {
-                const positive = pos.pnl >= 0;
+                // Live tick lookup
+                const liveKey = getUpstoxKey(pos.symbol) || INDEX_TO_UPSTOX_KEY[pos.symbol];
+                const tick = liveKey ? quotes[liveKey] : undefined;
+                const liveLtp = tick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
+                const livePnl = (liveLtp - pos.avgPrice) * pos.quantity * (pos.side === 'LONG' ? 1 : -1);
+                const livePnlPct = pos.avgPrice > 0
+                  ? (livePnl / (pos.avgPrice * pos.quantity)) * 100
+                  : 0;
+                const positive = livePnl >= 0;
+                const isLive = !!tick?.timestamp && Date.now() - tick.timestamp < 30000;
                 return (
                   <a
                     key={pos.id}
@@ -309,19 +347,24 @@ export function DashboardPage() {
                     <StockLogo symbol={pos.symbol} size="md" rounded="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="font-mono text-sm font-semibold text-text-primary">{pos.symbol}</p>
+                        <p className="font-mono text-sm font-semibold text-text-primary">
+                          {pos.symbol}
+                          {isLive && (
+                            <span className="ml-1 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                          )}
+                        </p>
                         <span className="pill bg-tint-green text-profit-green">BUY</span>
                       </div>
                       <p className="text-[11px] text-text-secondary mt-0.5">
-                        NSE · {pos.quantity} Shares · ₹{formatNumber(pos.currentPrice ?? pos.avgPrice, 2)}
+                        NSE · {pos.quantity} Shares · ₹{formatNumber(liveLtp, 2)}
                       </p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="font-mono text-sm font-bold tabular-nums text-text-primary">
-                        ₹{formatNumber(pos.currentPrice * pos.quantity, 2)}
+                        ₹{formatNumber(liveLtp * pos.quantity, 2)}
                       </p>
                       <p className={cn('font-mono text-[11px] tabular-nums', positive ? 'text-profit-green' : 'text-loss-red')}>
-                        {positive ? '+' : ''}₹{formatNumber(pos.pnl, 2)} ({positive ? '+' : ''}{pos.pnlPct?.toFixed(2) ?? '0.00'}%)
+                        {positive ? '+' : ''}₹{formatNumber(livePnl, 2)} ({positive ? '+' : ''}{livePnlPct.toFixed(2)}%)
                       </p>
                     </div>
                   </a>

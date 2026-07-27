@@ -12,8 +12,10 @@ import { getPlatformToken } from '@/lib/upstox';
  */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
-  const keysParam = sp.get('instrument_key') || sp.get('keys') || '';
-  const full = sp.get('full') === '1' || sp.get('full') === 'true';
+  const keysParam = sp.get('instrument_key') || sp.get('instrument_keys') || sp.get('keys') || '';
+  // Always return full quote (OHLC + volume + OI) — clients that only need LTP
+  // can ignore the extra fields. This makes the polling fallback richer.
+  const full = true;
   if (!keysParam) {
     return NextResponse.json(
       { success: false, error: 'instrument_key parameter required' },
