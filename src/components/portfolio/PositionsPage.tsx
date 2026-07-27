@@ -623,33 +623,24 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         <p className={`text-sm text-center font-medium ${message.includes('success') || message.includes('Exited') || message.includes('Successfully') ? 'text-profit-green' : 'text-loss-red'}`}>{message}</p>
       )}
 
-      {/* ============== TRADE HISTORY — ABOVE POSITIONS ============== */}
-      <div className="card-soft p-3 sm:p-4">
-        <div className="flex items-center justify-between mb-3">
+      {/* ============== TRADE HISTORY LINK ============== */}
+      <a href="/trade-history" className="block group">
+        <div className="card-soft p-3 sm:p-4 flex items-center justify-between transition-all hover:bg-bg-surface-alt/60">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-purple">
               <History className="h-3.5 w-3.5 text-info-purple" />
             </div>
-            <h3 className="font-heading text-sm font-semibold text-text-primary">Trade History</h3>
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
-              {tabTrades.length}
-            </span>
+            <div>
+              <h3 className="font-heading text-sm font-semibold text-text-primary">Trade History</h3>
+              <p className="text-[10px] text-text-secondary">{tabTrades.length} trade{tabTrades.length !== 1 ? 's' : ''} recorded</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 text-brand-primary opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="text-[11px] font-semibold">View All</span>
+            <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
           </div>
         </div>
-        {tabTrades.length === 0 ? (
-          <div className="flex flex-col items-center py-6 text-center">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-bg-surface-alt mb-2">
-              <History className="h-5 w-5 text-text-tertiary" />
-            </div>
-            <p className="text-sm font-medium text-text-primary">No trades yet</p>
-            <p className="text-xs text-text-secondary mt-0.5">
-              {activeTab === 'stock' ? 'Your equity trade history will appear here' : 'Your F&O trade history will appear here'}
-            </p>
-          </div>
-        ) : (
-          <TradeHistoryList trades={tabTrades} />
-        )}
-      </div>
+      </a>
 
       {/* ============== POSITIONS ============== */}
       <div className="card-soft p-3 sm:p-4">
@@ -806,162 +797,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           Start Trading
         </div>
       </a>
-    </div>
-  );
-}
-
-/* ========================================================================
- * TradeHistoryList — clean professional expandable trade cards
- * ======================================================================== */
-function TradeHistoryList({ trades }: { trades: Trade[] }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  if (trades.length === 0) return null;
-
-  return (
-    <div className="space-y-1.5">
-      {trades.map((trade, idx) => {
-        const isExpanded = expandedId === trade.id;
-        const pnl = Number(trade.pnl) || 0;
-        const price = Number(trade.price) || 0;
-        const qty = Number(trade.quantity) || 0;
-        const invested = price * qty;
-        const profitPct = invested > 0 ? (pnl / invested) * 100 : 0;
-        const isBuy = trade.side === 'BUY';
-        const isOpen = trade.type === 'OPEN';
-        const tradeDate = trade.createdAt
-          ? new Date(trade.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-          : '';
-        const expiryDate = trade.expiry
-          ? new Date(trade.expiry).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-          : '';
-
-        return (
-          <div
-            key={trade.id}
-            className={cn(
-              'rounded-xl border overflow-hidden transition-all duration-300 ease-out animate-in fade-in slide-in-from-bottom-1 cursor-pointer group',
-              isExpanded
-                ? 'border-brand-primary/40 bg-bg-surface-alt/40 shadow-sm'
-                : 'border-border hover:bg-bg-surface-alt/20'
-            )}
-            style={{ animationDelay: `${idx * 40}ms`, animationFillMode: 'both' }}
-            onClick={() => setExpandedId(isExpanded ? null : trade.id)}
-          >
-            {/* Compact header row */}
-            <div className="flex items-center gap-2.5 px-3 py-2.5">
-              {/* Symbol + badges */}
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <StockLogo symbol={trade.symbol} size="sm" rounded="md" />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-mono text-[13px] font-bold text-text-primary tracking-tight">{trade.symbol}</span>
-                    <span className={cn(
-                      'inline-block rounded px-1 py-[1px] text-[8px] font-bold leading-tight uppercase tracking-wide',
-                      isBuy ? 'bg-profit-green/12 text-profit-green' : 'bg-loss-red/12 text-loss-red'
-                    )}>
-                      {trade.side}
-                    </span>
-                    {trade.optionType && (
-                      <span className={cn(
-                        'inline-block rounded px-1 py-[1px] text-[8px] font-bold leading-tight',
-                        trade.optionType === 'CE' ? 'bg-profit-green/12 text-profit-green' : 'bg-loss-red/12 text-loss-red'
-                      )}>
-                        {trade.optionType}
-                      </span>
-                    )}
-                    {trade.strikePrice != null && trade.strikePrice > 0 && (
-                      <span className="font-mono text-[9px] text-text-tertiary">{trade.strikePrice}</span>
-                    )}
-                  </div>
-                  <p className="font-mono text-[10px] text-text-tertiary mt-px">
-                    {qty} @ ₹{formatNumber(price, 2)}
-                  </p>
-                </div>
-              </div>
-
-              {/* P&L + chevron */}
-              <div className="flex items-center gap-2 shrink-0">
-                <div className="text-right">
-                  <p className={cn('font-mono text-[13px] font-bold tabular-nums tracking-tight leading-tight', getPnlColor(pnl))}>
-                    {pnl >= 0 ? '+' : ''}₹{formatNumber(pnl)}
-                  </p>
-                  <p className={cn('font-mono text-[9px] tabular-nums leading-tight', getPnlColor(profitPct))}>
-                    {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
-                  </p>
-                </div>
-                <div className={cn(
-                  'flex h-6 w-6 items-center justify-center rounded-full transition-transform duration-300',
-                  isExpanded ? 'rotate-180 bg-brand-primary/10' : 'bg-bg-surface-alt'
-                )}>
-                  <ChevronDown className="h-3 w-3 text-text-tertiary" />
-                </div>
-              </div>
-            </div>
-
-            {/* Expanded detail panel — slide down animation */}
-            <div className={cn(
-              'grid transition-all duration-300 ease-out overflow-hidden',
-              isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-            )}>
-              <div className="overflow-hidden">
-                <div className="border-t border-border/50 mx-3" />
-                <div className="px-3 py-3 space-y-3">
-                  {/* Summary row */}
-                  <div className="flex items-stretch gap-2">
-                    <div className="flex-1 rounded-lg bg-bg-base p-2 text-center">
-                      <p className="text-[8px] font-semibold uppercase tracking-wider text-text-tertiary mb-0.5">P&L</p>
-                      <p className={cn('font-mono text-sm font-bold tabular-nums tracking-tight', getPnlColor(pnl))}>
-                        {pnl >= 0 ? '+' : ''}₹{formatNumber(pnl)}
-                      </p>
-                    </div>
-                    <div className="flex-1 rounded-lg bg-bg-base p-2 text-center">
-                      <p className="text-[8px] font-semibold uppercase tracking-wider text-text-tertiary mb-0.5">Return</p>
-                      <p className={cn('font-mono text-sm font-bold tabular-nums tracking-tight', getPnlColor(profitPct))}>
-                        {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
-                      </p>
-                    </div>
-                    <div className="flex-1 rounded-lg bg-bg-base p-2 text-center">
-                      <p className="text-[8px] font-semibold uppercase tracking-wider text-text-tertiary mb-0.5">Charges</p>
-                      <p className="font-mono text-sm font-bold tabular-nums tracking-tight text-text-primary">
-                        ₹{formatNumber(Number(trade.brokerage) || 0)}
-                      </p>
-                    </div>
-                  </div>
-                  {/* Detail grid */}
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
-                    <DetailRow label="Symbol" value={trade.symbol} />
-                    <DetailRow label="Side" value={trade.side} />
-                    <DetailRow label="Type" value={trade.type} />
-                    <DetailRow label="Segment" value={trade.segment} />
-                    <DetailRow label="Quantity" value={String(trade.quantity)} />
-                    <DetailRow label="Price" value={`₹${formatNumber(price, 2)}`} />
-                    {trade.strikePrice != null && trade.strikePrice > 0 && (
-                      <DetailRow label="Strike" value={`₹${formatNumber(Number(trade.strikePrice))}`} />
-                    )}
-                    {trade.optionType && (
-                      <DetailRow label="Option" value={trade.optionType} />
-                    )}
-                    {expiryDate && (
-                      <DetailRow label="Expiry" value={expiryDate} />
-                    )}
-                    <DetailRow label="Date" value={tradeDate} />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-text-secondary">{label}</span>
-      <span className="font-mono font-semibold text-text-primary">{value}</span>
     </div>
   );
 }
