@@ -15,6 +15,7 @@ import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 import { Sparkline } from '@/components/shared/Sparkline';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { getUpstoxKey, INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
+import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 
 // Deterministic mini-series for sparklines based on symbol
 function getMiniSeries(symbol: string, positive: boolean): number[] {
@@ -57,6 +58,41 @@ export function PortfolioPage() {
   const { quotes, subscribe, unsubscribe } = useLiveQuote();
   const subscribedRef = useRef<Set<string>>(new Set());
 
+  /* Resolved option-strike instrument keys — same pattern as PositionsPage.
+   * Without this, OPTIONS positions would subscribe to the underlying index
+   * spot price instead of the option's premium, producing absurd P&L. */
+  const [optionKeyMap, setOptionKeyMap] = useState<Map<string, string | null>>(new Map());
+  useEffect(() => {
+    const optPositions = positions.filter(
+      (p) => p.status === 'OPEN' && p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry
+    );
+    if (optPositions.length === 0) {
+      setOptionKeyMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    resolveOptionInstrumentKeys(
+      optPositions.map((p) => ({
+        id: p.id,
+        symbol: p.symbol,
+        strikePrice: Number(p.strikePrice),
+        optionType: p.optionType as 'CE' | 'PE',
+        expiry: p.expiry as string,
+      }))
+    )
+      .then((m) => { if (!cancelled) setOptionKeyMap(m); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [positions]);
+
+  // Helper: resolve the right Upstox key to subscribe to for a position
+  function getLiveKeyForPosition(p: Position): string | null {
+    if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
+      return optionKeyMap.get(p.id) ?? null;
+    }
+    return getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol] || null;
+  }
+
   useEffect(() => {
     const fetchData = async () => {
       if (!token) return;
@@ -90,7 +126,7 @@ export function PortfolioPage() {
     const wanted = new Set<string>();
     for (const p of positions) {
       if (p.status !== 'OPEN') continue;
-      const k = getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol];
+      const k = getLiveKeyForPosition(p);
       if (k) wanted.add(k);
     }
     const newKeys = Array.from(wanted).filter((k) => !subscribedRef.current.has(k));
@@ -103,7 +139,8 @@ export function PortfolioPage() {
       unsubscribe(stale);
       stale.forEach((k) => subscribedRef.current.delete(k));
     }
-  }, [positions, subscribe, unsubscribe]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positions, optionKeyMap, subscribe, unsubscribe]);
 
   useEffect(() => {
     return () => {
@@ -120,7 +157,7 @@ export function PortfolioPage() {
     let anyLive = false;
     for (const p of positions) {
       if (p.status !== 'OPEN') continue;
-      const k = getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol];
+      const k = getLiveKeyForPosition(p);
       const tick = k ? quotes[k] : undefined;
       const ltp = tick?.ltp ?? p.currentPrice ?? p.avgPrice;
       if (tick) anyLive = true;
@@ -128,7 +165,8 @@ export function PortfolioPage() {
       total += pnl;
     }
     return { total, anyLive };
-  }, [positions, quotes]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positions, quotes, optionKeyMap]);
 
   // Sector allocation derived from open positions
   const sectorAlloc: SectorAllocation[] = useMemo(() => {
@@ -344,8 +382,8 @@ export function PortfolioPage() {
                   </thead>
                   <tbody>
                     {positions.map((pos) => {
-                      // Live tick lookup
-                      const liveKey = getUpstoxKey(pos.symbol) || INDEX_TO_UPSTOX_KEY[pos.symbol];
+                      // Live tick lookup — uses resolved option-strike key for OPTIONS
+                      const liveKey = getLiveKeyForPosition(pos);
                       const tick = liveKey ? quotes[liveKey] : undefined;
                       const liveLtp = tick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
                       const livePnlRow = (liveLtp - pos.avgPrice) * pos.quantity * (pos.side === 'LONG' ? 1 : -1);

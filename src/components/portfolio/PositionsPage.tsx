@@ -11,6 +11,7 @@ import type { Position, Trade } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
+import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 
 /* Index symbols — used to classify positions as Index vs Stock */
 const INDEX_SYMBOLS = new Set(['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY']);
@@ -49,6 +50,18 @@ export function PositionsPage() {
   /* Track the last shown auto-exit toast for each position */
   const [autoExitLog, setAutoExitLog] = useState<Array<{ symbol: string; reason: string; ltp: number; level: number; ts: number }>>([]);
 
+  /* ---------- Resolved instrument keys for OPTIONS positions ----------
+   * For an OPTIONS position, `getUpstoxKey(pos.symbol)` returns the underlying
+   * INDEX key (e.g. NSE_INDEX|Nifty 50) — NOT the strike's instrument key.
+   * Subscribing to the index spot price gives a wildly wrong "live LTP" for
+   * an option position (e.g. NIFTY spot ~24,000 instead of NIFTY 32900 CE
+   * premium ~₹100). We resolve the actual strike instrument_key by fetching
+   * the option chain for (symbol + expiry) on mount, then subscribe to that.
+   */
+  const [optionKeyMap, setOptionKeyMap] = useState<Map<string, string | null>>(new Map());
+  /* True while we're resolving option keys (briefly shown as a loader) */
+  const [resolvingOptionKeys, setResolvingOptionKeys] = useState(false);
+
   useEffect(() => {
     const fetchPositions = async () => {
       if (!token) return;
@@ -73,18 +86,77 @@ export function PositionsPage() {
     return () => clearInterval(id);
   }, [token]);
 
+  /* ---------- Resolve instrument keys for OPTIONS positions ----------
+   * When positions change, fetch option chains to map each OPTIONS position
+   * to its actual Upstox instrument_key (e.g. NSE_FO|63811 for a real
+   * NIFTY strike). EQUITY positions skip this — they use getUpstoxKey(symbol).
+   */
+  useEffect(() => {
+    if (positions.length === 0) return;
+    const optionPositions = positions.filter(
+      (p) => p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry
+    );
+    if (optionPositions.length === 0) {
+      setOptionKeyMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    setResolvingOptionKeys(true);
+    resolveOptionInstrumentKeys(
+      optionPositions.map((p) => ({
+        id: p.id,
+        symbol: p.symbol,
+        strikePrice: Number(p.strikePrice),
+        optionType: p.optionType as 'CE' | 'PE',
+        expiry: p.expiry as string,
+      }))
+    )
+      .then((map) => {
+        if (!cancelled) setOptionKeyMap(map);
+      })
+      .catch((err) => console.error('resolveOptionInstrumentKeys failed:', err))
+      .finally(() => {
+        if (!cancelled) setResolvingOptionKeys(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [positions]);
+
+  /* ---------- Helper: resolve the live-tick instrument key for a position ----------
+   * Returns the right Upstox key to subscribe to:
+   *   - EQUITY → getUpstoxKey(symbol) e.g. "NSE_EQ|INE002A01018"
+   *   - OPTIONS → resolved strike key e.g. "NSE_FO|63811" (or synthetic fallback)
+   *   - FUTURES → getUpstoxKey(symbol) (TODO: future instrument key resolution)
+   */
+  function getLiveKeyForPosition(p: Position): string | null {
+    if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
+      // Use the resolved strike key if available; otherwise fall back to underlying
+      // (better than nothing — at least the UI doesn't break before resolution completes).
+      const resolved = optionKeyMap.get(p.id);
+      if (resolved) return resolved;
+      // While resolving, return null so we don't accidentally subscribe to the
+      // underlying index spot price (which would show absurd P&L).
+      return null;
+    }
+    // EQUITY or FUTURES: use underlying symbol lookup
+    return getUpstoxKey(p.symbol);
+  }
+
   /* ---------- Subscribe to live quotes for all open positions ---------- */
   useEffect(() => {
     if (positions.length === 0) return;
     const newSyms: string[] = [];
     const newKeys: string[] = [];
     for (const p of positions) {
-      if (subscribedSymsRef.current.has(p.symbol)) continue;
-      const key = getUpstoxKey(p.symbol);
-      if (key) {
-        newSyms.push(p.symbol);
-        newKeys.push(key);
-      }
+      // Build a stable subscription-id per position so we can avoid re-subscribing.
+      // For OPTIONS we wait until optionKeyMap has resolved the strike's key.
+      const key = getLiveKeyForPosition(p);
+      if (!key) continue;
+      const subId = `${p.id}::${key}`;
+      if (subscribedSymsRef.current.has(subId)) continue;
+      newSyms.push(subId);
+      newKeys.push(key);
     }
     if (newKeys.length > 0) {
       subscribe(newKeys);
@@ -97,7 +169,8 @@ export function PositionsPage() {
         newSyms.forEach((s) => subscribedSymsRef.current.delete(s));
       }
     };
-  }, [positions, subscribe, unsubscribe]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [positions, optionKeyMap, subscribe, unsubscribe]);
 
   /* ---------- Auto-trigger SL / Target ---------- */
   // For each open position, check if live LTP has hit SL or Target.
@@ -129,7 +202,7 @@ export function PositionsPage() {
     if (positions.length === 0) return;
     for (const p of positions) {
       if (!p.stopLoss && !p.target) continue;
-      const key = getUpstoxKey(p.symbol);
+      const key = getLiveKeyForPosition(p);
       if (!key) continue;
       const tick = quotes[key];
       if (!tick || tick.ltp == null) continue;
@@ -142,7 +215,7 @@ export function PositionsPage() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quotes, positions]);
+  }, [quotes, positions, optionKeyMap]);
 
   const handleSquareOff = async (posId: string) => {
     try {
@@ -426,12 +499,27 @@ export function PositionsPage() {
             />
           ) : (
             <div className="space-y-2 sm:space-y-3">
+              {resolvingOptionKeys && (
+                <div className="rounded-md bg-tint-blue/40 border border-brand-primary/20 px-3 py-1.5 text-[11px] text-text-secondary flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Resolving live option-strike instrument keys…
+                </div>
+              )}
               {filteredPositions.map((pos) => {
-                /* Look up live LTP from WebSocket quotes */
-                const liveKey = getUpstoxKey(pos.symbol);
+                /* Look up live LTP from WebSocket quotes.
+                 * For OPTIONS positions we use the resolved strike instrument_key
+                 * (e.g. NSE_FO|63811) — NOT the underlying index spot price.
+                 * For EQUITY positions we use the symbol's instrument_key.
+                 * If we don't yet have a live tick (still resolving, or WS not
+                 * connected), we fall back to pos.currentPrice (which the API
+                 * now sets to avgPrice for OPTIONS — so P&L shows as 0 until
+                 * the live tick arrives, instead of showing absurd spot-based P&L).
+                 */
+                const liveKey = getLiveKeyForPosition(pos);
                 const liveTick = liveKey ? quotes[liveKey] : undefined;
                 const liveLtp = liveTick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
-                /* Recompute PnL with live LTP */
+                /* Recompute PnL with live LTP — uses the actual option premium
+                 * for OPTIONS, or actual stock price for EQUITY. */
                 const livePnl = (liveLtp - pos.avgPrice) * pos.quantity;
                 const livePnlPct = pos.avgPrice > 0 ? ((liveLtp - pos.avgPrice) / pos.avgPrice) * 100 : 0;
                 /* SL/TGT proximity check (for visual cue) */

@@ -29,7 +29,13 @@ export async function GET(req: NextRequest) {
     });
     if (stale.length > 0) {
       await Promise.all(stale.map(async (p) => {
-        const exitPrice = MOCK_LTP[p.symbol] ?? Number(p.currentPrice);
+        // For OPTIONS/FUTURES, never use MOCK_LTP[underlying] as exit price —
+        // that would liquidate the position at the spot price instead of the
+        // option's premium. Use stored currentPrice or fall back to avgPrice
+        // (premium paid) so a 24h auto-squareoff produces ~0 P&L.
+        const exitPrice = (p.segment === 'OPTIONS' || p.segment === 'FUTURES')
+          ? (Number(p.currentPrice) > 0 ? Number(p.currentPrice) : Number(p.avgPrice))
+          : (MOCK_LTP[p.symbol] ?? Number(p.currentPrice) ?? Number(p.avgPrice));
         const pnl = (exitPrice - Number(p.avgPrice)) * p.quantity * (p.side === 'LONG' ? 1 : -1);
         const orderValue = exitPrice * p.quantity;
         await db.position.update({
@@ -70,7 +76,27 @@ export async function GET(req: NextRequest) {
     });
 
     const enriched = positions.map((p) => {
-      const currentPrice = MOCK_LTP[p.symbol] ?? Number(p.currentPrice);
+      // IMPORTANT: For OPTIONS positions, p.symbol is the UNDERLYING (e.g. 'NIFTY')
+      // — but MOCK_LTP['NIFTY'] is the NIFTY SPOT price (~24000), NOT the option's
+      // premium. Using the spot price as `currentPrice` caused the position page to
+      // display absurd P&L (e.g. ₹100 strike → ₹24,000 live price → +₹2.4M profit).
+      //
+      // Fix: For OPTIONS, the "currentPrice" we set here is only a fallback used
+      // when the client hasn't yet received a live tick for the option's actual
+      // instrument key. We default to the avgPrice (premium paid) so that, until
+      // the live tick arrives, P&L = 0 — which is the correct paper-trading UX.
+      // Once the live tick arrives, the client overwrites this with the real LTP.
+      let currentPrice: number;
+      if (p.segment === 'OPTIONS' || p.segment === 'FUTURES') {
+        // For derivatives, never fall back to underlying spot price.
+        // Use stored currentPrice if it's > 0, else use avgPrice.
+        currentPrice = Number(p.currentPrice) > 0
+          ? Number(p.currentPrice)
+          : Number(p.avgPrice);
+      } else {
+        // For EQUITY: use MOCK_LTP (real-ish spot) or stored currentPrice
+        currentPrice = MOCK_LTP[p.symbol] ?? Number(p.currentPrice) ?? Number(p.avgPrice);
+      }
       const pnl = (currentPrice - Number(p.avgPrice)) * p.quantity * (p.side === 'LONG' ? 1 : -1);
       const pnlPct = Number(p.avgPrice) > 0 ? ((currentPrice - Number(p.avgPrice)) / Number(p.avgPrice)) * 100 : 0;
       return {

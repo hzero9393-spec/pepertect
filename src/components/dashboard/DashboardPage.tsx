@@ -14,6 +14,7 @@ import { StockLogo } from '@/components/shared/StockLogo';
 import { Sparkline } from '@/components/shared/Sparkline';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
+import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 
 // Map our internal index symbols to Upstox instrument keys
 const INDEX_TO_UPSTOX_KEY: Record<string, string> = {
@@ -54,6 +55,42 @@ export function DashboardPage() {
   const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
   const subscribedRef = useRef<Set<string>>(new Set());
 
+  /* Resolved option-strike instrument keys (parallel to PositionsPage logic).
+   * Without this, an OPTIONS position (e.g. NIFTY 32900 CE) would subscribe to
+   * NIFTY's underlying spot price (~24,000) instead of the option premium (~₹100),
+   * producing absurd P&L on the dashboard. */
+  const [optionKeyMap, setOptionKeyMap] = useState<Map<string, string | null>>(new Map());
+  useEffect(() => {
+    const optPositions = positions.filter(
+      (p) => p.status === 'OPEN' && p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry
+    );
+    if (optPositions.length === 0) {
+      setOptionKeyMap(new Map());
+      return;
+    }
+    let cancelled = false;
+    resolveOptionInstrumentKeys(
+      optPositions.map((p) => ({
+        id: p.id,
+        symbol: p.symbol,
+        strikePrice: Number(p.strikePrice),
+        optionType: p.optionType as 'CE' | 'PE',
+        expiry: p.expiry as string,
+      }))
+    )
+      .then((m) => { if (!cancelled) setOptionKeyMap(m); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [positions]);
+
+  // Helper: get the right Upstox key to subscribe to for a position
+  function getLiveKeyForPosition(p: Position): string | null {
+    if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
+      return optionKeyMap.get(p.id) ?? null;
+    }
+    return getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol] || null;
+  }
+
   // Compute Upstox instrument keys for the loaded indices + open positions
   const allKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -63,11 +100,12 @@ export function DashboardPage() {
     }
     for (const p of positions) {
       if (p.status !== 'OPEN') continue;
-      const k = getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol];
+      const k = getLiveKeyForPosition(p);
       if (k) keys.add(k);
     }
     return Array.from(keys);
-  }, [indices, positions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indices, positions, optionKeyMap]);
 
   // Subscribe to live quotes whenever keys change
   useEffect(() => {
@@ -328,8 +366,8 @@ export function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {positions.slice(0, 3).map((pos) => {
-                // Live tick lookup
-                const liveKey = getUpstoxKey(pos.symbol) || INDEX_TO_UPSTOX_KEY[pos.symbol];
+                // Live tick lookup — uses resolved option-strike key for OPTIONS positions
+                const liveKey = getLiveKeyForPosition(pos);
                 const tick = liveKey ? quotes[liveKey] : undefined;
                 const liveLtp = tick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
                 const livePnl = (liveLtp - pos.avgPrice) * pos.quantity * (pos.side === 'LONG' ? 1 : -1);
