@@ -32,13 +32,13 @@ function isToday(iso: string): boolean {
   );
 }
 
-export function PositionsPage() {
+export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' | 'index' }) {
   const { token } = useAuthStore();
   const [positions, setPositions] = useState<Position[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [activeTab, setActiveTab] = useState<'stock' | 'index'>('stock');
+  const [activeTab, setActiveTab] = useState<'stock' | 'index'>(initialTab);
   const [exitingAll, setExitingAll] = useState(false);
   const [confirmExitAll, setConfirmExitAll] = useState(false);
   /* ---------- Live quotes via WebSocket ---------- */
@@ -81,10 +81,17 @@ export function PositionsPage() {
       }
     };
     fetchPositions();
-    // Auto-refresh every 5s as a safety net (live ticks handle real-time P&L).
-    // Was 10s — reduced to 5s for faster position state sync (SL/TGT triggers,
-    // auto-squareoff, etc.). Live LTP itself updates via WebSocket every ~800ms.
-    const id = setInterval(fetchPositions, 5000);
+    // Auto-refresh every 15s as a SAFETY NET only — live ticks handle real-time
+    // P&L (and now that we removed the stale MOCK_LTP table, the API returns
+    // pnl=0 so re-fetching won't briefly flash wrong numbers).
+    // 5x SPEED: was 5s — increased to 15s because:
+    //   1. Real-time P&L is computed client-side from WebSocket ticks (no API
+    //      round-trip needed for live updates).
+    //   2. Less frequent refetch = less network/CPU usage = faster perceived
+    //      performance for the user.
+    //   3. SL/TGT triggers are checked on every WS tick (every ~800ms), so
+    //      they still fire instantly even with a 15s API refresh.
+    const id = setInterval(fetchPositions, 15000);
     return () => clearInterval(id);
   }, [token]);
 
@@ -295,24 +302,90 @@ export function PositionsPage() {
   const indexPositions = positions.filter((p) => isIndexPosition(p));
   const filteredPositions = activeTab === 'stock' ? stockPositions : indexPositions;
 
+  /* ---------- Live LTP per position (from WebSocket) ----------
+   * Build a map of { positionId: liveLtp } using the same key-resolution
+   * logic as getLiveKeyForPosition. This is used to compute REAL-TIME
+   * unrealized P&L for the hero card — instead of using the stale `p.pnl`
+   * field returned by the API (which used to be computed from a hard-coded
+   * MOCK_LTP table that was months out of date, e.g. RELIANCE 1882.75 vs
+   * real ~1278 → showed +₹1,207 the moment a trade was placed).
+   *
+   * If no live tick is available yet (still resolving or WS not connected),
+   * we fall back to pos.avgPrice → P&L = 0, which is the correct
+   * paper-trading UX until the real LTP arrives. */
+  const liveLtpByPosId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of positions) {
+      const key = getLiveKeyForPosition(p);
+      const tick = key ? quotes[key] : undefined;
+      const ltp = tick?.ltp ?? p.avgPrice;
+      map.set(p.id, ltp);
+    }
+    return map;
+  }, [positions, quotes, optionKeyMap]);
+
+  /* ---------- LIVE total invested / P&L for the active tab ---------- */
   const totalInvested = filteredPositions.reduce((sum, p) => sum + p.investedAmt, 0);
-  const totalPnl = filteredPositions.reduce((sum, p) => sum + p.pnl, 0);
+  // Use LIVE LTP (from WebSocket) — not the stale p.pnl returned by the API.
+  // This guarantees the hero card and the per-position card show the same number.
+  const totalPnl = filteredPositions.reduce((sum, p) => {
+    const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
+    return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+  }, 0);
   const totalQty = filteredPositions.reduce((s, p) => s + p.quantity, 0);
 
-  /* ---------- Today's P&L (realized + unrealized) for the active tab ---------- */
+  /* ---------- LIVE Today's P&L (realized + unrealized) for the active tab ---------- */
   const todayStats = useMemo(() => {
     const todayRealized = trades
       .filter((t) => isToday(t.createdAt) && (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
       .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+    // Use LIVE LTP (from WebSocket) for unrealized — matches the per-position card.
     const todayUnrealized = filteredPositions
       .filter((p) => isToday(p.openedAt))
-      .reduce((sum, p) => sum + (p.pnl || 0), 0);
+      .reduce((sum, p) => {
+        const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
+        return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+      }, 0);
     return {
       realized: todayRealized,
       unrealized: todayUnrealized,
       total: todayRealized + todayUnrealized,
     };
-  }, [trades, filteredPositions, activeTab]);
+  }, [trades, filteredPositions, activeTab, liveLtpByPosId]);
+
+  /* ---------- LIVE COMBINED Today's P&L (stock + index, real-time) ----------
+   * User requirement: "today p&l same ho stock and index dono ka jaise
+   * stock main 1200 profite hua or index main 500 loss toh total today
+   * p&l 700 ho". So we compute a combined total across BOTH tabs using
+   * the same LIVE LTP source as the per-tab hero card. */
+  const combinedTodayStats = useMemo(() => {
+    const todayRealizedAll = trades
+      .filter((t) => isToday(t.createdAt))
+      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+    const todayUnrealizedAll = positions
+      .filter((p) => isToday(p.openedAt))
+      .reduce((sum, p) => {
+        const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
+        return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+      }, 0);
+    return {
+      realized: todayRealizedAll,
+      unrealized: todayUnrealizedAll,
+      total: todayRealizedAll + todayUnrealizedAll,
+      stockUnrealized: stockPositions
+        .filter((p) => isToday(p.openedAt))
+        .reduce((sum, p) => {
+          const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
+          return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+        }, 0),
+      indexUnrealized: indexPositions
+        .filter((p) => isToday(p.openedAt))
+        .reduce((sum, p) => {
+          const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
+          return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+        }, 0),
+    };
+  }, [trades, positions, stockPositions, indexPositions, liveLtpByPosId]);
 
   /* ---------- All-time totals for the active tab (extra context) ---------- */
   const allTimeRealized = useMemo(() => {
@@ -404,7 +477,56 @@ export function PositionsPage() {
         </div>
       )}
 
-      {/* ============== TODAY'S P&L HERO CARD ============== */}
+      {/* ============== COMBINED TODAY'S P&L (Stock + Index, real-time) ==============
+       * User requirement: "today p&l same ho stock and index dono ka jaise
+       * stock main 1200 profite hua or index main 500 loss toh total today
+       * p&l 700 ho". This card shows the combined total across BOTH tabs. */}
+      <div className="card-soft p-4 relative overflow-hidden border-2 border-brand-primary/30">
+        <div className="absolute -right-2 -top-2 opacity-40 pointer-events-none">
+          <Layers className="h-20 w-20 text-brand-primary/20" />
+        </div>
+        <div className="relative">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4 text-brand-primary" />
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              Today's Total P&L · Stock + Index (Live)
+            </p>
+            {wsStatus === 'upstox_connected' && (
+              <span className="inline-flex items-center gap-0.5 ml-auto text-[9px] font-bold uppercase text-profit-green">
+                <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                LIVE
+              </span>
+            )}
+          </div>
+          <p className={`mt-2 font-mono text-4xl sm:text-5xl font-bold tabular-nums ${getPnlColor(combinedTodayStats.total)}`}>
+            {combinedTodayStats.total >= 0 ? '+' : '−'}{formatINR(Math.abs(combinedTodayStats.total))}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-text-tertiary">Stock:</span>
+              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(combinedTodayStats.stockUnrealized)}`}>
+                {combinedTodayStats.stockUnrealized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(combinedTodayStats.stockUnrealized), 2)}
+              </span>
+            </div>
+            <span className="text-border">·</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-text-tertiary">Index:</span>
+              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(combinedTodayStats.indexUnrealized)}`}>
+                {combinedTodayStats.indexUnrealized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(combinedTodayStats.indexUnrealized), 2)}
+              </span>
+            </div>
+            <span className="text-border">·</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-text-tertiary">Realized:</span>
+              <span className={`font-mono font-semibold tabular-nums ${getPnlColor(combinedTodayStats.realized)}`}>
+                {combinedTodayStats.realized >= 0 ? '+' : '−'}₹{formatNumber(Math.abs(combinedTodayStats.realized), 2)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============== TODAY'S P&L HERO CARD (per-tab) ============== */}
       <div className="card-soft p-4 relative overflow-hidden">
         <div className="absolute -right-2 -top-2 opacity-50 pointer-events-none">
           <CalendarDays className="h-20 w-20 text-brand-primary/20" />
@@ -413,7 +535,12 @@ export function PositionsPage() {
           <div className="flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-brand-primary" />
             <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
-              Today's P&L · {activeTab === 'stock' ? 'Stock' : 'Index'}
+              Today's P&L · {activeTab === 'stock' ? 'Stock' : 'Index'} {wsStatus === 'upstox_connected' && (
+                <span className="inline-flex items-center gap-0.5 ml-1 text-[9px] font-bold uppercase text-profit-green">
+                  <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                  LIVE
+                </span>
+              )}
             </p>
           </div>
           <p className={`mt-2 font-mono text-3xl sm:text-4xl font-bold tabular-nums ${getPnlColor(todayStats.total)}`}>
@@ -536,11 +663,15 @@ export function PositionsPage() {
                  */
                 const liveKey = getLiveKeyForPosition(pos);
                 const liveTick = liveKey ? quotes[liveKey] : undefined;
-                const liveLtp = liveTick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
-                /* Recompute PnL with live LTP — uses the actual option premium
-                 * for OPTIONS, or actual stock price for EQUITY. */
-                const livePnl = (liveLtp - pos.avgPrice) * pos.quantity;
-                const livePnlPct = pos.avgPrice > 0 ? ((liveLtp - pos.avgPrice) / pos.avgPrice) * 100 : 0;
+                // CRITICAL: Use live WebSocket LTP. Fall back to avgPrice (not
+                // pos.currentPrice) so P&L = 0 until the live tick arrives —
+                // matches the hero card and avoids the absurd +₹1,207 P&L bug
+                // that was caused by stale hard-coded MOCK_LTP values.
+                const liveLtp = liveTick?.ltp ?? pos.avgPrice;
+                // Account for LONG vs SHORT — SHORT positions profit when price falls.
+                const dirMult = pos.side === 'LONG' ? 1 : -1;
+                const livePnl = (liveLtp - pos.avgPrice) * pos.quantity * dirMult;
+                const livePnlPct = pos.avgPrice > 0 ? ((liveLtp - pos.avgPrice) / pos.avgPrice) * 100 * dirMult : 0;
                 /* SL/TGT proximity check (for visual cue) */
                 const slDist = pos.stopLoss ? Math.abs(liveLtp - pos.stopLoss) / liveLtp * 100 : null;
                 const tgtDist = pos.target ? Math.abs(pos.target - liveLtp) / liveLtp * 100 : null;

@@ -201,14 +201,16 @@ export function TradePage() {
 
         /* ---------- Post-order flow (5x faster) ----------
            1. Switch to "Orders" tab so user sees their order at the top
-           2. After 400ms (was 1.5s), redirect to /positions page to see the
-           *    new position with live LTP streaming for the exact instrument. */
+           2. After 150ms (was 400ms), redirect to /position/stock page so
+           *    the user immediately sees their new position with the entry
+           *    price = the actual market price they paid, and the live
+           *    stock price streaming in real-time. */
         setMainTab('orders');
         setActiveTab('orders');
         setRedirecting(true);
         setTimeout(() => {
-          window.location.href = '/positions';
-        }, 400);
+          window.location.href = '/position/stock';
+        }, 150);
       } else {
         setMessage(data.error || 'Order failed');
       }

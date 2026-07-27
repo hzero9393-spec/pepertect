@@ -80,6 +80,22 @@ function resolvePage(pathname: string): React.ComponentType | null {
   if (segment === 'optionchain' && parts.length > 1 && parts[1] === 'strike') {
     return OptionStrikeOverviewPage;
   }
+  // Handle /position/stock and /position/index — new position-page URLs.
+  // User requirement: "url pe banao jaise https://pepertect.vercel.app/position/index/
+  // ya https://pepertect.vercel.app/stock or agar option chain mai trde le toh
+  // index main redirect ho or stock mai le toh stock main jaye position page pe".
+  // So /position/stock → PositionsPage with stock tab, /position/index → index tab.
+  // /positions (legacy) still works — defaults to stock tab.
+  if (segment === 'position' && parts.length > 1 && parts[1] === 'index') {
+    return () => <PositionsPage initialTab="index" />;
+  }
+  if (segment === 'position' && parts.length > 1 && parts[1] === 'stock') {
+    return () => <PositionsPage initialTab="stock" />;
+  }
+  // Legacy /positions — defaults to stock tab. Keeps existing nav links working.
+  if (segment === 'positions') {
+    return () => <PositionsPage initialTab="stock" />;
+  }
   // Handle /support/<sub-page> routes — dedicated support sub-pages
   if (segment === 'support' && parts.length > 1 && parts[1]) {
     const SUPPORT_PAGE_MAP: Record<string, React.ComponentType> = {
@@ -100,7 +116,11 @@ function resolvePage(pathname: string): React.ComponentType | null {
     const doc = LEGAL_DOCS[parts[1]];
     if (doc) return () => <LegalPage doc={doc} />;
   }
-  return PAGE_MAP[segment] ?? null;
+  // Strip "positions" from PAGE_MAP since we handled it explicitly above.
+  if (segment !== 'positions') {
+    return PAGE_MAP[segment] ?? null;
+  }
+  return null;
 }
 
 function subscribe(cb: () => void) {

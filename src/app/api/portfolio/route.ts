@@ -66,19 +66,26 @@ export async function GET(req: NextRequest) {
     });
     const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
 
-    // Calculate unrealized P&L from open positions
-    const MOCK_LTP: Record<string, number> = {
-      RELIANCE: 1882.75, TCS: 3945.60, INFY: 1568.30, HDFCBANK: 1685.20,
-      ICICIBANK: 1245.80, SBIN: 828.45, ITC: 468.25,
-    };
-
+    // Calculate unrealized P&L from open positions.
+    // CRITICAL FIX: We no longer use any hard-coded MOCK_LTP table — those
+    // values were stale (e.g. RELIANCE 1882.75 vs real ~1278) and produced
+    // absurd P&L the moment a trade was placed. Instead we use the stored
+    // `currentPrice` if > 0, else fall back to `avgPrice` (so unrealized
+    // P&L = 0 until the client updates `currentPrice` via the live tick).
+    // The dashboard / positions page recomputes the real-time unrealized
+    // P&L client-side using the WebSocket tick — that's the source of truth
+    // the user sees. This server-side number is only used for backend
+    // bookkeeping (margin checks, etc.) where a conservative 0 is safer
+    // than an inflated stale price.
     const openPositions = await db.position.findMany({
       where: { userId: auth.userId, status: 'OPEN' },
     });
 
     let unrealizedPnl = 0;
     for (const pos of openPositions) {
-      const currentPrice = MOCK_LTP[pos.symbol] ?? Number(pos.currentPrice);
+      const currentPrice = Number(pos.currentPrice) > 0
+        ? Number(pos.currentPrice)
+        : Number(pos.avgPrice);
       unrealizedPnl += (currentPrice - Number(pos.avgPrice)) * pos.quantity;
     }
 

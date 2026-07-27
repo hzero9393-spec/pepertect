@@ -18,6 +18,8 @@ interface DrawerItem {
   label: string;
   icon: React.ElementType;
   premium?: boolean;
+  href?: string;
+  activeMatchers?: string[];
 }
 
 const PRIMARY_ITEMS: DrawerItem[] = [
@@ -25,7 +27,7 @@ const PRIMARY_ITEMS: DrawerItem[] = [
   { id: 'market', label: 'Markets', icon: TrendingUp },
   { id: 'trade', label: 'Trade', icon: BarChart3 },
   { id: 'optionchain', label: 'Option Chain', icon: ListTree },
-  { id: 'positions', label: 'Positions', icon: Briefcase },
+  { id: 'positions', label: 'Positions', icon: Briefcase, href: '/position/stock', activeMatchers: ['/position', '/positions'] },
   { id: 'history', label: 'Wallet History', icon: Wallet },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
 ];
@@ -70,12 +72,14 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
   const activePath = pathname === '/' ? 'dashboard' : pathname.replace('/', '').split('/')[0];
 
   const renderItem = (item: DrawerItem) => {
-    const isActive = activePath === item.id;
+    const itemHref = item.href ?? `/${item.id}`;
+    const isActive = activePath === item.id ||
+      (item.activeMatchers?.some((m) => pathname.startsWith(m)) ?? false);
     const Icon = item.icon;
     return (
       <a
         key={item.id}
-        href={`/${item.id}`}
+        href={itemHref}
         onClick={onClose}
         className={cn(
           'flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors',

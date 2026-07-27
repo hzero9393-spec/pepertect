@@ -17,6 +17,8 @@ interface NavItem {
   label: string;
   icon: React.ElementType;
   premium?: boolean;
+  href?: string; // overrides the default `/${id}` href (e.g. '/position/stock')
+  activeMatchers?: string[]; // additional path prefixes that should mark this item active
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -24,7 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'market', label: 'Markets', icon: TrendingUp },
   { id: 'trade', label: 'Trade', icon: BarChart3 },
   { id: 'optionchain', label: 'Option Chain', icon: ListTree },
-  { id: 'positions', label: 'Positions', icon: Briefcase },
+  { id: 'positions', label: 'Positions', icon: Briefcase, href: '/position/stock', activeMatchers: ['/position', '/positions'] },
   { id: 'history', label: 'Wallet History', icon: Wallet },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
   { id: 'learning', label: 'Learn', icon: GraduationCap, premium: true },
@@ -77,12 +79,17 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
         {NAV_ITEMS.map((item) => {
-          const isActive = activePath === item.id;
+          // Active if: (a) first URL segment matches item.id, OR (b) pathname
+          // starts with any of item.activeMatchers (e.g. /position/stock and
+          // /position/index both highlight the "Positions" nav item).
+          const itemHref = item.href ?? `/${item.id}`;
+          const isActive = activePath === item.id ||
+            (item.activeMatchers?.some((m) => pathname.startsWith(m)) ?? false);
           const Icon = item.icon;
           return (
             <a
               key={item.id}
-              href={`/${item.id}`}
+              href={itemHref}
               className={cn(
                 'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                 isActive

@@ -11,6 +11,8 @@ interface MobileNavItem {
   id: string;
   label: string;
   icon: React.ElementType;
+  href?: string; // overrides the default `/${id}` href
+  activeMatchers?: string[]; // additional path prefixes that mark this item active
 }
 
 // Order: Home, Markets, [Trade FAB], Positions, Watchlist
@@ -18,7 +20,7 @@ const MOBILE_NAV_ITEMS: MobileNavItem[] = [
   { id: 'dashboard', label: 'Home', icon: LayoutDashboard },
   { id: 'market', label: 'Markets', icon: TrendingUp },
   { id: 'trade', label: 'Trade', icon: BarChart3 },
-  { id: 'positions', label: 'Positions', icon: Briefcase },
+  { id: 'positions', label: 'Positions', icon: Briefcase, href: '/position/stock', activeMatchers: ['/position', '/positions'] },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
 ];
 
@@ -40,7 +42,9 @@ export function MobileBottomNav() {
     >
       <div className="flex h-16 items-stretch justify-around">
         {MOBILE_NAV_ITEMS.map((item) => {
-          const isActive = activePath === item.id;
+          const itemHref = item.href ?? `/${item.id}`;
+          const isActive = activePath === item.id ||
+            (item.activeMatchers?.some((m) => pathname.startsWith(m)) ?? false);
           const Icon = item.icon;
 
           // Center "Trade" tab — elevated FAB
@@ -48,7 +52,7 @@ export function MobileBottomNav() {
             return (
               <a
                 key={item.id}
-                href={`/${item.id}`}
+                href={itemHref}
                 className="flex flex-1 flex-col items-center justify-end pb-1.5"
                 aria-current={isActive ? 'page' : undefined}
                 aria-label="Trade"
@@ -71,7 +75,7 @@ export function MobileBottomNav() {
           return (
             <a
               key={item.id}
-              href={`/${item.id}`}
+              href={itemHref}
               className={cn(
                 'flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors',
                 isActive

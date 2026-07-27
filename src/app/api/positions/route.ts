@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateOrBypass } from '@/lib/dev-auth';
 import { db } from '@/lib/db';
 
-const MOCK_LTP: Record<string, number> = {
-  RELIANCE: 1882.75, TCS: 3945.60, INFY: 1568.30, HDFCBANK: 1685.20,
-  ICICIBANK: 1245.80, SBIN: 828.45, BHARTIARTL: 1620.50, ITC: 468.25,
-  HINDUNILVR: 2534.10, KOTAKBANK: 1789.30, LT: 3542.65, AXISBANK: 1168.40,
-  BAJFINANCE: 7234.50, MARUTI: 12450.80, TATAMOTORS: 978.35, WIPRO: 572.60,
-  HCLTECH: 1712.40, SUNPHARMA: 1824.15, TITAN: 3568.90, ADANIENT: 2890.45,
-  NIFTY: 24318.20, SENSEX: 80109.85, BANKNIFTY: 52402.10, FINNIFTY: 23518.45,
-};
+/* NOTE: We intentionally do NOT use a MOCK_LTP table anymore.
+ * The hard-coded prices were stale (e.g. RELIANCE was 1882.75 while the
+ * real market price was ~1278), which caused the position page to show
+ * absurd P&L like +₹1,207 the moment a trade was placed.
+ *
+ * Instead, we set `currentPrice = avgPrice` for every newly-fetched
+ * position. This means `pnl` returned by this route is always 0 until
+ * the client's WebSocket delivers the actual live LTP. The client-side
+ * PositionsPage then computes the real P&L from the live tick — giving
+ * users accurate real-time P&L that matches the per-position card. */
 
 /* 24-hour retention cutoff — positions older than this are auto-cleaned */
 const POSITION_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -29,13 +31,14 @@ export async function GET(req: NextRequest) {
     });
     if (stale.length > 0) {
       await Promise.all(stale.map(async (p) => {
-        // For OPTIONS/FUTURES, never use MOCK_LTP[underlying] as exit price —
-        // that would liquidate the position at the spot price instead of the
-        // option's premium. Use stored currentPrice or fall back to avgPrice
-        // (premium paid) so a 24h auto-squareoff produces ~0 P&L.
-        const exitPrice = (p.segment === 'OPTIONS' || p.segment === 'FUTURES')
-          ? (Number(p.currentPrice) > 0 ? Number(p.currentPrice) : Number(p.avgPrice))
-          : (MOCK_LTP[p.symbol] ?? Number(p.currentPrice) ?? Number(p.avgPrice));
+        // For ALL positions (EQUITY + OPTIONS + FUTURES), use stored
+        // currentPrice if > 0, else fall back to avgPrice. We no longer
+        // use any MOCK_LTP table — those values were stale and produced
+        // wrong P&L on auto-squareoff. A 24h auto-squareoff therefore
+        // produces ~0 P&L, which is the correct paper-trading behavior.
+        const exitPrice = Number(p.currentPrice) > 0
+          ? Number(p.currentPrice)
+          : Number(p.avgPrice);
         const pnl = (exitPrice - Number(p.avgPrice)) * p.quantity * (p.side === 'LONG' ? 1 : -1);
         const orderValue = exitPrice * p.quantity;
         await db.position.update({
@@ -76,27 +79,20 @@ export async function GET(req: NextRequest) {
     });
 
     const enriched = positions.map((p) => {
-      // IMPORTANT: For OPTIONS positions, p.symbol is the UNDERLYING (e.g. 'NIFTY')
-      // — but MOCK_LTP['NIFTY'] is the NIFTY SPOT price (~24000), NOT the option's
-      // premium. Using the spot price as `currentPrice` caused the position page to
-      // display absurd P&L (e.g. ₹100 strike → ₹24,000 live price → +₹2.4M profit).
+      // CRITICAL FIX: We no longer use any hard-coded MOCK_LTP table.
+      // The API returns `currentPrice = avgPrice` so `pnl = 0` until the
+      // client's WebSocket delivers the actual live LTP for the position's
+      // instrument key. The PositionsPage computes the real-time P&L
+      // client-side using the live tick — this guarantees the hero card
+      // total matches the per-position card, and prevents absurd P&L
+      // (e.g. +₹1,207 the moment a trade is placed) caused by stale
+      // hard-coded prices.
       //
-      // Fix: For OPTIONS, the "currentPrice" we set here is only a fallback used
-      // when the client hasn't yet received a live tick for the option's actual
-      // instrument key. We default to the avgPrice (premium paid) so that, until
-      // the live tick arrives, P&L = 0 — which is the correct paper-trading UX.
-      // Once the live tick arrives, the client overwrites this with the real LTP.
-      let currentPrice: number;
-      if (p.segment === 'OPTIONS' || p.segment === 'FUTURES') {
-        // For derivatives, never fall back to underlying spot price.
-        // Use stored currentPrice if it's > 0, else use avgPrice.
-        currentPrice = Number(p.currentPrice) > 0
-          ? Number(p.currentPrice)
-          : Number(p.avgPrice);
-      } else {
-        // For EQUITY: use MOCK_LTP (real-ish spot) or stored currentPrice
-        currentPrice = MOCK_LTP[p.symbol] ?? Number(p.currentPrice) ?? Number(p.avgPrice);
-      }
+      // If the position has a stored currentPrice > 0 (e.g. set by a prior
+      // 24h auto-squareoff attempt that updated the row), we still prefer
+      // avgPrice here because the stored value may itself be stale — the
+      // client will overwrite it with the live tick within ~800ms anyway.
+      const currentPrice = Number(p.avgPrice);
       const pnl = (currentPrice - Number(p.avgPrice)) * p.quantity * (p.side === 'LONG' ? 1 : -1);
       const pnlPct = Number(p.avgPrice) > 0 ? ((currentPrice - Number(p.avgPrice)) / Number(p.avgPrice)) * 100 : 0;
       return {

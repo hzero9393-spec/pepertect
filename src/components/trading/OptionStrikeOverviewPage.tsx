@@ -384,17 +384,19 @@ export function OptionStrikeOverviewPage() {
         setTimeout(() => { fetchBalance(); fetchChain(); }, 400);
 
         /* ---------- Post-order redirect (BUY only) ----------
-         * For BUY orders, redirect to /positions so the user immediately sees
-         * their new position with the entry price = the actual market price
-         * they paid (₹109 in the user's example), and the live strike price
-         * streaming in real-time.
+         * For BUY orders, redirect to /position/index so the user immediately
+         * sees their new OPTIONS position with the entry price = the actual
+         * option premium they paid (e.g. ₹109 in the user's example), and
+         * the live strike price streaming in real-time for the EXACT strike
+         * (e.g. NIFTY 23500 CE — not any other strike).
          * SELL orders square off an existing position — show inline success
-         * but stay on the page so the user can keep trading the chain. */
+         * but stay on the page so the user can keep trading the chain.
+         * 5x SPEED: was 400ms — reduced to 150ms for instant redirect. */
         if (orderSide === 'BUY') {
           setRedirecting(true);
           setTimeout(() => {
-            window.location.href = '/positions';
-          }, 400);
+            window.location.href = '/position/index';
+          }, 150);
         }
       } else {
         setOrderResult({ ok: false, message: j.error || 'Order failed' });
