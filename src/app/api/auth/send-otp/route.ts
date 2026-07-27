@@ -9,7 +9,8 @@ const RESEND_COOLDOWN_MS = 60 * 1000; // 1 minute between sends
  * POST /api/auth/send-otp
  * Body: { email: string }
  *
- * Generates a 6-digit OTP, stores it in PlatformSetting, and sends via Resend.
+ * Sends a 6-digit OTP via Supabase Auth.
+ * Falls back to console log if Supabase is not configured.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -49,21 +50,50 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Generate 6-digit OTP
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-    // Store OTP in PlatformSetting
-    await db.platformSetting.upsert({
-      where: { key: `otp:${normalized}` },
-      create: {
-        key: `otp:${normalized}`,
-        value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }),
-      },
-      update: {
-        value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }),
-      },
-    });
+    if (supabaseUrl && supabaseKey) {
+      // ── Send OTP via Supabase Auth ──
+      try {
+        const authRes = await fetch(`${supabaseUrl}/auth/v1/otp`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+          },
+          body: JSON.stringify({
+            email: normalized,
+            create_user: true,
+          }),
+        });
+
+        if (!authRes.ok) {
+          const errData = await authRes.json().catch(() => ({}));
+          console.error('Supabase OTP error:', errData);
+          return NextResponse.json({
+            success: false,
+            error: 'Failed to send OTP. Please try again.',
+          }, { status: 500 });
+        }
+      } catch (supabaseErr) {
+        console.error('Supabase OTP send error:', supabaseErr);
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to connect to email service. Please try again.',
+        }, { status: 500 });
+      }
+    } else {
+      // ── Fallback: Generate OTP locally (dev mode) ──
+      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+      await db.platformSetting.upsert({
+        where: { key: `otp:${normalized}` },
+        create: { key: `otp:${normalized}`, value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }) },
+        update: { value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }) },
+      });
+      console.log(`[OTP DEV] Email: ${normalized}, OTP: ${otp} (Supabase not configured — OTP logged to console)`);
+    }
 
     // Update rate limit
     await db.platformSetting.upsert({
@@ -72,41 +102,12 @@ export async function POST(req: NextRequest) {
       update: { value: new Date().toISOString() },
     });
 
-    // Send email via Resend
-    const resendApiKey = process.env.RESEND_API_KEY;
-    if (resendApiKey) {
-      try {
-        const { Resend } = await import('resend');
-        const resend = new Resend(resendApiKey);
-        await resend.emails.send({
-          from: 'Pepertect <onboarding@resend.dev>',
-          to: [normalized],
-          subject: 'Your Pepertect Verification Code',
-          html: `
-            <div style="max-width:400px;margin:0 auto;font-family:system-ui,sans-serif;padding:20px;">
-              <div style="text-align:center;margin-bottom:24px;">
-                <h1 style="margin:0;color:#2563EB;font-size:24px;">Pepertect</h1>
-                <p style="color:#6B7280;margin:8px 0 0;font-size:14px;">Paper Trading Platform</p>
-              </div>
-              <div style="background:#F9FAFB;border-radius:12px;padding:24px;text-align:center;border:1px solid #E5E7EB;">
-                <p style="color:#374151;margin:0 0 12px;font-size:14px;">Your verification code is:</p>
-                <div style="font-size:32px;font-weight:700;letter-spacing:8px;color:#111827;font-family:monospace;">${otp}</div>
-                <p style="color:#9CA3AF;margin:12px 0 0;font-size:12px;">Valid for 10 minutes</p>
-              </div>
-              <p style="color:#9CA3AF;text-align:center;font-size:12px;margin-top:24px;">
-                If you didn't request this code, ignore this email.<br>
-                Never share this code with anyone.
-              </p>
-            </div>
-          `,
-        });
-      } catch (emailErr) {
-        console.error('Resend email error:', emailErr);
-        // Still return success — OTP is stored, useful for testing without Resend
-      }
-    } else {
-      console.log(`[OTP DEV] Email: ${normalized}, OTP: ${otp} (Resend API key not set — OTP logged to console)`);
-    }
+    // Store email as "OTP sent" flag so verify-otp knows which method to use
+    await db.platformSetting.upsert({
+      where: { key: `otp_method:${normalized}` },
+      create: { key: `otp_method:${normalized}`, value: supabaseUrl ? 'supabase' : 'local' },
+      update: { value: supabaseUrl ? 'supabase' : 'local' },
+    });
 
     return NextResponse.json({
       success: true,

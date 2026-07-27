@@ -7,8 +7,9 @@ const MAX_OTP_ATTEMPTS = 5;
  * POST /api/auth/verify-otp
  * Body: { email: string, otp: string }
  *
- * Verifies the OTP stored in PlatformSetting.
- * Returns a verification token that must be passed during registration.
+ * Verifies OTP via Supabase Auth API.
+ * Falls back to local PlatformSetting verification if Supabase is not configured.
+ * Returns a verification token for the registration step.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -19,47 +20,108 @@ export async function POST(req: NextRequest) {
     }
 
     const normalized = email.toLowerCase().trim();
-    const key = `otp:${normalized}`;
+    const otpClean = otp.trim();
 
-    const record = await db.platformSetting.findUnique({ where: { key } });
-
-    if (!record) {
-      return NextResponse.json({ success: false, error: 'No OTP found. Please request a new one.' }, { status: 400 });
+    if (otpClean.length < 4) {
+      return NextResponse.json({ success: false, error: 'OTP must be at least 4 digits' }, { status: 400 });
     }
 
-    const data = JSON.parse(record.value);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-    // Check expiry
-    if (new Date(data.expiresAt).getTime() < Date.now()) {
-      await db.platformSetting.delete({ where: { key } });
-      return NextResponse.json({ success: false, error: 'OTP has expired. Please request a new one.' }, { status: 400 });
+    let otpVerified = false;
+
+    // Check which method was used to send the OTP
+    const methodRecord = await db.platformSetting.findUnique({ where: { key: `otp_method:${normalized}` } });
+    const otpMethod = methodRecord?.value || (supabaseUrl ? 'supabase' : 'local');
+
+    if (otpMethod === 'supabase' && supabaseUrl && supabaseKey) {
+      // ── Verify via Supabase Auth ──
+      try {
+        const verifyRes = await fetch(`${supabaseUrl}/auth/v1/verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+          },
+          body: JSON.stringify({
+            email: normalized,
+            token: otpClean,
+            type: 'email',
+          }),
+        });
+
+        if (verifyRes.ok) {
+          otpVerified = true;
+        } else {
+          const errData = await verifyRes.json().catch(() => ({}));
+          const errorMsg = errData?.error_description || errData?.error || 'Invalid OTP';
+
+          if (errorMsg.includes('expired') || errorMsg.includes('Expired')) {
+            return NextResponse.json({
+              success: false,
+              error: 'OTP has expired. Please request a new OTP.',
+            }, { status: 400 });
+          }
+
+          return NextResponse.json({
+            success: false,
+            error: 'Invalid OTP. Please check and try again.',
+          }, { status: 401 });
+        }
+      } catch (supabaseErr) {
+        console.error('Supabase verify error:', supabaseErr);
+        return NextResponse.json({
+          success: false,
+          error: 'Failed to verify OTP. Please try again.',
+        }, { status: 500 });
+      }
+    } else {
+      // ── Fallback: Verify via local PlatformSetting ──
+      const key = `otp:${normalized}`;
+      const record = await db.platformSetting.findUnique({ where: { key } });
+
+      if (!record) {
+        return NextResponse.json({ success: false, error: 'No OTP found. Please request a new one.' }, { status: 400 });
+      }
+
+      const data = JSON.parse(record.value);
+
+      if (new Date(data.expiresAt).getTime() < Date.now()) {
+        await db.platformSetting.delete({ where: { key } });
+        return NextResponse.json({ success: false, error: 'OTP has expired. Please request a new one.' }, { status: 400 });
+      }
+
+      if (data.attempts >= MAX_OTP_ATTEMPTS) {
+        await db.platformSetting.delete({ where: { key } });
+        return NextResponse.json({ success: false, error: 'Too many failed attempts. Please request a new OTP.' }, { status: 429 });
+      }
+
+      if (data.otp !== otpClean) {
+        data.attempts++;
+        await db.platformSetting.update({
+          where: { key },
+          data: { value: JSON.stringify(data) },
+        });
+        const remaining = MAX_OTP_ATTEMPTS - data.attempts;
+        return NextResponse.json({
+          success: false,
+          error: `Invalid OTP. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`,
+        }, { status: 401 });
+      }
+
+      // Local OTP verified — clean up
+      await db.platformSetting.delete({ where: { key } }).catch(() => {});
+      otpVerified = true;
     }
 
-    // Check attempts
-    if (data.attempts >= MAX_OTP_ATTEMPTS) {
-      await db.platformSetting.delete({ where: { key } });
-      return NextResponse.json({ success: false, error: 'Too many failed attempts. Please request a new OTP.' }, { status: 429 });
+    if (!otpVerified) {
+      return NextResponse.json({ success: false, error: 'OTP verification failed.' }, { status: 401 });
     }
 
-    // Verify OTP
-    if (data.otp !== otp.trim()) {
-      // Increment attempt count
-      data.attempts++;
-      await db.platformSetting.update({
-        where: { key },
-        data: { value: JSON.stringify(data) },
-      });
-      const remaining = MAX_OTP_ATTEMPTS - data.attempts;
-      return NextResponse.json({
-        success: false,
-        error: `Invalid OTP. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`,
-      }, { status: 401 });
-    }
-
-    // OTP verified — generate a verification token
+    // ── Generate verification token for registration step ──
     const verifyToken = `verified_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-    // Store verification token with expiry (30 min — enough to complete registration)
     await db.platformSetting.upsert({
       where: { key: `email_verified:${normalized}` },
       create: {
@@ -71,8 +133,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Delete the OTP record (used)
-    await db.platformSetting.delete({ where: { key } });
+    // Clean up method record
+    await db.platformSetting.delete({ where: { key: `otp_method:${normalized}` } }).catch(() => {});
 
     return NextResponse.json({
       success: true,
