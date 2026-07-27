@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
         const { Resend } = await import('resend');
         const resend = new Resend(resendApiKey);
         await resend.emails.send({
-          from: 'Pepertect <noreply@pepertect.com>',
+          from: 'Pepertect <onboarding@resend.dev>',
           to: [normalized],
           subject: 'Your Pepertect Verification Code',
           html: `
