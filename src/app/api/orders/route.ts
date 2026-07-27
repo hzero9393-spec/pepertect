@@ -141,10 +141,30 @@ export async function POST(req: NextRequest) {
       });
 
       if (side === 'BUY') {
-        // Check if position exists
-        const existingPos = await db.position.findFirst({
-          where: { userId: auth.userId, stockId: stock.id, symbol, status: 'OPEN' },
-        });
+        /* Check if an OPEN position exists for the EXACT same instrument.
+         * For OPTIONS, we must match by symbol + optionType + strikePrice +
+         * expiry — otherwise two different strikes (e.g. NIFTY 21100 CE and
+         * NIFTY 23500 CE) would get averaged into the SAME position row,
+         * corrupting both avgPrice and instrumentKey. */
+        const buyWhere: Record<string, unknown> = {
+          userId: auth.userId,
+          stockId: stock.id,
+          symbol,
+          status: 'OPEN',
+        };
+        if (segment === 'OPTIONS') {
+          buyWhere.optionType = optionType ?? undefined;
+          buyWhere.strikePrice = strikePrice ?? undefined;
+          if (expiry) {
+            const expDate = new Date(expiry);
+            const dayStart = new Date(expDate);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(dayStart);
+            dayEnd.setDate(dayEnd.getDate() + 1);
+            buyWhere.expiry = { gte: dayStart, lt: dayEnd };
+          }
+        }
+        const existingPos = await db.position.findFirst({ where: buyWhere as never });
 
         if (existingPos) {
           // Average up
@@ -158,9 +178,13 @@ export async function POST(req: NextRequest) {
               quantity: totalQty,
               avgPrice: newAvg,
               investedAmt: Number(newAvg) * totalQty,
-              /* If the existing position didn't have an instrumentKey (created
-               * before this field was added), set it now from the incoming order. */
-              ...(instrumentKey && !existingPos.instrumentKey ? { instrumentKey } : {}),
+              /* Always update instrumentKey if the incoming order has one and
+               * either (a) the position doesn't have one, or (b) the incoming
+               * key is different (the new order's key is the most recent and
+               * therefore the most accurate source of truth). */
+              ...(instrumentKey && existingPos.instrumentKey !== instrumentKey
+                ? { instrumentKey }
+                : {}),
             },
           });
         } else {
