@@ -372,3 +372,44 @@ Stage Summary:
   * src/components/trading/OptionStrikeOverviewPage.tsx
   * src/components/portfolio/PortfolioPage.tsx
   * src/components/dashboard/DashboardPage.tsx
+
+---
+Task ID: real-data-fix-001
+Agent: Main Agent (Super Z)
+Task: Diagnose and fix why pepertect.vercel.app was showing fake/synthetic data on all pages (Option Chain, Market, Dashboard, etc.) instead of real Upstox market data.
+
+Work Log:
+- Read .env, src/lib/upstox.ts, src/lib/upstox-worker-proxy.ts, src/app/api/market/option-chain/route.ts
+- Tested Upstox API directly with the user's access token — token is valid (Plus Plan, expires ~July 28 2026)
+- Verified Cloudflare Worker at https://upstox-realtime.hzero9393.workers.dev is functional (REST proxy works)
+- Created a test account on https://pepertect.vercel.app/register and inspected the live Option Chain page
+- Confirmed the bug: every CE LTP followed arithmetic pattern (2860.70, 2810.70, 2760.70...) which equals `intrinsic + 5` — the synthetic fallback value
+- Root cause identified in src/app/api/market/option-chain/route.ts:
+  - Code read `upstoxRow.call_options?.market_data?.last_price` — but Upstox API returns the field as `ltp`, not `last_price`
+  - Since `last_price` was undefined, the `??` operator fell through to `ceIntrinsic + 5`, producing the arithmetic pattern
+  - Also: code read `market_data.net_change` which Upstox doesn't return — now computed as `ltp - close_price`
+- Fixed option-chain route to use correct field names (ltp, oi, volume, close_price)
+- Pushed user's new Upstox access token to the Cloudflare Worker via POST /refresh-token
+- Diagnosed worker WebSocket decoder bugs:
+  - Wrong protobuf field numbers (mapped field 1 to ltp instead of instrumentKey string)
+  - Didn't parse FeedResponse wrapper (init/ack messages were being misdecoded as ticks)
+  - Outbound WebSocket `open` event wasn't firing on CF Workers (markReady now called via setTimeout)
+- Fixed worker decoder: parses FeedResponse {type, guid, data}, only decodes data when type=5 (live tick), validates instrumentKey with regex
+- Redeployed worker 4 times to Cloudflare (using CLOUDFLARE_API_TOKEN) — version ID 5a8e4252-b3cb-460a-8416-2e3a1d1a6432
+- Committed and pushed Next.js app changes to GitHub (auto-deployed to Vercel)
+- Verified Vercel deployment reached READY state
+- Tested live site end-to-end:
+  - Option Chain: Real varied LTPs (2870.85, 2502.70, 2521.10, 2872.95...) instead of arithmetic pattern
+  - Option Chain auto-scrolls to ATM strike (23950) on page load
+  - Market page: NIFTY 23,962.05 (real) instead of 24,587.30 (mock)
+  - Dashboard: Real index prices (NIFTY 23,959.10, SENSEX 76,733.51, BANKNIFTY 57,087.30)
+  - Stock detail (RELIANCE): ₹1,279.90 (real live price)
+  - Spot price shows "Live Upstox" badge
+- Confirmed REST polling fallback in useLiveQuote.ts is delivering real data every 4s via worker proxy
+
+Stage Summary:
+- ROOT CAUSE: A single field-name bug (`last_price` vs `ltp`) in option-chain route caused ALL option chain data to be synthetic. The Upstox LTP endpoint returns `last_price`, but the option-chain endpoint returns `ltp` inside `market_data`. The original code used the wrong field name, falling through to synthetic arithmetic fallback.
+- FIX: Updated option-chain route to use `ltp` and compute `net_change = ltp - close_price`. Also fixed the Cloudflare Worker's protobuf decoder (wrong field numbers, missing FeedResponse wrapper parsing).
+- DEPLOYMENT: Worker redeployed to Cloudflare; Next.js app pushed to GitHub and auto-deployed to Vercel. Both deployments verified successful.
+- REMAINING KNOWN ISSUE: WebSocket upstream from worker to Upstox receives only init/ack messages (no live ticks) — appears to be a CF Workers outbound WebSocket limitation. The REST polling fallback (every 4s) delivers real data, so users see live prices on all pages.
+- ARTIFACTS: Worker deployed at https://upstox-realtime.hzero9393.workers.dev (version 5a8e4252). Next.js app at https://pepertect.vercel.app (commit f0c2cc3).
