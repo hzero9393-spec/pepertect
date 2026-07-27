@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { signToken, JWTPayload } from '@/lib/auth';
+import { isDisposableEmail } from '@/lib/temp-email-domains';
 import { FREE_VIRTUAL_CAPITAL } from '@/lib/tier';
 
 const JWT_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 interface GoogleTokenBody {
-  token: string; // Google ID token (JWT) from the client
+  token: string;
+  fingerprint?: string; // device fingerprint from client
 }
 
 export async function POST(req: NextRequest) {
@@ -34,33 +36,49 @@ export async function POST(req: NextRequest) {
     }
 
     const googleId = tokenData.sub;
-    const email = tokenData.email;
+    const email = tokenData.email.toLowerCase().trim();
     const name = tokenData.name || email.split('@')[0];
     const picture = tokenData.picture || null;
 
-    // Find existing user by googleId or email
-    const existingUser = await db.user.findFirst({
-      where: {
-        OR: [
-          { googleId },
-          { email },
-        ],
-      },
+    // Block disposable emails for new signups
+    const isExistingUser = await db.user.findFirst({
+      where: { OR: [{ googleId }, { email }] },
     });
 
+    if (!isExistingUser && isDisposableEmail(email)) {
+      return NextResponse.json(
+        { success: false, error: 'Disposable email addresses are not allowed. Please use a real email.' },
+        { status: 403 }
+      );
+    }
+
     let user;
-    if (existingUser) {
-      // If user exists but googleId is not set, update it
-      if (!existingUser.googleId) {
+    let isNewUser = false;
+
+    if (isExistingUser) {
+      if (!isExistingUser.googleId) {
         user = await db.user.update({
-          where: { id: existingUser.id },
-          data: { googleId, avatar: picture || existingUser.avatar },
+          where: { id: isExistingUser.id },
+          data: { googleId, avatar: picture || isExistingUser.avatar },
         });
       } else {
-        user = existingUser;
+        user = isExistingUser;
       }
     } else {
-      // Create new user from Google auth
+      // New user — check device fingerprint for trial abuse
+      let deviceTrialUsed = false;
+      if (body.fingerprint) {
+        const deviceKey = `device_trial:${body.fingerprint}`;
+        const deviceRecord = await db.platformSetting.findUnique({ where: { key: deviceKey } });
+        if (deviceRecord) {
+          const deviceData = JSON.parse(deviceRecord.value);
+          deviceTrialUsed = deviceData.used === true;
+        }
+      }
+
+      const tier = deviceTrialUsed ? 'PREMIUM' : 'FREE';
+      const virtualCapital = deviceTrialUsed ? 0 : FREE_VIRTUAL_CAPITAL;
+
       user = await db.user.create({
         data: {
           email,
@@ -69,19 +87,38 @@ export async function POST(req: NextRequest) {
           googleId,
           avatar: picture || null,
           role: 'USER',
-          tier: 'FREE',
-          virtualCapital: FREE_VIRTUAL_CAPITAL,
+          tier,
+          virtualCapital,
+          notifSettings: {
+            emailVerified: true, // Google already verified
+            verifiedAt: new Date().toISOString(),
+          },
         },
       });
 
-      // Create portfolio for the new user
       await db.portfolio.create({
         data: {
           userId: user.id,
-          totalBalance: FREE_VIRTUAL_CAPITAL,
-          availableMargin: FREE_VIRTUAL_CAPITAL,
+          totalBalance: virtualCapital,
+          availableMargin: virtualCapital,
         },
       });
+
+      // Mark device as trial-used
+      if (body.fingerprint && !deviceTrialUsed) {
+        await db.platformSetting.upsert({
+          where: { key: `device_trial:${body.fingerprint}` },
+          create: {
+            key: `device_trial:${body.fingerprint}`,
+            value: JSON.stringify({ used: true, userId: user.id, date: new Date().toISOString() }),
+          },
+          update: {
+            value: JSON.stringify({ used: true, userId: user.id, date: new Date().toISOString() }),
+          },
+        });
+      }
+
+      isNewUser = true;
     }
 
     // Generate JWT
@@ -98,16 +135,9 @@ export async function POST(req: NextRequest) {
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'Unknown';
     const expiresAt = new Date(Date.now() + JWT_EXPIRES_MS);
     await db.session.create({
-      data: {
-        userId: user.id,
-        token,
-        device,
-        ip,
-        expiresAt,
-      },
+      data: { userId: user.id, token, device, ip, expiresAt },
     });
 
-    // Return user without passwordHash
     const { passwordHash: _ph, ...safeUser } = user;
 
     return NextResponse.json({
@@ -117,6 +147,7 @@ export async function POST(req: NextRequest) {
         virtualCapital: Number(safeUser.virtualCapital),
       },
       token,
+      isNewUser,
     });
   } catch (error) {
     console.error('Google auth error:', error);

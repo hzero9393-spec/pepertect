@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { signToken } from '@/lib/auth';
 import { registerSchema } from '@/lib/validations';
+import { isDisposableEmail } from '@/lib/temp-email-domains';
 import { FREE_VIRTUAL_CAPITAL } from '@/lib/tier';
 import bcrypt from 'bcryptjs';
 
@@ -23,24 +24,78 @@ export async function POST(req: NextRequest) {
     const { email, password } = parsed.data;
     const acceptedTerms = body.acceptedTerms === true;
     const acceptedPrivacy = body.acceptedPrivacy === true;
+    const verifyToken = body.verifyToken; // from OTP verification
+    const fingerprint = body.fingerprint; // device fingerprint
 
-    /* Enforce legal acceptance before account creation.
-       This is a server-side guard — the client UI also disables the submit
-       button until both checkboxes are ticked, but we double-check here to
-       prevent bypassing the UI. */
+    /* Enforce legal acceptance */
     if (!acceptedTerms || !acceptedPrivacy) {
       return NextResponse.json(
-        {
-          success: false,
-          error:
-            'You must accept the Terms & Conditions and Privacy Policy to create an account',
-        },
+        { success: false, error: 'You must accept the Terms & Conditions and Privacy Policy' },
         { status: 400 }
       );
     }
 
-    // Check if email already exists
-    const existingUser = await db.user.findUnique({ where: { email } });
+    /* Enforce disposable email block */
+    if (isDisposableEmail(email)) {
+      return NextResponse.json(
+        { success: false, error: 'Disposable email addresses are not allowed' },
+        { status: 403 }
+      );
+    }
+
+    /* Enforce email OTP verification */
+    if (!verifyToken) {
+      return NextResponse.json(
+        { success: false, error: 'Email verification required. Please verify your email first.' },
+        { status: 403 }
+      );
+    }
+
+    // Check if the verify token matches what we stored
+    const verifyKey = `email_verified:${email.toLowerCase().trim()}`;
+    const verifyRecord = await db.platformSetting.findUnique({ where: { key: verifyKey } });
+
+    if (!verifyRecord) {
+      return NextResponse.json(
+        { success: false, error: 'Email not verified. Please verify your email again.' },
+        { status: 403 }
+      );
+    }
+
+    const verifyData = JSON.parse(verifyRecord.value);
+
+    if (verifyData.token !== verifyToken) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid verification token. Please verify your email again.' },
+        { status: 403 }
+      );
+    }
+
+    if (new Date(verifyData.expiresAt).getTime() < Date.now()) {
+      await db.platformSetting.delete({ where: { key: verifyKey } });
+      return NextResponse.json(
+        { success: false, error: 'Verification expired. Please verify your email again.' },
+        { status: 403 }
+      );
+    }
+
+    /* Device fingerprint check — has this device already used a free trial? */
+    let deviceTrialUsed = false;
+    if (fingerprint) {
+      const deviceKey = `device_trial:${fingerprint}`;
+      const deviceRecord = await db.platformSetting.findUnique({ where: { key: deviceKey } });
+      if (deviceRecord) {
+        const deviceData = JSON.parse(deviceRecord.value);
+        deviceTrialUsed = deviceData.used === true;
+      }
+    }
+
+    // Determine tier based on device trial status
+    const tier = deviceTrialUsed ? 'PREMIUM' : 'FREE';
+    const virtualCapital = deviceTrialUsed ? 0 : FREE_VIRTUAL_CAPITAL;
+
+    /* Check if email already exists */
+    const existingUser = await db.user.findUnique({ where: { email: email.toLowerCase().trim() } });
     if (existingUser) {
       return NextResponse.json(
         { success: false, error: 'An account with this email already exists' },
@@ -54,61 +109,73 @@ export async function POST(req: NextRequest) {
     // Create user
     const user = await db.user.create({
       data: {
-        email,
+        email: email.toLowerCase().trim(),
         passwordHash,
         role: 'USER',
-        tier: 'FREE',
-        virtualCapital: FREE_VIRTUAL_CAPITAL,
-        /* Store legal acceptance timestamps in notifSettings (JSON field).
-           This avoids a schema migration while still recording consent. */
+        tier,
+        virtualCapital,
         notifSettings: {
           legalAcceptance: {
             terms: { accepted: true, at: new Date().toISOString() },
             privacy: { accepted: true, at: new Date().toISOString() },
-            version: '2026-07-26',
+            version: '2026-07-27',
           },
+          emailVerified: true,
+          verifiedAt: new Date().toISOString(),
         },
       },
     });
 
-    // Create portfolio for the user
+    // Create portfolio
     await db.portfolio.create({
       data: {
         userId: user.id,
-        totalBalance: FREE_VIRTUAL_CAPITAL,
-        availableMargin: FREE_VIRTUAL_CAPITAL,
+        totalBalance: virtualCapital,
+        availableMargin: virtualCapital,
       },
     });
+
+    /* Mark device as trial-used (only if they got FREE tier) */
+    if (fingerprint && !deviceTrialUsed) {
+      await db.platformSetting.upsert({
+        where: { key: `device_trial:${fingerprint}` },
+        create: {
+          key: `device_trial:${fingerprint}`,
+          value: JSON.stringify({ used: true, userId: user.id, date: new Date().toISOString() }),
+        },
+        update: {
+          value: JSON.stringify({ used: true, userId: user.id, date: new Date().toISOString() }),
+        },
+      });
+    }
+
+    /* Clean up verification records */
+    await db.platformSetting.delete({ where: { key: verifyKey } }).catch(() => {});
 
     // Generate JWT
     const token = signToken({
       userId: user.id,
       email: user.email,
       role: 'USER',
-      tier: 'FREE',
+      tier: tier as 'FREE' | 'PREMIUM',
     });
 
     // Create session
     const expiresAt = new Date(Date.now() + JWT_EXPIRES_MS);
+    const device = req.headers.get('user-agent') || 'Unknown';
+    const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'Unknown';
     await db.session.create({
-      data: {
-        userId: user.id,
-        token,
-        expiresAt,
-      },
+      data: { userId: user.id, token, device, ip, expiresAt },
     });
 
-    // Return user without passwordHash
     const { passwordHash: _ph, ...safeUser } = user;
 
     return NextResponse.json(
       {
         success: true,
-        user: {
-          ...safeUser,
-          virtualCapital: Number(safeUser.virtualCapital),
-        },
+        user: { ...safeUser, virtualCapital: Number(safeUser.virtualCapital) },
         token,
+        deviceTrialUsed, // Tell the client so UI can show appropriate message
       },
       { status: 201 }
     );
