@@ -536,3 +536,32 @@ Stage Summary:
 - Commits: ebb5ec7 + af9980b pushed to GitHub origin/main.
 - Vercel deployment READY: pepertect-bzl1wkdsf-developer-gen-g.vercel.app
 - Production: https://pepertect.vercel.app
+---
+Task ID: fix-realtime-data-stopped
+Agent: main
+Task: User reported real-time data stopped flowing — trade page and positions page not updating.
+
+Work Log:
+- Diagnosed root cause: Upstox access token has been REVOKED (401 "Invalid token used to access API" even though JWT hasn't expired).
+- Verified: Cloudflare Worker stats show upstoxReady:false, tickCount:0, clientCount:0.
+- Verified: REST polling to /api/market/live-quote returns 401 from Upstox API.
+- Token exp decode: exp=1785189600 (today 22:00 UTC) — JWT is valid but Upstox revoked it server-side (likely session logout or concurrent login).
+- Fixed useLiveTick() hook: replaced require('@/lib/upstox-instruments') with static import (require() breaks in ESM browser bundles, causing trade page real-time data to silently fail).
+- Added 'token_invalid' ConnectionStatus to useLiveQuote hook.
+- Polling fallback now detects 401 responses (via HTTP status code AND response body).
+- After 2 consecutive 401s, status switches to 'token_invalid' and polling backs off from 800ms to 30s (stops hammering the API).
+- Created UpstoxReconnectBanner component: fixed top banner with red gradient, warning icon, and "Reconnect" button linking to /api/upstox/connect (Upstox OAuth flow).
+- Added banner to: PositionsPage, TradePage, DashboardPage, OptionStrikeOverviewPage.
+- Enhanced OAuth callback (/callback/route.ts): after successful re-auth, also updates Vercel env var UPSTOX_ACCESS_TOKEN via Vercel API.
+- Added VERCEL_TOKEN and VERCEL_PROJECT_ID env vars to Vercel project so callback can auto-update.
+- Added slide-down CSS animation for the banner.
+- Build: passed (only pre-existing TS errors in zod/auth).
+- Pushed commit 199afe9 to GitHub, Vercel auto-deploy triggered.
+
+Stage Summary:
+- Root cause: Upstox revoked the access token → all API calls return 401 → zero live data.
+- User needs to click "Reconnect" on the banner or visit /api/upstox/connect to re-authorize.
+- After re-auth: token stored in DB + pushed to Cloudflare Worker + updated in Vercel env.
+- Future auto-reconnect: OAuth callback now also updates Vercel env var so redeployment preserves the fresh token.
+- Files changed (7): useLiveQuote.ts, UpstoxReconnectBanner.tsx (new), PositionsPage.tsx, TradePage.tsx, DashboardPage.tsx, OptionStrikeOverviewPage.tsx, callback/route.ts, globals.css
+- Production: https://pepertect.vercel.app — commit 199afe9
