@@ -57,6 +57,7 @@ export function WatchlistPage() {
   const [renameValue, setRenameValue] = useState('');
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   // Stock search state (used inside the Stocks tab)
   const [stockQuery, setStockQuery] = useState('');
@@ -191,11 +192,24 @@ export function WatchlistPage() {
   const handleDeleteGroup = useCallback(
     (groupId: string) => {
       if (groupId === 'stocks' || groupId === 'option-strikes') return;
-      deleteGroup(userId, groupId);
-      setActiveGroupId('stocks');
+      setDeleteConfirmId(groupId);
     },
     [userId],
   );
+
+  const confirmDeleteGroup = useCallback(
+    (groupId: string) => {
+      deleteGroup(userId, groupId);
+      setActiveGroupId('stocks');
+      setDeleteConfirmId(null);
+    },
+    [userId],
+  );
+
+  const cancelDeleteGroup = useCallback(() => {
+    setDeleteConfirmId(null);
+  }, []);
+
 
   return (
     <div className="space-y-4">
@@ -308,12 +322,53 @@ export function WatchlistPage() {
                       <Trash2 className="h-3 w-3 text-loss-red" />
                     </button>
                   )}
-                </>
+              </>
               )}
             </div>
           );
         })}
       </div>
+
+      {/* ============== DELETE CONFIRMATION POPUP ============== */}
+      {deleteConfirmId && (() => {
+        const groupToDelete = groups.find(g => g.id === deleteConfirmId);
+        if (!groupToDelete) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="card-soft p-5 mx-4 max-w-sm w-full shadow-xl border border-border">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-tint-red shrink-0">
+                  <Trash2 className="h-5 w-5 text-loss-red" />
+                </div>
+                <div>
+                  <p className="font-heading text-sm font-bold text-text-primary">Delete Watchlist</p>
+                  <p className="text-xs text-text-secondary">This action cannot be undone</p>
+                </div>
+              </div>
+              <p className="text-xs text-text-secondary mb-4">
+                Are you sure you want to delete <span className="font-semibold text-text-primary">&ldquo;{groupToDelete.name}&rdquo;</span>?
+                {groupToDelete.items.length > 0 && (
+                  <span className="text-loss-red font-medium"> This list has {groupToDelete.items.length} item{groupToDelete.items.length === 1 ? '' : 's'}.</span>
+                )}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={cancelDeleteGroup}
+                  className="flex-1 rounded-lg bg-bg-surface-alt px-3 py-2 text-xs font-semibold text-text-secondary hover:bg-bg-surface transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => confirmDeleteGroup(deleteConfirmId)}
+                  className="flex-1 rounded-lg bg-loss-red px-3 py-2 text-xs font-semibold text-white hover:bg-loss-red/90 transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ============== ACTIVE GROUP CONTENT ============== */}
       {activeGroup && (

@@ -799,20 +799,24 @@ function OptionChainTable({
               <React.Fragment key={row.strikePrice}>
                 {/* ---- SPOT PRICE HORIZONTAL LINE ---- */}
                 {showSpotLine && (
-                  <tr className="bg-[#2a2a2a]">
-                    <td colSpan={5} className="px-2 sm:px-3 py-1.5 text-center">
-                      <span className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-white tracking-wide">
-                        <span className="inline-flex h-1.5 w-1.5 rounded-full bg-brand-primary animate-pulse" />
-                        Spot Price: {formatNumber(effectiveSpot, 2)}
-                      </span>
+                  <tr className="bg-bg-surface-alt/80">
+                    <td colSpan={5} className="relative px-0 py-0">
+                      <div className="flex items-center gap-2 px-3 sm:px-4 py-1">
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-brand-primary/50 to-transparent" />
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-bg-surface border border-brand-primary/20 text-[10px] sm:text-[11px] font-bold text-brand-primary tracking-wide whitespace-nowrap shadow-sm">
+                          <span className="inline-flex h-1 w-1 rounded-full bg-brand-primary animate-pulse" />
+                          Spot {formatNumber(effectiveSpot, 2)}
+                        </span>
+                        <div className="flex-1 h-px bg-gradient-to-r from-transparent via-brand-primary/50 to-transparent" />
+                      </div>
                     </td>
                   </tr>
                 )}
                 <tr
                   ref={isAtm ? atmRowRef : undefined}
                   className={cn(
-                    'border-b border-border/60 transition-colors hover:bg-bg-surface-alt/50',
-                    isAtm && 'bg-tint-blue/40'
+                    'border-b border-border/40 transition-colors hover:bg-bg-surface-alt/40',
+                    isAtm && 'bg-brand-primary/[0.06] ring-1 ring-inset ring-brand-primary/20'
                   )}
                 >
                   {/* CALL side — columns change based on viewMode */}

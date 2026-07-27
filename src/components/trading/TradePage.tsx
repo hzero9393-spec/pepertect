@@ -915,9 +915,11 @@ function OrdersList({
 }
 
 /* ============================================================
-   TradesList — closed/executed trades in the last 24h
+   TradesList — closed/executed trades with P&L + detail expand
    ============================================================ */
 function TradesList({ trades, loading }: { trades: Trade[]; loading: boolean }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   if (loading) {
     return (
       <div className="space-y-2">
@@ -942,34 +944,105 @@ function TradesList({ trades, loading }: { trades: Trade[]; loading: boolean }) 
 
   return (
     <div className="space-y-2">
-      {trades.map((t) => (
-        <div
-          key={t.id}
-          className="flex items-center gap-3 rounded-xl border border-border p-2.5"
-        >
-          <StockLogo symbol={t.symbol} size="sm" rounded="sm" />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="font-mono text-sm font-semibold text-text-primary">{t.symbol}</p>
-              <span
-                className={cn(
-                  'pill',
-                  t.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
-                )}
-              >
-                {t.side}
-              </span>
-              <span className="pill bg-bg-surface-alt text-text-secondary">{t.type}</span>
-            </div>
-            <p className="text-[11px] text-text-secondary mt-0.5">{t.quantity} qty @ ₹{formatNumber(t.price, 2)}</p>
+      {trades.map((t) => {
+        const isExpanded = expandedId === t.id;
+        const profitPct = t.price > 0 ? ((t.pnl / (t.price * t.quantity)) * 100) : 0;
+        return (
+          <div
+            key={t.id}
+            className={cn(
+              'rounded-xl border transition-all overflow-hidden',
+              isExpanded ? 'border-brand-primary/40 ring-1 ring-brand-primary/20' : 'border-border'
+            )}
+          >
+            {/* Clickable summary row */}
+            <button
+              onClick={() => setExpandedId(isExpanded ? null : t.id)}
+              className="w-full flex items-center gap-3 p-2.5 text-left hover:bg-bg-surface-alt/50 transition-colors"
+            >
+              <StockLogo symbol={t.symbol} size="sm" rounded="sm" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="font-mono text-sm font-semibold text-text-primary">{t.symbol}</p>
+                  <span
+                    className={cn(
+                      'pill',
+                      t.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
+                    )}
+                  >
+                    {t.side}
+                  </span>
+                  <span className="pill bg-bg-surface-alt text-text-secondary">{t.type}</span>
+                </div>
+                <p className="text-[11px] text-text-secondary mt-0.5">{t.quantity} qty @ ₹{formatNumber(t.price, 2)}</p>
+              </div>
+              {/* Profit/Loss display */}
+              <div className="text-right shrink-0">
+                <p className={cn('font-mono text-sm font-semibold tabular-nums', getPnlColor(t.pnl))}>
+                  {t.pnl >= 0 ? '+' : ''}₹{formatNumber(t.pnl, 2)}
+                </p>
+                <p className={cn('font-mono text-[10px] tabular-nums font-medium', getPnlColor(t.pnl))}>
+                  {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
+                </p>
+              </div>
+              {/* Expand arrow */}
+              <ChevronDown className={cn(
+                'h-4 w-4 text-text-tertiary transition-transform shrink-0',
+                isExpanded && 'rotate-180'
+              )} />
+            </button>
+
+            {/* Expanded detail panel */}
+            {isExpanded && (
+              <div className="border-t border-border bg-bg-surface/50 px-3 py-3 space-y-3">
+                {/* P&L Summary bar */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-lg bg-bg-surface-alt p-2">
+                    <p className="text-[10px] text-text-tertiary font-medium">P&L</p>
+                    <p className={cn('font-mono text-sm font-bold tabular-nums mt-0.5', getPnlColor(t.pnl))}>
+                      {t.pnl >= 0 ? '+' : ''}₹{formatNumber(t.pnl, 2)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-bg-surface-alt p-2">
+                    <p className="text-[10px] text-text-tertiary font-medium">Return %</p>
+                    <p className={cn('font-mono text-sm font-bold tabular-nums mt-0.5', getPnlColor(t.pnl))}>
+                      {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-bg-surface-alt p-2">
+                    <p className="text-[10px] text-text-tertiary font-medium">Brokerage</p>
+                    <p className="font-mono text-sm font-bold tabular-nums text-loss-red mt-0.5">
+                      ₹{formatNumber(t.brokerage, 2)}
+                    </p>
+                  </div>
+                </div>
+                {/* Detail rows */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  <DetailRow label="Symbol" value={t.symbol} />
+                  <DetailRow label="Side" value={t.side} color={t.side === 'BUY' ? 'text-profit-green' : 'text-loss-red'} />
+                  <DetailRow label="Type" value={t.type} />
+                  <DetailRow label="Segment" value={t.segment} />
+                  <DetailRow label="Quantity" value={String(t.quantity)} />
+                  <DetailRow label="Price" value={`₹${formatNumber(t.price, 2)}`} />
+                  {t.strikePrice && <DetailRow label="Strike" value={`₹${formatNumber(t.strikePrice, 0)}`} />}
+                  {t.optionType && <DetailRow label="Option" value={t.optionType} />}
+                  {t.expiry && <DetailRow label="Expiry" value={t.expiry} />}
+                  <DetailRow label="Date" value={new Date(t.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} />
+                </div>
+              </div>
+            )}
           </div>
-          <div className="text-right shrink-0">
-            <p className={cn('font-mono text-sm font-semibold tabular-nums', getPnlColor(t.pnl))}>
-              {t.pnl >= 0 ? '+' : ''}₹{formatNumber(t.pnl, 2)}
-            </p>
-          </div>
-        </div>
-      ))}
+        );
+      })}
+    </div>
+  );
+}
+
+function DetailRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-text-tertiary">{label}</span>
+      <span className={cn('font-mono font-semibold text-text-primary', color)}>{value}</span>
     </div>
   );
 }
