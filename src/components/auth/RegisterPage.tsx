@@ -136,8 +136,7 @@ export function RegisterPage() {
     return () => clearTimeout(id);
   }, [otpCooldown]);
 
-  // Debug OTP (temporary — remove after SMTP is configured)
-  const [debugOtp, setDebugOtp] = useState('');
+
 
   /* ── Step 1: Send OTP ── */
   const handleSendOtp = async () => {
@@ -154,8 +153,6 @@ export function RegisterPage() {
       });
       const data = await res.json();
       if (data.success) {
-        // OTP sent successfully, move to step 2
-        if (data._debug) setDebugOtp(data._debug); // TEMP: show OTP for testing
         setOtpSent(true);
         if (data.otpLength) setOtpLength(data.otpLength);
         setStep(2);
@@ -182,7 +179,6 @@ export function RegisterPage() {
       });
       const data = await res.json();
       if (data.success) {
-        if (data._debug) setDebugOtp(data._debug); // TEMP: update debug OTP
         setOtpCooldown(60);
         setError('');
       } else {
@@ -371,16 +367,10 @@ export function RegisterPage() {
         {step === 2 && (
           <div className="space-y-4">
             <div className="text-center">
-              {/* TEMP: Debug OTP banner — remove after SMTP is configured */}
-              {debugOtp && (
-                <div className="rounded-lg border border-brand-primary/30 bg-brand-primary/5 px-4 py-3 text-center mb-3">
-                  <p className="text-[10px] text-text-tertiary mb-1">Verification code (testing — email not configured yet):</p>
-                  <p className="text-2xl font-bold font-mono tracking-[8px] text-brand-primary">{debugOtp}</p>
-                </div>
-              )}
               <p className="text-xs text-text-secondary">
                 We sent a verification code to <span className="font-semibold text-text-primary">{email}</span>
               </p>
+              <p className="text-[10px] text-text-tertiary mt-1">Check your inbox and spam folder</p>
             </div>
 
             <OtpInput length={otpLength} onComplete={handleVerifyOtp} />

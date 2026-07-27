@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import nodemailer from 'nodemailer';
 import { db } from '@/lib/db';
 import { isDisposableEmail } from '@/lib/temp-email-domains';
 
@@ -10,12 +9,12 @@ const RESEND_COOLDOWN_MS = 60 * 1000; // 1 minute between sends
  * POST /api/auth/send-otp
  * Body: { email: string }
  *
- * Strategy:
- * 1. Generate our own 6-digit OTP
- * 2. Store in PlatformSetting (source of truth)
- * 3. Send email via Nodemailer SMTP (Gmail / ElasticEmail / etc.)
- * 4. Fallback: Resend (limited to registered email)
- * 5. Last resort: Supabase generate_link (sends magic link, not ideal)
+ * Uses Supabase Auth admin API `generate_link` to:
+ * 1. Send an OTP email to the user's Gmail/inbox
+ * 2. Return the `email_otp` (8 digits) from the response
+ * 3. Store that OTP in our PlatformSetting for verification
+ *
+ * The OTP that Supabase puts in the email is THE SAME as email_otp in the response.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -55,158 +54,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Generate our own 6-digit OTP
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+    // ── Send OTP email via Supabase generate_link ──
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    // Store OTP in PlatformSetting (our source of truth)
-    await db.platformSetting.upsert({
-      where: { key: `otp:${normalized}` },
-      create: {
-        key: `otp:${normalized}`,
-        value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }),
-      },
-      update: {
-        value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }),
-      },
-    });
-
-    // Update rate limit
-    await db.platformSetting.upsert({
-      where: { key: rateLimitKey },
-      create: { key: rateLimitKey, value: new Date().toISOString() },
-      update: { value: new Date().toISOString() },
-    });
-
-    // ── Try Email Methods ──
-    let emailSent = false;
-    let method = '';
-    let emailWithOtp = false; // true only if the email actually contains the OTP code
-
-    // METHOD 1: Nodemailer SMTP (Gmail, ElasticEmail, etc.) — sends OUR OTP in email
-    emailSent = await trySmtp(normalized, otp);
-    if (emailSent) { method = 'smtp'; emailWithOtp = true; }
-
-    // METHOD 2: Resend (limited to registered email on free plan) — sends OUR OTP
-    if (!emailSent) {
-      emailSent = await tryResend(normalized, otp);
-      if (emailSent) { method = 'resend'; emailWithOtp = true; }
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ success: false, error: 'Email service not configured' }, { status: 500 });
     }
 
-    // METHOD 3: Supabase generate_link (sends magic link — NOT our OTP code)
-    // We still try this so the user gets SOMETHING in their inbox
-    // But it does NOT count as emailWithOtp since the email shows a link, not the OTP
-    if (!emailSent) {
-      emailSent = await trySupabase(normalized);
-      if (emailSent) method = 'supabase';
-    }
-
-    console.log(`[SEND-OTP] Email: ${normalized}, OTP: ${otp}, Sent via: ${method || 'NONE'}, emailWithOtp: ${emailWithOtp}`);
-
-    return NextResponse.json({
-      success: true,
-      message: emailWithOtp
-        ? 'OTP sent to your email. Please check your inbox (and spam folder).'
-        : emailSent
-          ? 'Email sent. Check screen for your verification code.'
-          : 'OTP generated. Configure SMTP for email delivery.',
-      otpLength: 6,
-      // TEMP: Show OTP when email doesn't contain our OTP code
-      // Remove once SMTP (Gmail/etc.) is properly configured
-      ...(process.env.NODE_ENV !== 'production' || !emailWithOtp ? { _debug: otp } : {}),
-    });
-  } catch (error) {
-    console.error('Send OTP error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to send OTP' }, { status: 500 });
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
- * Email Method 1: Nodemailer SMTP
- * Supports: Gmail, ElasticEmail, Brevo, SMTP2GO, etc.
- * ═══════════════════════════════════════════════════════════════ */
-async function trySmtp(toEmail: string, otp: string): Promise<boolean> {
-  const host = process.env.SMTP_HOST;
-  const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const fromName = process.env.SMTP_FROM_NAME || 'Pepertect';
-  const fromEmail = process.env.SMTP_FROM_EMAIL || user || '';
-
-  if (!host || !user || !pass) {
-    console.log('[SMTP] Not configured (missing SMTP_HOST, SMTP_USER, or SMTP_PASS)');
-    return false;
-  }
-
-  try {
-    const transporter = nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass },
-      tls: { rejectUnauthorized: false },
-    });
-
-    await transporter.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
-      to: toEmail,
-      subject: 'Your Pepertect Verification Code',
-      html: generateOtpEmailHtml(otp),
-    });
-
-    console.log(`[SMTP] Email sent to ${toEmail}`);
-    return true;
-  } catch (err) {
-    console.error('[SMTP] Failed:', err);
-    return false;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
- * Email Method 2: Resend (free plan = registered email only)
- * ═══════════════════════════════════════════════════════════════ */
-async function tryResend(toEmail: string, otp: string): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return false;
-
-  try {
-    const { Resend } = await import('resend');
-    const resend = new Resend(apiKey);
-    const result = await resend.emails.send({
-      from: 'Pepertect <onboarding@resend.dev>',
-      to: [toEmail],
-      subject: 'Your Pepertect Verification Code',
-      html: generateOtpEmailHtml(otp),
-    });
-    
-    // Resend returns { id, error } — check for errors
-    if (result.error) {
-      console.error('[RESEND] Error:', result.error);
-      return false;
-    }
-    
-    console.log(`[RESEND] Email sent to ${toEmail}, id: ${result.id}`);
-    return true;
-  } catch (err) {
-    console.error('[RESEND] Failed:', err);
-    return false;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════════
- * Email Method 3: Supabase generate_link (last resort)
- * NOTE: Supabase sends its OWN email which may show a magic link, not OTP code.
- * This is a fallback only.
- * ═══════════════════════════════════════════════════════════════ */
-async function trySupabase(email: string): Promise<boolean> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) return false;
-
-  try {
+    // generate_link with type='signup' requires a password
     const randomPassword = 'Temp' + Math.random().toString(36).slice(2, 12) + '!X1';
-    const res = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+
+    const linkRes = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -215,72 +74,104 @@ async function trySupabase(email: string): Promise<boolean> {
       },
       body: JSON.stringify({
         type: 'signup',
-        email,
+        email: normalized,
         password: randomPassword,
       }),
     });
 
-    if (res.ok) {
-      console.log(`[SUPABASE] generate_link sent to ${email}`);
-      return true;
+    if (!linkRes.ok) {
+      const errData = await linkRes.json().catch(() => ({}));
+
+      // If user already exists in Supabase, try magiclink type
+      if (errData?.msg?.includes('already registered') || errData?.error_code === 'user_already_exists') {
+        const magicRes = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+          },
+          body: JSON.stringify({
+            type: 'magiclink',
+            email: normalized,
+          }),
+        });
+
+        if (!magicRes.ok) {
+          console.error('[SEND-OTP] Both signup and magiclink failed:', await magicRes.json().catch(() => ({})));
+          return NextResponse.json({ success: false, error: 'Failed to send OTP email. Please try again.' }, { status: 500 });
+        }
+
+        const magicData = await magicRes.json();
+        if (!magicData.email_otp) {
+          console.error('[SEND-OTP] magiclink response has no email_otp:', Object.keys(magicData));
+          return NextResponse.json({ success: false, error: 'Failed to generate OTP. Please try again.' }, { status: 500 });
+        }
+
+        // Store magiclink OTP
+        const otp = String(magicData.email_otp);
+        await storeOtp(normalized, otp);
+        await updateRateLimit(rateLimitKey);
+
+        console.log(`[SEND-OTP] Magiclink OTP sent to ${normalized}, OTP length: ${otp.length}`);
+        return NextResponse.json({
+          success: true,
+          message: 'OTP sent to your email. Please check your inbox.',
+          otpLength: otp.length,
+        });
+      }
+
+      console.error('[SEND-OTP] Supabase error:', errData);
+      return NextResponse.json({ success: false, error: 'Failed to send OTP email. Please try again.' }, { status: 500 });
     }
 
-    // Try magiclink if signup fails (user already exists in Supabase)
-    const magicRes = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': supabaseKey,
-        'Authorization': `Bearer ${supabaseKey}`,
-      },
-      body: JSON.stringify({ type: 'magiclink', email }),
+    const linkData = await linkRes.json();
+
+    if (!linkData.email_otp) {
+      console.error('[SEND-OTP] No email_otp in response:', Object.keys(linkData));
+      return NextResponse.json({ success: false, error: 'Failed to generate OTP. Please try again.' }, { status: 500 });
+    }
+
+    // Use Supabase's OTP — this is the SAME code that's in the email
+    const otp = String(linkData.email_otp);
+
+    // Store OTP in our DB
+    await storeOtp(normalized, otp);
+    await updateRateLimit(rateLimitKey);
+
+    console.log(`[SEND-OTP] Signup OTP sent to ${normalized}, OTP length: ${otp.length}, confirmed: ${!!linkData.confirmation_sent_at}`);
+
+    return NextResponse.json({
+      success: true,
+      message: 'OTP sent to your email. Please check your inbox and spam folder.',
+      otpLength: otp.length,
     });
-
-    if (magicRes.ok) {
-      console.log(`[SUPABASE] magiclink sent to ${email}`);
-      return true;
-    }
-
-    console.error('[SUPABASE] Both signup and magiclink failed');
-    return false;
-  } catch (err) {
-    console.error('[SUPABASE] Failed:', err);
-    return false;
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to send OTP' }, { status: 500 });
   }
 }
 
-/* ═══════════════════════════════════════════════════════════════
- * Professional OTP Email Template
- * ═══════════════════════════════════════════════════════════════ */
-function generateOtpEmailHtml(otp: string): string {
-  const otpChars = otp.split('');
-  const otpBoxes = otpChars.map((char) => `
-    <div style="display:inline-block;width:48px;height:56px;margin:0 4px;line-height:56px;text-align:center;font-size:28px;font-weight:700;color:#1a1a2e;background:#ffffff;border-radius:12px;border:2px solid #e8eaf6;box-shadow:0 2px 8px rgba(0,0,0,0.06);font-family:'SF Mono',Monaco,monospace;">${char}</div>
-  `).join('');
-
-  return `
-    <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Pepertect — Verification Code</title></head>
-    <body style="margin:0;padding:0;background:#f0f2f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-      <table role="presentation" style="width:100%;border-collapse:collapse;background:#f0f2f5;"><tr><td align="center" style="padding:40px 16px;">
-        <table role="presentation" style="width:100%;max-width:440px;border-collapse:collapse;">
-          <tr><td style="background:linear-gradient(135deg,#2563EB,#7c3aed);border-radius:20px 20px 0 0;padding:32px;text-align:center;">
-            <div style="width:48px;height:48px;background:rgba(255,255,255,0.2);border-radius:14px;margin:0 auto 16px;line-height:48px;font-size:24px;">&#9889;</div>
-            <h1 style="margin:0;color:#fff;font-size:22px;font-weight:700;">Pepertect</h1>
-            <p style="margin:6px 0 0;color:rgba(255,255,255,0.8);font-size:13px;">Paper Trading Platform</p>
-          </td></tr>
-          <tr><td style="background:#fff;border-left:1px solid #e8eaf6;border-right:1px solid #e8eaf6;padding:36px 32px 32px;">
-            <p style="margin:0 0 6px;color:#1a1a2e;font-size:17px;font-weight:600;text-align:center;">Verify Your Email</p>
-            <p style="margin:0 0 28px;color:#6b7280;font-size:14px;line-height:1.6;text-align:center;">Enter this code to complete your registration</p>
-            <div style="text-align:center;margin-bottom:28px;">${otpBoxes}</div>
-            <div style="text-align:center;"><p style="margin:0;color:#9ca3af;font-size:12px;">&#9200; This code expires in <strong style="color:#6b7280;">10 minutes</strong></p></div>
-          </td></tr>
-          <tr><td style="background:#f8f9fc;border-radius:0 0 20px 20px;border:1px solid #e8eaf6;border-top:none;padding:20px 32px;">
-            <p style="margin:0;color:#9ca3af;font-size:12px;line-height:1.6;text-align:center;">If you didn't request this code, you can safely ignore this email.<br>Never share this code with anyone.</p>
-            <p style="margin:12px 0 0;color:#cbd5e1;font-size:11px;text-align:center;">&copy; ${new Date().getFullYear()} Pepertect. All rights reserved.</p>
-          </td></tr>
-        </table>
-      </td></tr></table>
-    </body></html>
-  `;
+/* ── Store OTP in PlatformSetting ── */
+async function storeOtp(email: string, otp: string) {
+  const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+  await db.platformSetting.upsert({
+    where: { key: `otp:${email}` },
+    create: {
+      key: `otp:${email}`,
+      value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }),
+    },
+    update: {
+      value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }),
+    },
+  });
 }
 
+/* ── Update rate limit ── */
+async function updateRateLimit(key: string) {
+  await db.platformSetting.upsert({
+    where: { key },
+    create: { key, value: new Date().toISOString() },
+    update: { value: new Date().toISOString() },
+  });
+}
