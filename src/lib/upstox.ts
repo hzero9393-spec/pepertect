@@ -203,23 +203,30 @@ export async function pushTokenToWorker(token: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 // Get the "active" token for the platform (admin token if set, else user's)
 // ---------------------------------------------------------------------------
+// Token priority:
+//   1. DB-stored token (fresh — exchanged via OAuth flow at /callback)
+//      ← This takes priority because it's freshly minted (24h validity).
+//   2. Env var UPSTOX_ACCESS_TOKEN (manually set — may be stale/expired)
+//      ← Used as fallback when no DB token is available yet (first-time setup).
+//   3. Requesting user's DB-stored token
+//   4. null (caller falls back to synthetic data)
 export async function getPlatformToken(req?: NextRequest): Promise<string | null> {
-  // Priority 1: env var (manually set token)
-  if (process.env.UPSTOX_ACCESS_TOKEN) {
-    return process.env.UPSTOX_ACCESS_TOKEN;
-  }
-  // Priority 2: admin user's stored token
+  // Priority 1: admin user's stored DB token (if ADMIN_USER_ID is set)
   if (ADMIN_USER_ID) {
     const t = await getActiveToken(ADMIN_USER_ID);
     if (t) return t;
   }
-  // Priority 3: requesting user's token
+  // Priority 2: requesting user's DB-stored token
   if (req) {
     const userId = await getUserId(req);
     if (userId) {
       const t = await getActiveToken(userId);
       if (t) return t;
     }
+  }
+  // Priority 3: env var (manually set token — used until OAuth flow is done)
+  if (process.env.UPSTOX_ACCESS_TOKEN) {
+    return process.env.UPSTOX_ACCESS_TOKEN;
   }
   return null;
 }
