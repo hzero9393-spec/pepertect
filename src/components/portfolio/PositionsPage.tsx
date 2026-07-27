@@ -12,6 +12,7 @@ import { StockLogo } from '@/components/shared/StockLogo';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
+import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 
 /* Index symbols — used to classify positions as Index vs Stock */
 const INDEX_SYMBOLS = new Set(['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY']);
@@ -421,6 +422,9 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
 
   return (
     <div className="space-y-6">
+      {/* Upstox reconnect banner (shown when token is expired) */}
+      <UpstoxReconnectBanner status={wsStatus} />
+
       {/* ============== TAB SWITCHER: Stock | Index ============== */}
       <div className="flex items-center gap-1 border-b border-border">
         <button

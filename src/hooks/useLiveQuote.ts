@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { getUpstoxKey } from '@/lib/upstox-instruments';
 
 /**
  * Upstox realtime WebSocket client with REST polling fallback.
@@ -44,7 +45,8 @@ export type ConnectionStatus =
   | 'upstox_disconnected'
   | 'closed'
   | 'error'
-  | 'polling';
+  | 'polling'
+  | 'token_invalid';
 
 const WS_URL =
   process.env.NEXT_PUBLIC_UPSTOX_WS_URL ||
@@ -66,6 +68,12 @@ let pollingTimer: ReturnType<typeof setInterval> | null = null;
 let pollingActive = false;
 let wsOpenTime = 0;
 let lastPollTime = 0;
+// Track consecutive 401 (token invalid) responses. After 2 consecutive 401s,
+// switch to long-interval polling (30s) and emit 'token_invalid' status so the UI
+// can show a "Reconnect Upstox" banner.
+let consecutiveAuthErrors = 0;
+const AUTH_ERROR_THRESHOLD = 2;
+const AUTH_ERROR_BACKOFF = 30000; // 30s poll interval when token is invalid
 // Track the last time we received a tick via WebSocket. If WS reports "open"
 // but no ticks have arrived within 15s, we (re)start REST polling so the UI
 // still gets fresh data. This handles the case where the Cloudflare Worker's
@@ -110,9 +118,27 @@ async function pollOnce() {
     params.set('full', '1');
     try {
       const res = await fetch(`/api/market/live-quote?${params.toString()}`);
-      if (!res.ok) continue;
-      const json = await res.json();
-      if (!json?.success || !json?.data) continue;
+      const json = await res.json().catch(() => null);
+      if (!json?.success || !json?.data) {
+        // Detect token invalid (401) from response body or HTTP status
+        const isTokenInvalid = res.status === 401 ||
+          (json?.error && typeof json.error === 'string' && (json.error.includes('Invalid token') || json.error.includes('401')));
+        if (isTokenInvalid) {
+          consecutiveAuthErrors++;
+          if (consecutiveAuthErrors >= AUTH_ERROR_THRESHOLD && lastStatus !== 'token_invalid') {
+            console.warn('[useLiveQuote] Token invalid (multiple 401s), entering slow poll mode');
+            setStatus('token_invalid');
+            // Back off to 30s polling
+            if (pollingTimer) {
+              clearInterval(pollingTimer);
+              pollingTimer = setInterval(pollOnce, AUTH_ERROR_BACKOFF);
+            }
+          }
+        }
+        continue;
+      }
+      // Reset auth error counter on success
+      consecutiveAuthErrors = 0;
       // Upstox returns data keyed by colon-form (e.g. "NSE_INDEX:Nifty 50")
       // but our subscription keys use pipe-form (e.g. "NSE_INDEX|Nifty 50").
       // The /api/market/live-quote route normalizes keys to pipe-form, but
@@ -422,7 +448,7 @@ export function useLiveQuote(): UseLiveQuoteResult {
     status,
     subscribe,
     unsubscribe,
-    ready: status === 'upstox_connected' || status === 'open',
+    ready: status === 'upstox_connected' || status === 'open' || status === 'polling',
   };
 }
 
@@ -445,17 +471,6 @@ export function useLiveQuotesFor(instrumentKeys: string[]): Record<string, LiveT
  */
 export function useLiveTick(symbol: string | null | undefined): LiveTick | undefined {
   const { quotes, subscribe, unsubscribe } = useLiveQuote();
-  // Lazy-import to avoid circular deps in some build setups
-  const getUpstoxKey = (s: string) => {
-    // We do a runtime require here so this hook can be used in any context
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const mod = require('@/lib/upstox-instruments');
-      return mod.getUpstoxKey(s);
-    } catch {
-      return null;
-    }
-  };
   const key = symbol ? getUpstoxKey(symbol) : null;
   useEffect(() => {
     if (!key) return;

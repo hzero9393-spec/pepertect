@@ -28,6 +28,7 @@ import { findExpiry, type ExpiryIndex } from '@/lib/expiry-calendar';
 import { addOptionStrikeToGroup } from '@/lib/multi-watchlist';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
+import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 
 // ---- Types (mirror OptionChainPage) ----------------------------------------
 
@@ -426,6 +427,9 @@ export function OptionStrikeOverviewPage() {
 
   return (
     <div className="space-y-3">
+      {/* Upstox reconnect banner (shown when token is expired) */}
+      <UpstoxReconnectBanner status={wsStatus} />
+
       {/* ============== REDIRECTING OVERLAY (after BUY order) ============== */}
       {redirecting && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">

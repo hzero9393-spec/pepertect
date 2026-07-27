@@ -15,6 +15,7 @@ import { Sparkline } from '@/components/shared/Sparkline';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
+import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 
 // Map our internal index symbols to Upstox instrument keys
 const INDEX_TO_UPSTOX_KEY: Record<string, string> = {
@@ -194,6 +195,9 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
+      {/* Upstox reconnect banner (shown when token is expired) */}
+      <UpstoxReconnectBanner status={wsStatus} />
+
       {/* ============== FREE TRIAL WIDGET ============== */}
       <FreeTrialWidget variant="card" />
 

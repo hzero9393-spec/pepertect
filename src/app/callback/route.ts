@@ -115,6 +115,40 @@ export async function GET(req: NextRequest) {
     const pushed = await pushTokenToWorker(tokenRes.access_token);
     console.log('[/callback] Worker push result:', pushed);
 
+    // Also update Vercel env var UPSTOX_ACCESS_TOKEN (for resilience on redeploy)
+    try {
+      const vercelToken = process.env.VERCEL_TOKEN;
+      const vercelProjectId = process.env.VERCEL_PROJECT_ID;
+      if (vercelToken && vercelProjectId) {
+        // Find existing UPSTOX_ACCESS_TOKEN env entry to get its ID
+        const listRes = await fetch(`https://api.vercel.com/v9/projects/${vercelProjectId}/env`, {
+          headers: { Authorization: `Bearer ${vercelToken}` },
+        });
+        if (listRes.ok) {
+          const envs = (await listRes.json()).envs || [];
+          const existing = envs.find((e: any) => e.key === 'UPSTOX_ACCESS_TOKEN');
+          if (existing) {
+            // Update existing entry
+            await fetch(`https://api.vercel.com/v9/projects/${vercelProjectId}/env/${existing.id}`, {
+              method: 'PATCH',
+              headers: {
+                Authorization: `Bearer ${vercelToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                value: tokenRes.access_token,
+                target: existing.target,
+                type: 'encrypted',
+              }),
+            });
+            console.log('[/callback] Vercel env var updated');
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn('[/callback] Vercel env update failed (non-critical):', e?.message ?? e);
+    }
+
     const params = new URLSearchParams({
       success: '1',
       email: tokenRes.email || '',

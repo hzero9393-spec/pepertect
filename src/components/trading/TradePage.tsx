@@ -14,6 +14,7 @@ import { StockLogo } from '@/components/shared/StockLogo';
 import { BasketPage } from '@/components/trading/BasketPage';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
+import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 
 const POPULAR_STOCKS = [
   'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN',
@@ -58,7 +59,7 @@ export function TradePage() {
   const [confirmBefore, setConfirmBefore] = useState(false);
 
   /* Live WebSocket tick — subscribes to the selected symbol */
-  const { quotes, subscribe, unsubscribe } = useLiveQuote();
+  const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
   const subscribedKeyRef = useRef<string | null>(null);
   useEffect(() => {
     const k = symbol ? getUpstoxKey(symbol.toUpperCase()) : null;
@@ -243,6 +244,9 @@ export function TradePage() {
 
   return (
     <div className="space-y-4">
+      {/* Upstox reconnect banner (shown when token is expired) */}
+      <UpstoxReconnectBanner status={wsStatus} />
+
       {/* ============== REDIRECTING OVERLAY ============== */}
       {redirecting && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm">
