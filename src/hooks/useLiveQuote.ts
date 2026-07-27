@@ -133,6 +133,22 @@ async function pollOnce() {
               clearInterval(pollingTimer);
               pollingTimer = setInterval(pollOnce, AUTH_ERROR_BACKOFF);
             }
+            // Auto-trigger server-side token refresh
+            fetch('/api/upstox/refresh-token', { cache: 'no-store' })
+              .then(r => r.json())
+              .then(data => {
+                if (data.refreshed) {
+                  console.log('[useLiveQuote] Token auto-refreshed, resetting auth errors');
+                  consecutiveAuthErrors = 0;
+                  // Switch back to fast polling
+                  if (pollingTimer) {
+                    clearInterval(pollingTimer);
+                    pollingTimer = setInterval(pollOnce, 800);
+                  }
+                  if (lastStatus === 'token_invalid') setStatus('polling');
+                }
+              })
+              .catch(() => { /* ignore */ });
           }
         }
         continue;
