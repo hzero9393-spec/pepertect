@@ -23,6 +23,9 @@ function UpstoxStatusContent() {
   }, [success, router]);
 
   const isInvalidAuthCode = error && error.includes('UDAPI100057');
+  const isInvalidCredentials = error && error.includes('UDAPI100016');
+  const isRedirectUriMismatch = error && error.includes('UDAPI100070');
+  const isClientSecretMismatch = error && error.includes('UDAPI100069');
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-4">
@@ -89,6 +92,44 @@ function UpstoxStatusContent() {
                   This usually happens if you refreshed the page, pressed Back, or used the same URL twice.
                 </p>
                 {hint && <p className="mt-2 text-yellow-100/70">{hint}</p>}
+              </div>
+            )}
+
+            {isInvalidCredentials && (
+              <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-3 mb-4 text-xs text-orange-300">
+                <p className="font-semibold mb-1">🔑 Upstox login credentials incorrect</p>
+                <p className="text-orange-200/80">
+                  This error came from <b>Upstox&apos;s own login page</b> — not from our app.
+                  Upstox rejected your <b>email + password + 6-digit PIN</b> combination.
+                </p>
+                <p className="mt-2 text-orange-100/70">
+                  <b>Fix:</b> First try logging in directly at{' '}
+                  <code className="text-orange-100">app.upstox.com</code>.
+                  If that also fails, use Upstox&apos;s &quot;Forgot Password&quot; flow.
+                  Our API credentials are correct (verified) — this is your trading account login.
+                </p>
+              </div>
+            )}
+
+            {isRedirectUriMismatch && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-xs text-red-300">
+                <p className="font-semibold mb-1">🔗 Redirect URI not registered</p>
+                <p className="text-red-200/80">
+                  The redirect URI we sent doesn&apos;t match what&apos;s registered on your Upstox developer app.
+                  Go to <code className="text-red-100">developer.upstox.com</code> → your app →
+                  add <code className="text-red-100">https://pepertect.vercel.app/callback</code> as an allowed redirect URI.
+                </p>
+              </div>
+            )}
+
+            {isClientSecretMismatch && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 mb-4 text-xs text-red-300">
+                <p className="font-semibold mb-1">🔐 API Key / Secret mismatch</p>
+                <p className="text-red-200/80">
+                  Upstox rejected our <code className="text-red-100">client_id</code> / <code className="text-red-100">client_secret</code>.
+                  Check the Vercel env vars <code className="text-red-100">UPSTOX_API_KEY</code> and{' '}
+                  <code className="text-red-100">UPSTOX_API_SECRET</code> match what&apos;s on developer.upstox.com.
+                </p>
               </div>
             )}
 
