@@ -10,11 +10,10 @@ const RESEND_COOLDOWN_MS = 60 * 1000; // 1 minute between sends
  * Body: { email: string }
  *
  * Strategy:
- * 1. Generate a 6-digit OTP locally
- * 2. Store it in PlatformSetting (for our own verification)
- * 3. Use Supabase Auth admin API `generate_link` to send a professional email
- *    that contains the OTP code (Supabase sends the OTP automatically)
- * 4. Fallback: console log if Supabase is not available
+ * 1. Call Supabase `generate_link` admin API with type='signup' + dummy password
+ *    This sends a real OTP email via Supabase AND returns `email_otp` in response
+ * 2. Store THAT returned email_otp in our PlatformSetting (matches what user sees in email)
+ * 3. Fallback: Generate our own 6-digit OTP + send via Resend
  */
 export async function POST(req: NextRequest) {
   try {
@@ -54,34 +53,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Generate 6-digit OTP
-    const otp = String(Math.floor(100000 + Math.random() * 900000));
-    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
-
-    // Store OTP in PlatformSetting (our source of truth)
-    await db.platformSetting.upsert({
-      where: { key: `otp:${normalized}` },
-      create: { key: `otp:${normalized}`, value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }) },
-      update: { value: JSON.stringify({ otp, expiresAt: expiresAt.toISOString(), attempts: 0 }) },
-    });
-
-    // Update rate limit
+    // Update rate limit immediately
     await db.platformSetting.upsert({
       where: { key: rateLimitKey },
       create: { key: rateLimitKey, value: new Date().toISOString() },
       update: { value: new Date().toISOString() },
     });
 
-    // ── Send OTP email via Supabase Auth admin API ──
+    // ── STEP 1: Try Supabase generate_link (sends real OTP email) ──
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+    let storedOtp = '';
     let emailSent = false;
+    let usedSupabase = false;
 
     if (supabaseUrl && supabaseKey) {
       try {
-        // Use generate_link to trigger Supabase to send an email with OTP
-        // Supabase handles the email template and delivery
+        // Generate a random password for Supabase signup (user sets their own in step 3)
+        const randomPassword = 'Temp' + Math.random().toString(36).slice(2, 12) + '!X1';
+
         const linkRes = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
           method: 'POST',
           headers: {
@@ -92,26 +83,65 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             type: 'signup',
             email: normalized,
+            password: randomPassword,
           }),
         });
 
         if (linkRes.ok) {
           const linkData = await linkRes.json();
-          // Supabase sent an email — it may contain its own OTP or magic link
-          // But we use OUR locally generated OTP for verification
-          emailSent = true;
-          console.log(`[OTP] Supabase email sent to ${normalized} (confirmation_sent_at: ${linkData.confirmation_sent_at})`);
+
+          // CRITICAL: Use the email_otp from Supabase response
+          if (linkData.email_otp) {
+            storedOtp = String(linkData.email_otp);
+            usedSupabase = true;
+            emailSent = true;
+            console.log(`[SEND-OTP] Supabase signup OTP sent to ${normalized}, email_otp: ${storedOtp}`);
+          } else {
+            console.log('[SEND-OTP] No email_otp in response, keys:', Object.keys(linkData));
+          }
         } else {
           const errData = await linkRes.json().catch(() => ({}));
-          console.error('[OTP] Supabase generate_link error:', errData);
+          console.error('[SEND-OTP] Supabase generate_link error:', errData);
+
+          // If user already exists in Supabase (from previous attempt), try magiclink
+          if (errData?.error_code === 'user_already_exists' || errData?.msg?.includes('already registered')) {
+            console.log('[SEND-OTP] User exists in Supabase, trying magiclink...');
+            const magicRes = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': supabaseKey,
+                'Authorization': `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                type: 'magiclink',
+                email: normalized,
+              }),
+            });
+
+            if (magicRes.ok) {
+              const magicData = await magicRes.json();
+              if (magicData.email_otp) {
+                storedOtp = String(magicData.email_otp);
+                usedSupabase = true;
+                emailSent = true;
+                console.log(`[SEND-OTP] Supabase magiclink sent to ${normalized}, OTP: ${storedOtp}`);
+              }
+            } else {
+              console.error('[SEND-OTP] Magiclink also failed');
+            }
+          }
         }
       } catch (supabaseErr) {
-        console.error('[OTP] Supabase email error:', supabaseErr);
+        console.error('[SEND-OTP] Supabase error:', supabaseErr);
       }
     }
 
-    // ── Fallback: Resend (works for Resend registered email only) ──
+    // ── STEP 2: Fallback — Generate our own OTP + send via Resend ──
     if (!emailSent) {
+      storedOtp = String(Math.floor(100000 + Math.random() * 900000));
+      console.log(`[SEND-OTP] Fallback: local OTP for Resend: ${storedOtp}`);
+
       const resendApiKey = process.env.RESEND_API_KEY;
       if (resendApiKey) {
         try {
@@ -121,24 +151,51 @@ export async function POST(req: NextRequest) {
             from: 'Pepertect <onboarding@resend.dev>',
             to: [normalized],
             subject: 'Your Pepertect Verification Code',
-            html: generateOtpEmailHtml(otp),
+            html: generateOtpEmailHtml(storedOtp),
           });
           emailSent = true;
-        } catch {
-          console.log('[OTP] Resend backup failed');
+          console.log(`[SEND-OTP] Resend email sent to ${normalized}`);
+        } catch (resendErr) {
+          console.error('[SEND-OTP] Resend failed:', resendErr);
         }
       }
     }
 
+    // Store OTP in PlatformSetting — THIS is what verify-otp will check against
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS);
+    await db.platformSetting.upsert({
+      where: { key: `otp:${normalized}` },
+      create: {
+        key: `otp:${normalized}`,
+        value: JSON.stringify({
+          otp: storedOtp,
+          otpLength: storedOtp.length,
+          expiresAt: expiresAt.toISOString(),
+          attempts: 0,
+          via: usedSupabase ? 'supabase' : 'resend',
+        }),
+      },
+      update: {
+        value: JSON.stringify({
+          otp: storedOtp,
+          otpLength: storedOtp.length,
+          expiresAt: expiresAt.toISOString(),
+          attempts: 0,
+          via: usedSupabase ? 'supabase' : 'resend',
+        }),
+      },
+    });
+
     if (!emailSent) {
-      console.log(`[OTP] Email: ${normalized}, OTP: ${otp} (No email service available — OTP in server logs)`);
+      console.log(`[SEND-OTP] WARNING: No email sent to ${normalized}. OTP: ${storedOtp}`);
     }
 
     return NextResponse.json({
       success: true,
       message: emailSent
-        ? 'OTP sent to your email'
-        : 'OTP generated. Check server logs if email not received.',
+        ? 'OTP sent to your email. Please check your inbox.'
+        : 'OTP generated. Check server logs.',
+      otpLength: storedOtp.length, // tell frontend how many digits to expect
     });
   } catch (error) {
     console.error('Send OTP error:', error);
@@ -146,7 +203,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/* ── Professional OTP Email Template (Resend fallback) ── */
+/* ── Professional OTP Email Template (Resend fallback only) ── */
 function generateOtpEmailHtml(otp: string): string {
   const otpChars = otp.split('');
   const otpBoxes = otpChars.map((char) => `

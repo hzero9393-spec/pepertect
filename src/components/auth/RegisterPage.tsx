@@ -118,6 +118,7 @@ export function RegisterPage() {
   // Step 2: OTP
   const [verifyToken, setVerifyToken] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
+  const [otpLength, setOtpLength] = useState(6); // Supabase may send 8-digit OTP
 
   // Step 3: Account details
   const [name, setName] = useState('');
@@ -135,8 +136,7 @@ export function RegisterPage() {
     return () => clearTimeout(id);
   }, [otpCooldown]);
 
-  /* ── Debug OTP (shown during testing until email template is configured) ── */
-  const [debugOtp, setDebugOtp] = useState('');
+  // Debug OTP removed for production
 
   /* ── Step 1: Send OTP ── */
   const handleSendOtp = async () => {
@@ -153,9 +153,9 @@ export function RegisterPage() {
       });
       const data = await res.json();
       if (data.success) {
-        // Show debug OTP if available (for testing — remove in production)
-        if (data._debug) setDebugOtp(data._debug);
+        // OTP sent successfully, move to step 2
         setOtpSent(true);
+        if (data.otpLength) setOtpLength(data.otpLength);
         setStep(2);
         setOtpCooldown(60);
       } else {
@@ -194,7 +194,7 @@ export function RegisterPage() {
 
   /* ── Step 2: Verify OTP ── */
   const handleVerifyOtp = useCallback(async (otp: string) => {
-    if (otp.length < 6) return;
+    if (otp.length < 4) return; // allow 4+ digits (supports 6 and 8)
     setError('');
     setOtpLoading(true);
     try {
@@ -367,20 +367,13 @@ export function RegisterPage() {
         {/* ═══════════ STEP 2: OTP ═══════════ */}
         {step === 2 && (
           <div className="space-y-4">
-            {/* Debug OTP banner (testing — remove in production) */}
-            {debugOtp && (
-              <div className="rounded-lg border border-brand-primary/30 bg-brand-primary/5 px-4 py-3 text-center">
-                <p className="text-[10px] text-text-tertiary mb-1">Your verification code (testing):</p>
-                <p className="text-2xl font-bold font-mono tracking-[8px] text-brand-primary">{debugOtp}</p>
-              </div>
-            )}
             <div className="text-center">
               <p className="text-xs text-text-secondary">
-                We sent a 6-digit code to <span className="font-semibold text-text-primary">{email}</span>
+                We sent a verification code to <span className="font-semibold text-text-primary">{email}</span>
               </p>
             </div>
 
-            <OtpInput onComplete={handleVerifyOtp} />
+            <OtpInput length={otpLength} onComplete={handleVerifyOtp} />
 
             {otpLoading && (
               <div className="flex items-center justify-center gap-2 text-xs text-text-secondary">

@@ -34,6 +34,8 @@ export async function POST(req: NextRequest) {
 
     const data = JSON.parse(record.value);
 
+    console.log(`[VERIFY] Email: ${normalized}, Entered OTP: "${otpClean}", Stored OTP: "${data.otp}", Via: ${data.via || 'unknown'}`);
+
     // Check expiry
     if (new Date(data.expiresAt).getTime() < Date.now()) {
       await db.platformSetting.delete({ where: { key } });
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Too many failed attempts. Please request a new OTP.' }, { status: 429 });
     }
 
-    // Verify OTP
+    // Verify OTP — compare as strings
     if (data.otp !== otpClean) {
       data.attempts++;
       await db.platformSetting.update({
@@ -54,6 +56,7 @@ export async function POST(req: NextRequest) {
         data: { value: JSON.stringify(data) },
       });
       const remaining = MAX_OTP_ATTEMPTS - data.attempts;
+      console.log(`[VERIFY] MISMATCH for ${normalized}. Attempt ${data.attempts}/${MAX_OTP_ATTEMPTS}`);
       return NextResponse.json({
         success: false,
         error: `Invalid OTP. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`,
@@ -77,6 +80,8 @@ export async function POST(req: NextRequest) {
 
     // Delete the OTP record (used)
     await db.platformSetting.delete({ where: { key } });
+
+    console.log(`[VERIFY] SUCCESS for ${normalized}`);
 
     return NextResponse.json({
       success: true,
