@@ -135,6 +135,9 @@ export function RegisterPage() {
     return () => clearTimeout(id);
   }, [otpCooldown]);
 
+  /* ── Debug OTP (shown during testing until email template is configured) ── */
+  const [debugOtp, setDebugOtp] = useState('');
+
   /* ── Step 1: Send OTP ── */
   const handleSendOtp = async () => {
     if (!email.includes('@')) { setError('Please enter a valid email'); return; }
@@ -150,6 +153,8 @@ export function RegisterPage() {
       });
       const data = await res.json();
       if (data.success) {
+        // Show debug OTP if available (for testing — remove in production)
+        if (data._debug) setDebugOtp(data._debug);
         setOtpSent(true);
         setStep(2);
         setOtpCooldown(60);
@@ -397,6 +402,13 @@ export function RegisterPage() {
         {/* ═══════════ STEP 2: OTP ═══════════ */}
         {step === 2 && (
           <div className="space-y-4">
+            {/* Debug OTP banner (testing — remove in production) */}
+            {debugOtp && (
+              <div className="rounded-lg border border-brand-primary/30 bg-brand-primary/5 px-4 py-3 text-center">
+                <p className="text-[10px] text-text-tertiary mb-1">Your verification code (testing):</p>
+                <p className="text-2xl font-bold font-mono tracking-[8px] text-brand-primary">{debugOtp}</p>
+              </div>
+            )}
             <div className="text-center">
               <p className="text-xs text-text-secondary">
                 We sent a 6-digit code to <span className="font-semibold text-text-primary">{email}</span>
