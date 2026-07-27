@@ -59,6 +59,7 @@ export interface UpstoxTokenResponse {
 
 export interface StoredToken {
   accessToken: string;
+  refreshToken?: string | null;
   expiresAt: Date;
   userEmail?: string | null;
   userIdUpstox?: string | null;
@@ -169,6 +170,7 @@ export async function getStoredToken(userId: string): Promise<StoredToken | null
     if (!row || !row.isActive) return null;
     return {
       accessToken: row.accessToken,
+      refreshToken: row.refreshToken,
       expiresAt: row.expiresAt,
       userEmail: row.userEmail,
       userIdUpstox: row.userIdUpstox,
@@ -191,8 +193,12 @@ export async function getActiveToken(userId: string): Promise<string | null> {
   const now = new Date();
   const fiveMinLater = new Date(now.getTime() + 5 * 60 * 1000);
   if (stored.expiresAt < fiveMinLater) {
-    // Token expired — need to re-authorize
-    // Mark as inactive so the user is prompted to re-login
+    // Token expired — try auto-refresh using refresh_token first
+    if (stored.refreshToken) {
+      const refreshed = await refreshTokenAuto(userId, stored.refreshToken);
+      if (refreshed) return refreshed;
+    }
+    // Refresh failed or no refresh_token — mark as inactive
     try {
       await prisma.upstoxToken.update({
         where: { userId },
@@ -204,6 +210,45 @@ export async function getActiveToken(userId: string): Promise<string | null> {
     return null;
   }
   return stored.accessToken;
+}
+
+// ---------------------------------------------------------------------------
+// Auto-refresh access token using refresh_token (no user action needed)
+// ---------------------------------------------------------------------------
+async function refreshTokenAuto(userId: string, refreshToken: string): Promise<string | null> {
+  try {
+    console.log('[upstox] Auto-refreshing token for user:', userId);
+    const body = new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: UPSTOX_API_KEY,
+      client_secret: UPSTOX_API_SECRET,
+      grant_type: 'refresh_token',
+    });
+    const res = await fetch('https://api.upstox.com/v2/login/authorization/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json' },
+      body: body.toString(),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      console.error('[upstox] Auto-refresh failed:', res.status, text);
+      return null;
+    }
+    const tokenRes = (await res.json()) as UpstoxTokenResponse;
+    if (!tokenRes.access_token) {
+      console.error('[upstox] Auto-refresh returned no access_token');
+      return null;
+    }
+    // Store new token in DB
+    await storeToken(userId, tokenRes);
+    console.log('[upstox] Auto-refresh succeeded, new token expires in', tokenRes.expires_in, 's');
+    // Push to CF Worker so WS reconnects immediately
+    pushTokenToWorker(tokenRes.access_token).catch(() => {});
+    return tokenRes.access_token;
+  } catch (e: any) {
+    console.error('[upstox] Auto-refresh exception:', e?.message ?? e);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
