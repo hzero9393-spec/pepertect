@@ -85,9 +85,31 @@ function hashSeed(s: string): number {
 /**
  * Try to fetch real option chain via the Cloudflare Worker proxy (preferred),
  * fall back to direct Upstox call with env token if worker fails.
+ * If requested weekly expiry returns no data, falls back to nearest monthly
+ * expiry (Upstox sometimes only populates monthly contracts).
  * Returns null if both paths fail.
  */
 async function fetchUpstoxOptionChain(
+  token: string | null,
+  indexKey: string,
+  expiry: string,
+  allExpiries: string[]
+): Promise<any | null> {
+  // Try the requested expiry first
+  const direct = await tryFetchOptionChain(token, indexKey, expiry);
+  if (direct && direct.length > 0) return direct;
+
+  // Fall back: try each subsequent expiry in order until we get data
+  // (Upstox sometimes returns [] for weekly but populates monthly)
+  for (const altExpiry of allExpiries) {
+    if (altExpiry === expiry) continue;
+    const alt = await tryFetchOptionChain(token, indexKey, altExpiry);
+    if (alt && alt.length > 0) return alt;
+  }
+  return null;
+}
+
+async function tryFetchOptionChain(
   token: string | null,
   indexKey: string,
   expiry: string
@@ -205,11 +227,9 @@ export async function GET(req: NextRequest) {
 
   const atm = Math.round(spot / cfg.step) * cfg.step;
 
-  // Try to fetch real option chain
+  // Try to fetch real option chain (worker proxy first, direct call fallback)
   let upstoxChain: any[] | null = null;
-  if (token) {
-    upstoxChain = await fetchUpstoxOptionChain(token, cfg.upstoxKey, expiry);
-  }
+  upstoxChain = await fetchUpstoxOptionChain(token, cfg.upstoxKey, expiry, expiries);
 
   // ===== Strategy: use REAL Upstox strikes when available =====
   // Upstox returns the FULL chain for an expiry — we now return ALL strikes
