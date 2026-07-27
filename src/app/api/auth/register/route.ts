@@ -24,8 +24,7 @@ export async function POST(req: NextRequest) {
     const { email, password } = parsed.data;
     const acceptedTerms = body.acceptedTerms === true;
     const acceptedPrivacy = body.acceptedPrivacy === true;
-    const verifyToken = body.verifyToken; // from OTP verification
-    const fingerprint = body.fingerprint; // device fingerprint
+    const fingerprint = body.fingerprint;
 
     /* Enforce legal acceptance */
     if (!acceptedTerms || !acceptedPrivacy) {
@@ -39,42 +38,6 @@ export async function POST(req: NextRequest) {
     if (isDisposableEmail(email)) {
       return NextResponse.json(
         { success: false, error: 'Disposable email addresses are not allowed' },
-        { status: 403 }
-      );
-    }
-
-    /* Enforce email OTP verification */
-    if (!verifyToken) {
-      return NextResponse.json(
-        { success: false, error: 'Email verification required. Please verify your email first.' },
-        { status: 403 }
-      );
-    }
-
-    // Check if the verify token matches what we stored
-    const verifyKey = `email_verified:${email.toLowerCase().trim()}`;
-    const verifyRecord = await db.platformSetting.findUnique({ where: { key: verifyKey } });
-
-    if (!verifyRecord) {
-      return NextResponse.json(
-        { success: false, error: 'Email not verified. Please verify your email again.' },
-        { status: 403 }
-      );
-    }
-
-    const verifyData = JSON.parse(verifyRecord.value);
-
-    if (verifyData.token !== verifyToken) {
-      return NextResponse.json(
-        { success: false, error: 'Invalid verification token. Please verify your email again.' },
-        { status: 403 }
-      );
-    }
-
-    if (new Date(verifyData.expiresAt).getTime() < Date.now()) {
-      await db.platformSetting.delete({ where: { key: verifyKey } });
-      return NextResponse.json(
-        { success: false, error: 'Verification expired. Please verify your email again.' },
         { status: 403 }
       );
     }
@@ -149,9 +112,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    /* Clean up verification records */
-    await db.platformSetting.delete({ where: { key: verifyKey } }).catch(() => {});
-
     // Generate JWT
     const token = signToken({
       userId: user.id,
@@ -175,7 +135,7 @@ export async function POST(req: NextRequest) {
         success: true,
         user: { ...safeUser, virtualCapital: Number(safeUser.virtualCapital) },
         token,
-        deviceTrialUsed, // Tell the client so UI can show appropriate message
+        deviceTrialUsed,
       },
       { status: 201 }
     );
