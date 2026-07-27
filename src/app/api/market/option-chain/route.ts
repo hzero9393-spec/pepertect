@@ -192,28 +192,25 @@ export async function GET(req: NextRequest) {
   }
 
   // ===== Strategy: use REAL Upstox strikes when available =====
-  // Upstox returns the full chain for an expiry — we filter to ATM ± 10 strikes
-  // (or 21 strikes total: 10 ITM + ATM + 10 OTM). If Upstox has no data
-  // (offline / market closed / wrong expiry), fall back to synthetic.
-  const NUM_STRIKES_EACH_SIDE = 10;
+  // Upstox returns the FULL chain for an expiry — we now return ALL strikes
+  // (not just ATM ± N) so the user sees every strike price the exchange lists.
+  // If Upstox has no data (offline / market closed / wrong expiry / expired token),
+  // we fall back to a wider synthetic chain (ATM ± 15 = 31 strikes) so the UI
+  // still shows a meaningful option chain.
+  const SYNTHETIC_STRIKES_EACH_SIDE = 15;
 
   let strikeInputs: Array<{ strike: number; upstoxRow?: any }> = [];
 
   if (upstoxChain && upstoxChain.length > 0) {
-    // Sort by strike price ascending
+    // Sort by strike price ascending, then keep ALL strikes from Upstox
     const sorted = [...upstoxChain].sort((a, b) => a.strike_price - b.strike_price);
-    // Find ATM index (closest strike to spot)
-    let atmIdx = sorted.findIndex((r) => r.strike_price >= atm);
-    if (atmIdx === -1) atmIdx = Math.floor(sorted.length / 2);
-    const startIdx = Math.max(0, atmIdx - NUM_STRIKES_EACH_SIDE);
-    const endIdx = Math.min(sorted.length, atmIdx + NUM_STRIKES_EACH_SIDE + 1);
-    strikeInputs = sorted.slice(startIdx, endIdx).map((r) => ({
+    strikeInputs = sorted.map((r) => ({
       strike: r.strike_price,
       upstoxRow: r,
     }));
   } else {
-    // Fallback: generate 15 synthetic strikes around ATM
-    for (let i = -7; i <= 7; i++) {
+    // Fallback: generate synthetic strikes around ATM
+    for (let i = -SYNTHETIC_STRIKES_EACH_SIDE; i <= SYNTHETIC_STRIKES_EACH_SIDE; i++) {
       strikeInputs.push({ strike: atm + i * cfg.step });
     }
   }

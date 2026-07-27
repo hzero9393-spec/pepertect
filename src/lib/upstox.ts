@@ -141,14 +141,21 @@ export async function storeToken(userId: string, token: UpstoxTokenResponse): Pr
 // Get stored token from DB
 // ---------------------------------------------------------------------------
 export async function getStoredToken(userId: string): Promise<StoredToken | null> {
-  const row = await prisma.upstoxToken.findUnique({ where: { userId } });
-  if (!row || !row.isActive) return null;
-  return {
-    accessToken: row.accessToken,
-    expiresAt: row.expiresAt,
-    userEmail: row.userEmail,
-    userIdUpstox: row.userIdUpstox,
-  };
+  try {
+    const row = await prisma.upstoxToken.findUnique({ where: { userId } });
+    if (!row || !row.isActive) return null;
+    return {
+      accessToken: row.accessToken,
+      expiresAt: row.expiresAt,
+      userEmail: row.userEmail,
+      userIdUpstox: row.userIdUpstox,
+    };
+  } catch (e) {
+    // DB not available (e.g. local SQLite where Prisma is configured for PostgreSQL)
+    // — return null so the caller falls back to env var or synthetic data.
+    console.warn('[upstox] getStoredToken: DB lookup failed, returning null:', e?.message ?? e);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,10 +170,14 @@ export async function getActiveToken(userId: string): Promise<string | null> {
   if (stored.expiresAt < fiveMinLater) {
     // Token expired — need to re-authorize
     // Mark as inactive so the user is prompted to re-login
-    await prisma.upstoxToken.update({
-      where: { userId },
-      data: { isActive: false },
-    });
+    try {
+      await prisma.upstoxToken.update({
+        where: { userId },
+        data: { isActive: false },
+      });
+    } catch (e) {
+      // DB not available — skip the update, just return null
+    }
     return null;
   }
   return stored.accessToken;
