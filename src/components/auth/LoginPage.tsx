@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,13 +19,28 @@ function GoogleIcon({ className = 'h-4 w-4' }: { className?: string }) {
   );
 }
 
+/* ── Google OAuth Redirect (no GSI popup issues) ── */
+function buildGoogleAuthUrl(state: string) {
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+  const redirectUri = typeof window !== 'undefined' ? window.location.origin + '/api/auth/google/callback' : '';
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    prompt: 'select_account',
+    state,
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
 export function LoginPage() {
   const { login } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,19 +82,7 @@ export function LoginPage() {
         window.history.pushState({}, '', '/dashboard');
         window.dispatchEvent(new PopStateEvent('popstate'));
       } else {
-        const regRes = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'demo@pepertect.com', password: 'demo12345', name: 'Demo Trader' }),
-        });
-        const regData = await regRes.json();
-        if (regData.success) {
-          login(regData.user, regData.token);
-          window.history.pushState({}, '', '/dashboard');
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        } else {
-          setError('Demo account unavailable. Please register.');
-        }
+        setError('Demo account unavailable. Please register.');
       }
     } catch {
       setError('Network error');
@@ -88,63 +91,23 @@ export function LoginPage() {
     }
   };
 
-  /* ---------- Google Sign-In (GSI) ---------- */
-  const [googleScriptLoaded, setGoogleScriptLoaded] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const existingScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
-    if (existingScript) { setGoogleScriptLoaded(true); return; }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => setGoogleScriptLoaded(true);
-    document.head.appendChild(script);
-  }, []);
-
-  const handleGoogleCredentialResponse = useCallback(async (response: { credential: string }) => {
-    setGoogleLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: response.credential }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        login(data.user, data.token);
-        window.history.pushState({}, '', '/dashboard');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      } else {
-        setError(data.error || 'Google sign-in failed');
-      }
-    } catch {
-      setError('Network error during Google sign-in');
-    } finally {
-      setGoogleLoading(false);
-    }
-  }, [login]);
-
-  useEffect(() => {
-    if (!googleScriptLoaded || typeof window === 'undefined') return;
-    // @ts-expect-error google is injected by the GSI script
-    if (window.google?.accounts?.id) {
-      // @ts-expect-error google is injected by the GSI script
-      window.google.accounts.id.initialize({
-        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
-        callback: handleGoogleCredentialResponse,
-      });
-    }
-  }, [googleScriptLoaded, handleGoogleCredentialResponse]);
-
+  /* ── Google OAuth Redirect Flow ── */
   const triggerGoogleLogin = () => {
-    if (typeof window !== 'undefined') {
-      // @ts-expect-error google is injected by the GSI script
-      window.google?.accounts?.id?.prompt();
-    }
+    const state = 'login_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const url = buildGoogleAuthUrl(state);
+    window.location.href = url;
   };
+
+  // Handle Google OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleError = params.get('error');
+    if (googleError) {
+      setError(`Google sign-in was cancelled or failed: ${googleError}`);
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg-base px-4">
@@ -158,20 +121,15 @@ export function LoginPage() {
           <p className="text-xs text-text-secondary">Sign in to Pepertect to continue trading</p>
         </div>
 
-        {/* Custom Google Sign-In Button */}
-        <button
-          type="button"
-          onClick={triggerGoogleLogin}
-          disabled={googleLoading}
-          className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-surface-alt hover:shadow-sm active:scale-[0.98] disabled:opacity-60"
+        {/* Google Sign-In Button (redirect flow — no popup issues) */}
+        <a
+          href="#"
+          onClick={(e) => { e.preventDefault(); triggerGoogleLogin(); }}
+          className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-surface-alt hover:shadow-sm active:scale-[0.98]"
         >
-          {googleLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />
-          ) : (
-            <GoogleIcon className="h-4 w-4" />
-          )}
-          {googleLoading ? 'Signing in with Google...' : 'Continue with Google'}
-        </button>
+          <GoogleIcon className="h-4 w-4" />
+          Continue with Google
+        </a>
 
         {/* Divider */}
         <div className="relative flex items-center gap-3">
@@ -222,7 +180,7 @@ export function LoginPage() {
           <Button
             type="submit"
             className="w-full h-10 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold text-sm transition-all hover:shadow-lg hover:shadow-brand-primary/20 active:scale-[0.98]"
-            disabled={loading || googleLoading}
+            disabled={loading}
           >
             {loading ? (
               <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Signing in...</>
@@ -234,7 +192,7 @@ export function LoginPage() {
           <button
             type="button"
             onClick={handleDemoLogin}
-            disabled={loading || googleLoading}
+            disabled={loading}
             className="w-full py-2 rounded-lg border border-dashed border-border text-[11px] font-medium text-text-tertiary hover:bg-bg-surface-alt hover:text-text-primary transition-colors"
           >
             Try Demo Account — No signup required

@@ -148,6 +148,27 @@ export default function HomePage() {
   useEffect(() => {
     setReady(true);
 
+    // Handle Google OAuth callback redirect (token in URL params)
+    const params = new URLSearchParams(window.location.search);
+    const authToken = params.get('token');
+    if (authToken) {
+      // Auto-login with the token from Google OAuth callback
+      const { login } = useAuthStore.getState();
+      // Fetch user info from session endpoint
+      fetch('/api/auth/session', {
+        headers: { Authorization: `Bearer ${authToken}` },
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.user) {
+            login(data.user, authToken);
+          }
+        })
+        .catch(() => {});
+      // Clean URL params
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     const handler = (e: MouseEvent) => {
       const anchor = (e.target as HTMLElement).closest('a');
       if (!anchor) return;

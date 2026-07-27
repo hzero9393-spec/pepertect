@@ -251,66 +251,32 @@ export function RegisterPage() {
     }
   };
 
-  /* ── Google Sign-Up ── */
-  const [googleScriptLoaded, setGoogleScriptLoaded] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const existingScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
-    if (existingScript) { setGoogleScriptLoaded(true); return; }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => setGoogleScriptLoaded(true);
-    document.head.appendChild(script);
-  }, []);
-
-  const handleGoogleCredentialResponse = useCallback(async (response: { credential: string }) => {
-    setGoogleLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: response.credential,
-          fingerprint: fingerprint || undefined,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        login(data.user, data.token);
-        window.history.pushState({}, '', '/dashboard');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      } else {
-        setError(data.error || 'Google sign-up failed');
-      }
-    } catch {
-      setError('Network error during Google sign-up');
-    } finally {
-      setGoogleLoading(false);
-    }
-  }, [login, fingerprint]);
-
-  useEffect(() => {
-    if (!googleScriptLoaded || typeof window === 'undefined') return;
-    // @ts-expect-error google is injected by the GSI script
-    if (window.google?.accounts?.id) {
-      // @ts-expect-error google is injected by the GSI script
-      window.google.accounts.id.initialize({
-        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '',
-        callback: handleGoogleCredentialResponse,
-      });
-    }
-  }, [googleScriptLoaded, handleGoogleCredentialResponse]);
-
+  /* ── Google OAuth Redirect Flow (no GSI popup issues) ── */
   const triggerGoogleSignUp = () => {
-    if (typeof window !== 'undefined') {
-      // @ts-expect-error google is injected by the GSI script
-      window.google?.accounts?.id?.prompt();
-    }
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+    const redirectUri = window.location.origin + '/api/auth/google/callback';
+    const state = 'register_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      prompt: 'select_account',
+      state,
+    });
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   };
+
+  // Handle Google OAuth callback errors
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleError = params.get('error');
+    if (googleError) {
+      setError(`Google sign-up was cancelled or failed: ${googleError}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   /* ── Progress bar ── */
   const progressSteps = [
@@ -347,16 +313,15 @@ export function RegisterPage() {
           ))}
         </div>
 
-        {/* Google Button */}
-        <button
-          type="button"
-          onClick={triggerGoogleSignUp}
-          disabled={googleLoading}
-          className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-surface-alt hover:shadow-sm active:scale-[0.98] disabled:opacity-60"
+        {/* Google Button (redirect flow — no popup issues) */}
+        <a
+          href="#"
+          onClick={(e) => { e.preventDefault(); triggerGoogleSignUp(); }}
+          className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-surface-alt hover:shadow-sm active:scale-[0.98]"
         >
-          {googleLoading ? <Loader2 className="h-4 w-4 animate-spin text-text-secondary" /> : <GoogleIcon className="h-4 w-4" />}
-          {googleLoading ? 'Creating account...' : 'Continue with Google'}
-        </button>
+          <GoogleIcon className="h-4 w-4" />
+          Continue with Google
+        </a>
 
         {/* Divider */}
         <div className="relative flex items-center gap-3">
