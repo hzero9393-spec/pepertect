@@ -89,6 +89,18 @@ export async function exchangeCodeForToken(code: string): Promise<UpstoxTokenRes
 
   if (!res.ok) {
     const text = await res.text();
+    // Surface a clear, typed error for the most common failure (already-used code)
+    // so the callback handler can show a friendly hint.
+    let parsed: any = null;
+    try { parsed = JSON.parse(text); } catch {}
+    const errCode = parsed?.errors?.[0]?.errorCode || '';
+    const errMsg = parsed?.errors?.[0]?.message || '';
+    if (errCode === 'UDAPI100057' || res.status === 401) {
+      const e: any = new Error(`Token exchange failed: ${res.status} ${text}`);
+      e.upstoxErrorCode = errCode;
+      e.upstoxErrorMessage = errMsg;
+      throw e;
+    }
     throw new Error(`Token exchange failed: ${res.status} ${text}`);
   }
 

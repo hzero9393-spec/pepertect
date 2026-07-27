@@ -9,9 +9,11 @@ function UpstoxStatusContent() {
 
   const success = sp.get('success') === '1';
   const error = sp.get('error');
+  const hint = sp.get('hint');
   const email = sp.get('email');
   const expiresIn = sp.get('expires_in');
   const worker = sp.get('worker');
+  const userId = sp.get('user_id');
 
   useEffect(() => {
     if (success) {
@@ -19,6 +21,8 @@ function UpstoxStatusContent() {
       return () => clearTimeout(t);
     }
   }, [success, router]);
+
+  const isInvalidAuthCode = error && error.includes('UDAPI100057');
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-4">
@@ -46,6 +50,12 @@ function UpstoxStatusContent() {
                   {worker === 'updated' ? '✓ Synced' : '⚠ Pending'}
                 </span>
               </div>
+              {userId && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Stored for user:</span>
+                  <span className="font-mono text-zinc-300">{userId}</span>
+                </div>
+              )}
             </div>
             <p className="text-xs text-zinc-600 text-center mt-4">
               Redirecting to dashboard in 5 seconds...
@@ -65,16 +75,28 @@ function UpstoxStatusContent() {
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-center mb-2">Connection Failed</h1>
-            <p className="text-zinc-400 text-center mb-6">
+            <p className="text-zinc-400 text-center mb-4 text-sm break-words">
               {error === 'missing_code' && 'No authorization code received from Upstox.'}
               {error === 'no_user' && 'No user account found. Please log in first.'}
               {!['missing_code', 'no_user'].includes(error || '') && `Error: ${error}`}
             </p>
+
+            {isInvalidAuthCode && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-4 text-xs text-yellow-300">
+                <p className="font-semibold mb-1">⚠ Auth code expired / reused</p>
+                <p className="text-yellow-200/80">
+                  Upstox auth codes are <b>single-use</b> and expire in ~2 minutes.
+                  This usually happens if you refreshed the page, pressed Back, or used the same URL twice.
+                </p>
+                {hint && <p className="mt-2 text-yellow-100/70">{hint}</p>}
+              </div>
+            )}
+
             <button
               onClick={() => router.push('/api/upstox/connect')}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition"
             >
-              Try Again
+              Re-authorize (fresh login)
             </button>
             <button
               onClick={() => router.push('/dashboard')}
@@ -82,6 +104,14 @@ function UpstoxStatusContent() {
             >
               Back to Dashboard
             </button>
+
+            <div className="mt-4 pt-4 border-t border-zinc-800 text-xs text-zinc-500 space-y-1">
+              <p className="font-semibold text-zinc-400">Troubleshooting:</p>
+              <p>1. Open a <b>fresh tab</b> (not the same one)</p>
+              <p>2. Visit <code className="text-zinc-300">/api/upstox/connect</code> directly</p>
+              <p>3. Don't refresh, don't press Back</p>
+              <p>4. Complete Upstox login + PIN within 2 minutes</p>
+            </div>
           </>
         )}
       </div>
