@@ -23,9 +23,20 @@ export const UPSTOX_REDIRECT_URI =
   'https://pepertect.vercel.app/callback';
 
 // Cloudflare Worker URL (for hot token refresh)
-export const UPSTOX_WORKER_URL =
-  process.env.NEXT_PUBLIC_UPSTOX_WS_URL?.replace(/\/ws$/, '') ||
-  'https://upstox-realtime.hzero9393.workers.dev';
+// Resolve from multiple env vars, and normalize wss:// → https:// just in case.
+function resolveWorkerUrl(): string {
+  const raw =
+    process.env.UPSTOX_WORKER_URL ||
+    process.env.NEXT_PUBLIC_UPSTOX_WS_URL ||
+    'https://upstox-realtime.hzero9393.workers.dev';
+  // Strip trailing /ws
+  let url = raw.replace(/\/ws$/, '');
+  // Convert wss:// → https:// (worker is HTTPS REST, not just WebSocket)
+  if (url.startsWith('wss://')) url = 'https://' + url.slice(6);
+  if (url.startsWith('ws://')) url = 'http://' + url.slice(5);
+  return url;
+}
+export const UPSTOX_WORKER_URL = resolveWorkerUrl();
 
 // Admin user ID — single Upstox account shared with all paper-trading users.
 // Set this to your admin user's ID (or the first user's ID).
