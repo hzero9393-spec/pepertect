@@ -2,9 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { EmptyState } from '@/components/shared/common';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
 import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap, ChevronDown, History } from 'lucide-react';
 import React from 'react';
@@ -625,24 +623,67 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         <p className={`text-sm text-center font-medium ${message.includes('success') || message.includes('Exited') || message.includes('Successfully') ? 'text-profit-green' : 'text-loss-red'}`}>{message}</p>
       )}
 
-      {/* Positions */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="font-heading text-base font-semibold">
-            {activeTab === 'stock' ? 'Stock Positions' : 'Index Positions'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-bg-surface-alt" />)}</div>
-          ) : filteredPositions.length === 0 ? (
-            <EmptyState
-              icon={activeTab === 'stock' ? TrendingUp : Layers}
-              title={activeTab === 'stock' ? 'No stock positions' : 'No index positions'}
-              description={activeTab === 'stock' ? 'Place an equity order to see stock positions here' : 'Place an F&O order to see index positions here'}
-              action={<a href="/trade"><Button size="sm">Start Trading</Button></a>}
-            />
-          ) : (
+      {/* ============== TRADE HISTORY — ABOVE POSITIONS ============== */}
+      <div className="card-soft p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-purple">
+              <History className="h-3.5 w-3.5 text-info-purple" />
+            </div>
+            <h3 className="font-heading text-sm font-semibold text-text-primary">Trade History</h3>
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+              {tabTrades.length}
+            </span>
+          </div>
+        </div>
+        {tabTrades.length === 0 ? (
+          <div className="flex flex-col items-center py-6 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-bg-surface-alt mb-2">
+              <History className="h-5 w-5 text-text-tertiary" />
+            </div>
+            <p className="text-sm font-medium text-text-primary">No trades yet</p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {activeTab === 'stock' ? 'Your equity trade history will appear here' : 'Your F&O trade history will appear here'}
+            </p>
+          </div>
+        ) : (
+          <TradeHistoryList trades={tabTrades} />
+        )}
+      </div>
+
+      {/* ============== POSITIONS ============== */}
+      <div className="card-soft p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className={cn(
+              'flex h-7 w-7 items-center justify-center rounded-md',
+              activeTab === 'stock' ? 'bg-tint-blue' : 'bg-tint-purple'
+            )}>
+              {activeTab === 'stock' ? <TrendingUp className="h-3.5 w-3.5 text-brand-primary" /> : <Layers className="h-3.5 w-3.5 text-info-purple" />}
+            </div>
+            <h3 className="font-heading text-sm font-semibold text-text-primary">
+              {activeTab === 'stock' ? 'Stock Positions' : 'Index Positions'}
+            </h3>
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+              {filteredPositions.length}
+            </span>
+          </div>
+        </div>
+        {loading ? (
+          <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-bg-surface-alt" />)}</div>
+        ) : filteredPositions.length === 0 ? (
+          <div className="flex flex-col items-center py-6 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-bg-surface-alt mb-2">
+              {activeTab === 'stock' ? <TrendingUp className="h-5 w-5 text-text-tertiary" /> : <Layers className="h-5 w-5 text-text-tertiary" />}
+            </div>
+            <p className="text-sm font-medium text-text-primary">
+              {activeTab === 'stock' ? 'No stock positions' : 'No index positions'}
+            </p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {activeTab === 'stock' ? 'Place an equity order to see positions here' : 'Place an F&O order to see positions here'}
+            </p>
+          </div>
+        ) : (
             <div className="space-y-2 sm:space-y-3">
               {resolvingOptionKeys && (
                 <div className="rounded-md bg-tint-blue/40 border border-brand-primary/20 px-3 py-1.5 text-[11px] text-text-secondary flex items-center gap-1.5">
@@ -756,41 +797,21 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
-      {/* ============== TRADE HISTORY ============== */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <History className="h-4 w-4 text-brand-primary" />
-              <CardTitle className="font-heading text-base font-semibold">Trade History</CardTitle>
-              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
-                {tabTrades.length}
-              </span>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {tabTrades.length === 0 ? (
-            <EmptyState
-              icon={History}
-              title="No trades yet"
-              description={activeTab === 'stock' ? 'Your equity trade history will appear here' : 'Your F&O trade history will appear here'}
-              action={<a href="/trade"><Button size="sm">Start Trading</Button></a>}
-            />
-          ) : (
-            <TradeHistoryList trades={tabTrades} />
-          )}
-        </CardContent>
-      </Card>
+      {/* ============== START TRADING CTA (bottom) ============== */}
+      <a href="/trade" className="block">
+        <div className="flex items-center justify-center gap-2 rounded-xl bg-brand-primary py-3 text-sm font-bold text-white hover:bg-brand-primary-hover transition-colors shadow-lg shadow-brand-primary/20">
+          <Zap className="h-4 w-4" />
+          Start Trading
+        </div>
+      </a>
     </div>
   );
 }
 
 /* ========================================================================
- * TradeHistoryList — expandable trade history cards
+ * TradeHistoryList — clean professional expandable trade cards
  * ======================================================================== */
 function TradeHistoryList({ trades }: { trades: Trade[] }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -798,8 +819,8 @@ function TradeHistoryList({ trades }: { trades: Trade[] }) {
   if (trades.length === 0) return null;
 
   return (
-    <div className="space-y-2">
-      {trades.map((trade) => {
+    <div className="space-y-1.5">
+      {trades.map((trade, idx) => {
         const isExpanded = expandedId === trade.id;
         const pnl = Number(trade.pnl) || 0;
         const price = Number(trade.price) || 0;
@@ -808,103 +829,127 @@ function TradeHistoryList({ trades }: { trades: Trade[] }) {
         const profitPct = invested > 0 ? (pnl / invested) * 100 : 0;
         const isBuy = trade.side === 'BUY';
         const isOpen = trade.type === 'OPEN';
-        const tradeDate = trade.createdAt ? new Date(trade.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-        const expiryDate = trade.expiry ? new Date(trade.expiry).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+        const tradeDate = trade.createdAt
+          ? new Date(trade.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '';
+        const expiryDate = trade.expiry
+          ? new Date(trade.expiry).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+          : '';
 
         return (
           <div
             key={trade.id}
             className={cn(
-              'rounded-lg border transition-all duration-200 cursor-pointer',
-              isExpanded ? 'border-brand-primary/50 bg-bg-surface-alt/50' : 'border-border-default bg-bg-base hover:border-border'
+              'rounded-xl border overflow-hidden transition-all duration-300 ease-out animate-in fade-in slide-in-from-bottom-1 cursor-pointer group',
+              isExpanded
+                ? 'border-brand-primary/40 bg-bg-surface-alt/40 shadow-sm'
+                : 'border-border hover:bg-bg-surface-alt/20'
             )}
+            style={{ animationDelay: `${idx * 40}ms`, animationFillMode: 'both' }}
             onClick={() => setExpandedId(isExpanded ? null : trade.id)}
           >
-            {/* Header row */}
-            <div className="flex items-center gap-3 p-3">
-              <div className={cn(
-                'flex h-8 w-8 items-center justify-center rounded-md shrink-0',
-                isOpen ? 'bg-tint-blue' : 'bg-tint-purple'
-              )}>
-                <Layers className="h-4 w-4 text-brand-primary" />
-              </div>
+            {/* Compact header row */}
+            <div className="flex items-center gap-2.5 px-3 py-2.5">
+              {/* Symbol + badges */}
               <div className="flex items-center gap-2 min-w-0 flex-1">
-                <span className="font-mono text-sm font-semibold text-text-primary truncate">{trade.symbol}</span>
-                <span className={cn(
-                  'pill text-[9px] font-bold px-1.5 py-0',
-                  isBuy ? 'bg-profit-green/15 text-profit-green' : 'bg-loss-red/15 text-loss-red'
-                )}>
-                  {trade.side}
-                </span>
-                <span className={cn(
-                  'pill text-[9px] font-bold px-1.5 py-0',
-                  isOpen ? 'bg-tint-blue text-brand-primary' : 'bg-tint-purple text-info-purple'
-                )}>
-                  {trade.type}
-                </span>
-                <span className="font-mono text-[10px] text-text-secondary">{qty} × ₹{formatNumber(price)}</span>
+                <StockLogo symbol={trade.symbol} size="sm" rounded="md" />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-[13px] font-bold text-text-primary tracking-tight">{trade.symbol}</span>
+                    <span className={cn(
+                      'inline-block rounded px-1 py-[1px] text-[8px] font-bold leading-tight uppercase tracking-wide',
+                      isBuy ? 'bg-profit-green/12 text-profit-green' : 'bg-loss-red/12 text-loss-red'
+                    )}>
+                      {trade.side}
+                    </span>
+                    {trade.optionType && (
+                      <span className={cn(
+                        'inline-block rounded px-1 py-[1px] text-[8px] font-bold leading-tight',
+                        trade.optionType === 'CE' ? 'bg-profit-green/12 text-profit-green' : 'bg-loss-red/12 text-loss-red'
+                      )}>
+                        {trade.optionType}
+                      </span>
+                    )}
+                    {trade.strikePrice != null && trade.strikePrice > 0 && (
+                      <span className="font-mono text-[9px] text-text-tertiary">{trade.strikePrice}</span>
+                    )}
+                  </div>
+                  <p className="font-mono text-[10px] text-text-tertiary mt-px">
+                    {qty} @ ₹{formatNumber(price, 2)}
+                  </p>
+                </div>
               </div>
+
+              {/* P&L + chevron */}
               <div className="flex items-center gap-2 shrink-0">
                 <div className="text-right">
-                  <p className={cn('font-mono text-sm font-bold tabular-nums', getPnlColor(pnl))}>
+                  <p className={cn('font-mono text-[13px] font-bold tabular-nums tracking-tight leading-tight', getPnlColor(pnl))}>
                     {pnl >= 0 ? '+' : ''}₹{formatNumber(pnl)}
                   </p>
-                  <p className={cn('font-mono text-[10px] tabular-nums', getPnlColor(profitPct))}>
+                  <p className={cn('font-mono text-[9px] tabular-nums leading-tight', getPnlColor(profitPct))}>
                     {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
                   </p>
                 </div>
-                <ChevronDown className={cn(
-                  'h-4 w-4 text-text-tertiary transition-transform duration-200',
-                  isExpanded && 'rotate-180'
-                )} />
+                <div className={cn(
+                  'flex h-6 w-6 items-center justify-center rounded-full transition-transform duration-300',
+                  isExpanded ? 'rotate-180 bg-brand-primary/10' : 'bg-bg-surface-alt'
+                )}>
+                  <ChevronDown className="h-3 w-3 text-text-tertiary" />
+                </div>
               </div>
             </div>
 
-            {/* Expanded detail panel */}
-            {isExpanded && (
-              <div className="border-t border-border px-3 py-3 bg-bg-surface-alt/30">
-                {/* Summary boxes */}
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  <div className="rounded-md bg-bg-surface p-2 text-center">
-                    <p className="text-[10px] text-text-secondary">P&L</p>
-                    <p className={cn('font-mono text-sm font-bold tabular-nums', getPnlColor(pnl))}>
-                      {pnl >= 0 ? '+' : ''}₹{formatNumber(pnl)}
-                    </p>
+            {/* Expanded detail panel — slide down animation */}
+            <div className={cn(
+              'grid transition-all duration-300 ease-out overflow-hidden',
+              isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+            )}>
+              <div className="overflow-hidden">
+                <div className="border-t border-border/50 mx-3" />
+                <div className="px-3 py-3 space-y-3">
+                  {/* Summary row */}
+                  <div className="flex items-stretch gap-2">
+                    <div className="flex-1 rounded-lg bg-bg-base p-2 text-center">
+                      <p className="text-[8px] font-semibold uppercase tracking-wider text-text-tertiary mb-0.5">P&L</p>
+                      <p className={cn('font-mono text-sm font-bold tabular-nums tracking-tight', getPnlColor(pnl))}>
+                        {pnl >= 0 ? '+' : ''}₹{formatNumber(pnl)}
+                      </p>
+                    </div>
+                    <div className="flex-1 rounded-lg bg-bg-base p-2 text-center">
+                      <p className="text-[8px] font-semibold uppercase tracking-wider text-text-tertiary mb-0.5">Return</p>
+                      <p className={cn('font-mono text-sm font-bold tabular-nums tracking-tight', getPnlColor(profitPct))}>
+                        {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
+                      </p>
+                    </div>
+                    <div className="flex-1 rounded-lg bg-bg-base p-2 text-center">
+                      <p className="text-[8px] font-semibold uppercase tracking-wider text-text-tertiary mb-0.5">Charges</p>
+                      <p className="font-mono text-sm font-bold tabular-nums tracking-tight text-text-primary">
+                        ₹{formatNumber(Number(trade.brokerage) || 0)}
+                      </p>
+                    </div>
                   </div>
-                  <div className="rounded-md bg-bg-surface p-2 text-center">
-                    <p className="text-[10px] text-text-secondary">Return</p>
-                    <p className={cn('font-mono text-sm font-bold tabular-nums', getPnlColor(profitPct))}>
-                      {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
-                    </p>
+                  {/* Detail grid */}
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+                    <DetailRow label="Symbol" value={trade.symbol} />
+                    <DetailRow label="Side" value={trade.side} />
+                    <DetailRow label="Type" value={trade.type} />
+                    <DetailRow label="Segment" value={trade.segment} />
+                    <DetailRow label="Quantity" value={String(trade.quantity)} />
+                    <DetailRow label="Price" value={`₹${formatNumber(price, 2)}`} />
+                    {trade.strikePrice != null && trade.strikePrice > 0 && (
+                      <DetailRow label="Strike" value={`₹${formatNumber(Number(trade.strikePrice))}`} />
+                    )}
+                    {trade.optionType && (
+                      <DetailRow label="Option" value={trade.optionType} />
+                    )}
+                    {expiryDate && (
+                      <DetailRow label="Expiry" value={expiryDate} />
+                    )}
+                    <DetailRow label="Date" value={tradeDate} />
                   </div>
-                  <div className="rounded-md bg-bg-surface p-2 text-center">
-                    <p className="text-[10px] text-text-secondary">Brokerage</p>
-                    <p className="font-mono text-sm font-bold text-text-primary">
-                      ₹{formatNumber(Number(trade.brokerage) || 0)}
-                    </p>
-                  </div>
-                </div>
-                {/* Detail rows */}
-                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-                  <DetailRow label="Symbol" value={trade.symbol} />
-                  <DetailRow label="Side" value={trade.side} />
-                  <DetailRow label="Type" value={trade.type} />
-                  <DetailRow label="Segment" value={trade.segment} />
-                  <DetailRow label="Quantity" value={String(trade.quantity)} />
-                  <DetailRow label="Price" value={`₹${formatNumber(price, 2)}`} />
-                  {trade.strikePrice != null && trade.strikePrice > 0 && (
-                    <DetailRow label="Strike" value={`₹${formatNumber(Number(trade.strikePrice))}`} />
-                  )}
-                  {trade.optionType && (
-                    <DetailRow label="Option" value={trade.optionType} />
-                  )}
-                  {expiryDate && (
-                    <DetailRow label="Expiry" value={expiryDate} />
-                  )}
-                  <DetailRow label="Date" value={tradeDate} />
                 </div>
               </div>
-            )}
+            </div>
           </div>
         );
       })}

@@ -5,8 +5,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Zap, FileText, ChevronDown, ChevronUp, ExternalLink, Check, Loader2 } from 'lucide-react';
+import { Zap, ExternalLink, Check, Loader2, Mail, Lock, User, ArrowRight } from 'lucide-react';
 
 export function RegisterPage() {
   const { login } = useAuthStore();
@@ -18,33 +17,15 @@ export function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
-  /* Legal acceptance — required before account creation */
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [acceptedPrivacy, setAcceptedPrivacy] = useState(false);
-  const [showTermsPreview, setShowTermsPreview] = useState(false);
-  const [showPrivacyPreview, setShowPrivacyPreview] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters');
-      return;
-    }
-    /* Block registration until both legal checkboxes are checked */
-    if (!acceptedTerms) {
-      setError('Please accept the Terms & Conditions to continue');
-      return;
-    }
-    if (!acceptedPrivacy) {
-      setError('Please accept the Privacy Policy to continue');
-      return;
-    }
+    if (password !== confirmPassword) { setError('Passwords do not match'); return; }
+    if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    if (!acceptedTerms || !acceptedPrivacy) { setError('Please accept Terms and Privacy Policy'); return; }
 
     setLoading(true);
     try {
@@ -54,7 +35,6 @@ export function RegisterPage() {
         body: JSON.stringify({ email, password, name, acceptedTerms, acceptedPrivacy }),
       });
       const data = await res.json();
-
       if (data.success) {
         login(data.user, data.token);
         window.history.pushState({}, '', '/dashboard');
@@ -69,17 +49,14 @@ export function RegisterPage() {
     }
   };
 
-  /* ---------- Google Sign-In ---------- */
+  /* ---------- Google Sign-Up ---------- */
   const googleBtnRef = useRef<HTMLDivElement>(null);
   const [googleScriptLoaded, setGoogleScriptLoaded] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const existingScript = document.querySelector('script[src*="accounts.google.com/gsi/client"]');
-    if (existingScript) {
-      setGoogleScriptLoaded(true);
-      return;
-    }
+    if (existingScript) { setGoogleScriptLoaded(true); return; }
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
@@ -100,6 +77,7 @@ export function RegisterPage() {
         width: '100%',
         text: 'signup_with',
         logo_alignment: 'center',
+        shape: 'rectangular',
       });
     }
   }, [googleScriptLoaded]);
@@ -141,201 +119,130 @@ export function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-bg-base px-4 py-8">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-brand-primary/10">
-            <Zap className="h-6 w-6 text-brand-primary" />
+    <div className="flex min-h-screen items-center justify-center bg-bg-base px-4 py-6">
+      <div className="w-full max-w-[420px] space-y-5">
+        {/* Logo & Title */}
+        <div className="text-center space-y-2">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-primary to-brand-primary-hover shadow-lg shadow-brand-primary/20">
+            <Zap className="h-7 w-7 text-white" />
           </div>
-          <CardTitle className="font-heading text-2xl">Create Account</CardTitle>
-          <CardDescription>Start paper trading with ₹1,00,000 virtual capital</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Google Sign-In — show at top for quick signup */}
-          {googleLoading ? (
-            <div className="flex items-center justify-center gap-2 py-2.5 text-sm text-text-secondary mb-4">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Creating account with Google…
+          <h1 className="font-heading text-2xl font-bold text-text-primary">Create Account</h1>
+          <p className="text-sm text-text-secondary">Start paper trading with ₹1,00,000 virtual capital</p>
+        </div>
+
+        {/* Google Sign-Up — quick action */}
+        {googleLoading ? (
+          <div className="flex items-center justify-center gap-2.5 rounded-xl border border-border bg-bg-surface py-3 text-sm text-text-secondary">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Creating account with Google…
+          </div>
+        ) : (
+          <div ref={googleBtnRef} />
+        )}
+
+        {/* Divider */}
+        <div className="relative flex items-center gap-3">
+          <div className="flex-1 border-t border-border" />
+          <span className="text-[11px] font-medium text-text-tertiary uppercase tracking-wider">or sign up with email</span>
+          <div className="flex-1 border-t border-border" />
+        </div>
+
+        {/* Email form */}
+        <form onSubmit={handleRegister} className="space-y-3">
+          {error && (
+            <div className="rounded-lg border border-loss-red/20 bg-loss-red/5 px-3 py-2.5 text-sm text-loss-red">
+              {error}
             </div>
-          ) : (
-            <>
-              <div ref={googleBtnRef} className="mb-4" />
-              <div className="relative mb-4">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t border-border" />
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="bg-bg-surface px-2 text-text-tertiary">or sign up with email</span>
-                </div>
-              </div>
-            </>
           )}
 
-          <form onSubmit={handleRegister} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
-              <Input id="name" placeholder="John Doe" value={name} onChange={(e) => setName(e.target.value)} required />
+          <div className="space-y-1.5">
+            <Label htmlFor="name" className="text-xs font-medium text-text-secondary">Full Name</Label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
+              <Input id="name" placeholder="John Doe" value={name} onChange={(e) => setName(e.target.value)} required className="pl-9 h-11 rounded-lg border-border bg-bg-surface text-sm" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="email" className="text-xs font-medium text-text-secondary">Email</Label>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
+              <Input id="email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required className="pl-9 h-11 rounded-lg border-border bg-bg-surface text-sm" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" placeholder="Min 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="password" className="text-xs font-medium text-text-secondary">Password</Label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
+              <Input id="password" type="password" placeholder="Min 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} required className="pl-9 h-11 rounded-lg border-border bg-bg-surface text-sm" />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirm">Confirm Password</Label>
-              <Input id="confirm" type="password" placeholder="Re-enter password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm" className="text-xs font-medium text-text-secondary">Confirm Password</Label>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-tertiary" />
+              <Input id="confirm" type="password" placeholder="Re-enter password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required className="pl-9 h-11 rounded-lg border-border bg-bg-surface text-sm" />
             </div>
+          </div>
 
-            {/* ============== LEGAL ACCEPTANCE ============== */}
-            <div className="rounded-md border border-border bg-bg-surface px-2.5 py-2 space-y-2">
-              {/* Terms & Conditions */}
-              <div>
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <button
-                    type="button"
-                    onClick={() => setAcceptedTerms((v) => !v)}
-                    className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
-                      acceptedTerms
-                        ? 'bg-brand-primary border-brand-primary text-white'
-                        : 'bg-bg-base border-border'
-                    }`}
-                    aria-label="Accept Terms & Conditions"
-                  >
-                    {acceptedTerms && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[11px] text-text-primary leading-tight">
-                      I accept the{' '}
-                      <a
-                        href="/legal/terms"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-brand-primary hover:underline inline-flex items-center gap-0.5"
-                      >
-                        Terms &amp; Conditions
-                        <ExternalLink className="h-2.5 w-2.5" />
-                      </a>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowTermsPreview((v) => !v)}
-                      className="ml-1.5 text-[10px] text-text-tertiary hover:text-text-secondary inline-flex items-center gap-0.5"
-                    >
-                      {showTermsPreview ? (
-                        <>Hide <ChevronUp className="h-2.5 w-2.5" /></>
-                      ) : (
-                        <>Preview <ChevronDown className="h-2.5 w-2.5" /></>
-                      )}
-                    </button>
-                  </div>
-                </label>
-                {showTermsPreview && (
-                  <div className="mt-1.5 ml-5 max-h-28 overflow-y-auto rounded border border-border bg-bg-base p-2 text-[10px] text-text-secondary leading-relaxed">
-                    <p className="font-semibold text-text-primary mb-0.5">Key points:</p>
-                    <ul className="list-disc list-inside space-y-0.5">
-                      <li>Pepertect is a paper trading platform — no real money is involved.</li>
-                      <li>Virtual capital (₹1,00,000) has no monetary value and cannot be withdrawn.</li>
-                      <li>You must be 18+ and provide accurate information.</li>
-                      <li>One free trial per user — creating multiple accounts is prohibited.</li>
-                      <li>We are not liable for any losses from real-market decisions you make.</li>
-                    </ul>
-                    <p className="mt-1.5">
-                      <a href="/legal/terms" target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline">
-                        Read full Terms →
-                      </a>
-                    </p>
-                  </div>
-                )}
-              </div>
+          {/* Compact Legal checkboxes */}
+          <div className="flex flex-wrap gap-x-4 gap-y-2 px-0.5">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <button
+                type="button"
+                onClick={() => setAcceptedTerms((v) => !v)}
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                  acceptedTerms ? 'bg-brand-primary border-brand-primary text-white' : 'border-border bg-bg-base'
+                }`}
+              >
+                {acceptedTerms && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+              </button>
+              <span className="text-[11px] text-text-secondary">
+                I accept the{' '}
+                <a href="/legal/terms" target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline inline-flex items-center gap-0.5">
+                  Terms <ExternalLink className="h-2 w-2" />
+                </a>
+              </span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <button
+                type="button"
+                onClick={() => setAcceptedPrivacy((v) => !v)}
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                  acceptedPrivacy ? 'bg-brand-primary border-brand-primary text-white' : 'border-border bg-bg-base'
+                }`}
+              >
+                {acceptedPrivacy && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+              </button>
+              <span className="text-[11px] text-text-secondary">
+                I accept the{' '}
+                <a href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline inline-flex items-center gap-0.5">
+                  Privacy Policy <ExternalLink className="h-2 w-2" />
+                </a>
+              </span>
+            </label>
+          </div>
 
-              {/* Privacy Policy */}
-              <div>
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <button
-                    type="button"
-                    onClick={() => setAcceptedPrivacy((v) => !v)}
-                    className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border transition-colors ${
-                      acceptedPrivacy
-                        ? 'bg-brand-primary border-brand-primary text-white'
-                        : 'bg-bg-base border-border'
-                    }`}
-                    aria-label="Accept Privacy Policy"
-                  >
-                    {acceptedPrivacy && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-[11px] text-text-primary leading-tight">
-                      I accept the{' '}
-                      <a
-                        href="/legal/privacy"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-brand-primary hover:underline inline-flex items-center gap-0.5"
-                      >
-                        Privacy Policy
-                        <ExternalLink className="h-2.5 w-2.5" />
-                      </a>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowPrivacyPreview((v) => !v)}
-                      className="ml-1.5 text-[10px] text-text-tertiary hover:text-text-secondary inline-flex items-center gap-0.5"
-                    >
-                      {showPrivacyPreview ? (
-                        <>Hide <ChevronUp className="h-2.5 w-2.5" /></>
-                      ) : (
-                        <>Preview <ChevronDown className="h-2.5 w-2.5" /></>
-                      )}
-                    </button>
-                  </div>
-                </label>
-                {showPrivacyPreview && (
-                  <div className="mt-1.5 ml-5 max-h-28 overflow-y-auto rounded border border-border bg-bg-base p-2 text-[10px] text-text-secondary leading-relaxed">
-                    <p className="font-semibold text-text-primary mb-0.5">Key points:</p>
-                    <ul className="list-disc list-inside space-y-0.5">
-                      <li>We collect: name, email, hashed password, device info, virtual trades.</li>
-                      <li>We never sell your data. We use it only to operate the platform.</li>
-                      <li>Passwords are bcrypt-hashed — we never see your plain-text password.</li>
-                      <li>You can delete your account anytime — data removed within 30 days.</li>
-                      <li>Governed by India&apos;s DPDP Act, 2023.</li>
-                    </ul>
-                    <p className="mt-1.5">
-                      <a href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="text-brand-primary hover:underline">
-                        Read full Privacy Policy →
-                      </a>
-                    </p>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {error && <p className="text-sm text-loss-red">{error}</p>}
-
-            <Button
-              type="submit"
-              className="w-full bg-brand-primary hover:bg-brand-primary-hover text-white disabled:opacity-50"
-              disabled={loading || googleLoading || !acceptedTerms || !acceptedPrivacy}
-            >
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </Button>
-            {(!acceptedTerms || !acceptedPrivacy) && (
-              <p className="text-[11px] text-text-tertiary text-center">
-                Please accept both Terms and Privacy Policy to enable account creation
-              </p>
+          <Button
+            type="submit"
+            className="w-full h-11 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold text-sm transition-all hover:shadow-lg hover:shadow-brand-primary/20"
+            disabled={loading || googleLoading || !acceptedTerms || !acceptedPrivacy}
+          >
+            {loading ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Creating Account…</>
+            ) : (
+              <>Create Account <ArrowRight className="ml-1.5 h-4 w-4" /></>
             )}
-          </form>
+          </Button>
+        </form>
 
-          <p className="mt-4 text-center text-sm text-text-secondary">
-            Already have an account?{' '}
-            <a href="/login" className="text-brand-primary hover:underline font-medium">
-              Sign in
-            </a>
-          </p>
-        </CardContent>
-      </Card>
+        {/* Footer */}
+        <p className="text-center text-sm text-text-secondary">
+          Already have an account?{' '}
+          <a href="/login" className="text-brand-primary hover:underline font-semibold">
+            Sign in
+          </a>
+        </p>
+      </div>
     </div>
   );
 }
