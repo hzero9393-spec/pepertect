@@ -172,13 +172,20 @@ async function tryResend(toEmail: string, otp: string): Promise<boolean> {
   try {
     const { Resend } = await import('resend');
     const resend = new Resend(apiKey);
-    await resend.emails.send({
+    const result = await resend.emails.send({
       from: 'Pepertect <onboarding@resend.dev>',
       to: [toEmail],
       subject: 'Your Pepertect Verification Code',
       html: generateOtpEmailHtml(otp),
     });
-    console.log(`[RESEND] Email sent to ${toEmail}`);
+    
+    // Resend returns { id, error } — check for errors
+    if (result.error) {
+      console.error('[RESEND] Error:', result.error);
+      return false;
+    }
+    
+    console.log(`[RESEND] Email sent to ${toEmail}, id: ${result.id}`);
     return true;
   } catch (err) {
     console.error('[RESEND] Failed:', err);
