@@ -118,7 +118,7 @@ export function RegisterPage() {
   // Step 2: OTP
   const [verifyToken, setVerifyToken] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
-  const [otpLength, setOtpLength] = useState(6); // Supabase may send 8-digit OTP
+  const [otpLength, setOtpLength] = useState(6); // Supabase OTP is 6 digits
 
   // Step 3: Account details
   const [name, setName] = useState('');

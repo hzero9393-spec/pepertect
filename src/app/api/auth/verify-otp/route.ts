@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-const MAX_OTP_ATTEMPTS = 5;
-
 /**
  * POST /api/auth/verify-otp
  * Body: { email: string, otp: string }
  *
- * Verifies OTP against locally stored PlatformSetting.
- * Returns a verification token that must be passed during registration.
+ * Verifies OTP via Supabase Auth /auth/v1/verify endpoint.
+ * If valid, generates a verifyToken for our registration flow.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -25,48 +23,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'OTP must be at least 4 digits' }, { status: 400 });
     }
 
-    const key = `otp:${normalized}`;
-    const record = await db.platformSetting.findUnique({ where: { key } });
+    // ── Verify OTP via Supabase /auth/v1/verify ──
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-    if (!record) {
-      return NextResponse.json({ success: false, error: 'No OTP found. Please request a new one.' }, { status: 400 });
+    if (!supabaseUrl || !supabaseKey) {
+      return NextResponse.json({ success: false, error: 'Email service not configured' }, { status: 500 });
     }
 
-    const data = JSON.parse(record.value);
+    const verifyRes = await fetch(`${supabaseUrl}/auth/v1/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': supabaseKey,
+      },
+      body: JSON.stringify({
+        type: 'email',
+        email: normalized,
+        token: otpClean,
+      }),
+    });
 
-    console.log(`[VERIFY] Email: ${normalized}, Entered OTP: "${otpClean}", Stored OTP: "${data.otp}", Via: ${data.via || 'unknown'}`);
+    if (!verifyRes.ok) {
+      const errData = await verifyRes.json().catch(() => ({}));
+      console.error(`[VERIFY-OTP] Supabase verify failed for ${normalized}:`, errData);
 
-    // Check expiry
-    if (new Date(data.expiresAt).getTime() < Date.now()) {
-      await db.platformSetting.delete({ where: { key } });
-      return NextResponse.json({ success: false, error: 'OTP has expired. Please request a new one.' }, { status: 400 });
+      if (errData?.error_code === 'token_not_found' || errData?.error_code === 'otp_expired') {
+        return NextResponse.json({ success: false, error: 'OTP has expired. Please request a new one.' }, { status: 400 });
+      }
+
+      if (errData?.error_code === 'token_already_verified') {
+        // OTP was already verified — this is actually OK, proceed
+        console.log(`[VERIFY-OTP] Token already verified for ${normalized}, allowing through`);
+      } else {
+        return NextResponse.json({ success: false, error: 'Invalid OTP. Please check and try again.' }, { status: 401 });
+      }
     }
 
-    // Check attempts
-    if (data.attempts >= MAX_OTP_ATTEMPTS) {
-      await db.platformSetting.delete({ where: { key } });
-      return NextResponse.json({ success: false, error: 'Too many failed attempts. Please request a new OTP.' }, { status: 429 });
-    }
-
-    // Verify OTP — compare as strings
-    if (data.otp !== otpClean) {
-      data.attempts++;
-      await db.platformSetting.update({
-        where: { key },
-        data: { value: JSON.stringify(data) },
-      });
-      const remaining = MAX_OTP_ATTEMPTS - data.attempts;
-      console.log(`[VERIFY] MISMATCH for ${normalized}. Attempt ${data.attempts}/${MAX_OTP_ATTEMPTS}`);
-      return NextResponse.json({
-        success: false,
-        error: `Invalid OTP. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining.`,
-      }, { status: 401 });
-    }
-
-    // OTP verified — generate a verification token
+    // OTP verified via Supabase — generate our verifyToken for registration
     const verifyToken = `verified_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-    // Store verification token with expiry (30 min — enough to complete registration)
+    // Store verification token (30 min expiry — enough to complete registration)
     await db.platformSetting.upsert({
       where: { key: `email_verified:${normalized}` },
       create: {
@@ -78,10 +75,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Delete the OTP record (used)
-    await db.platformSetting.delete({ where: { key } });
-
-    console.log(`[VERIFY] SUCCESS for ${normalized}`);
+    console.log(`[VERIFY-OTP] Success for ${normalized}`);
 
     return NextResponse.json({
       success: true,
