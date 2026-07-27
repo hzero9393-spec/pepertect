@@ -36,10 +36,22 @@ export async function GET(req: NextRequest) {
   // Get worker stats
   let workerStats: any = null;
   try {
-    const res = await fetch(`${UPSTOX_WORKER_URL}/stats`, { signal: AbortSignal.timeout(5000) });
-    if (res.ok) workerStats = await res.json();
-  } catch (e) {
-    workerStats = { error: 'Worker unreachable' };
+    const statsUrl = `${UPSTOX_WORKER_URL}/stats`;
+    console.log('[upstox/status] fetching worker stats:', statsUrl);
+    const res = await fetch(statsUrl, {
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Accept': 'application/json' },
+      cache: 'no-store',
+    });
+    console.log('[upstox/status] worker stats response:', res.status, res.statusText);
+    if (res.ok) {
+      workerStats = await res.json();
+    } else {
+      workerStats = { error: `Worker ${res.status}`, statusText: res.statusText };
+    }
+  } catch (e: any) {
+    console.error('[upstox/status] worker stats fetch failed:', e?.message, e?.cause);
+    workerStats = { error: 'Worker unreachable', detail: e?.message, cause: e?.cause?.code || e?.cause?.message };
   }
 
   // Probe the live token via worker /profile endpoint
