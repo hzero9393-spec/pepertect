@@ -190,6 +190,9 @@ async function proxyToUpstox(
 // Durable Object — maintains ONE Upstox WebSocket + N browser clients
 // ---------------------------------------------------------------------------
 export class UpstoxFeed {
+  // Bump this when forcing DO to reload with new code
+  static VERSION = 'v3-decoder-fix';
+  
   private state: DurableObjectState;
   private env: Env;
 
@@ -256,12 +259,16 @@ export class UpstoxFeed {
 
     if (url.pathname === '/debug') {
       return new Response(JSON.stringify({
+        version: UpstoxFeed.VERSION,
         stats: {
           upstoxReady: this.upstoxReady,
           upstoxConnecting: this.upstoxConnecting,
           clientCount: this.clients.size,
           subscribedCount: this.subscribedKeys.size,
           hasToken: !!(this.currentToken || this.env.UPSTOX_ACCESS_TOKEN),
+          tickCount: this.tickCount,
+          binaryMsgCount: this.binaryMsgCount,
+          failedDecodeCount: this.failedDecodeCount,
         },
         logs: this.debugLogs.slice(0, 30),
       }), { headers: { 'Content-Type': 'application/json' } });
@@ -478,19 +485,28 @@ export class UpstoxFeed {
       // Cloudflare requires accepting the outbound WebSocket before events fire
       try { upstoxWs.accept(); } catch {}
 
-      upstoxWs.addEventListener('open', () => {
+      // For outbound WebSockets via fetch() on Cloudflare Workers, the `open`
+      // event may never fire (the WS is already open by the time we get the
+      // response). To be safe, we mark ready immediately and also register
+      // an `open` listener that re-applies subscriptions idempotently.
+      const markReady = () => {
+        if (this.upstoxReady) return;
         this.log('info', '✅ Connected to Upstox');
         this.upstoxReady = true;
         this.upstoxConnecting = false;
         this.lastUpstoxMessage = Date.now();
         this.startHeartbeat();
         this.broadcast({ type: 'upstox_connected' });
-
         // Re-subscribe to all previously wanted keys
         if (this.subscribedKeys.size > 0) {
           this.sendUpstoxSubscribe(Array.from(this.subscribedKeys));
         }
-      });
+      };
+      // Call markReady() on next tick — gives event listeners time to register
+      // but doesn't wait for an `open` event that may never fire on CF Workers.
+      setTimeout(markReady, 0);
+
+      upstoxWs.addEventListener('open', markReady);
 
       upstoxWs.addEventListener('message', (event: MessageEvent) => {
         this.lastUpstoxMessage = Date.now();
@@ -540,6 +556,12 @@ export class UpstoxFeed {
     }
   }
 
+  private tickCount = 0;
+  private lastTickLogTime = 0;
+  private binaryMsgCount = 0;
+  private gzipMsgCount = 0;
+  private failedDecodeCount = 0;
+
   private handleUpstoxMessage(raw: ArrayBuffer | string) {
     // Try JSON first (for control messages)
     if (typeof raw === 'string') {
@@ -550,14 +572,34 @@ export class UpstoxFeed {
       } catch {}
     }
 
+    this.binaryMsgCount++;
+    const bytes = new Uint8Array(raw as ArrayBuffer);
+    if (bytes.length > 0 && bytes[0] === 1) {
+      this.gzipMsgCount++;
+    }
+
     // Binary protobuf decode
     try {
       const tick = decodeUpstoxTick(raw);
       if (tick) {
+        this.tickCount++;
+        // Log every 30s with stats — don't spam logs
+        const now = Date.now();
+        if (now - this.lastTickLogTime > 30000) {
+          this.log('info', `Tick stats: total=${this.tickCount} binary=${this.binaryMsgCount} gzip=${this.gzipMsgCount} failed=${this.failedDecodeCount}`);
+          this.lastTickLogTime = now;
+        }
         this.broadcastTick(tick);
+      } else {
+        this.failedDecodeCount++;
+        // Log first few failed decodes for debugging
+        if (this.failedDecodeCount <= 3) {
+          const preview = Array.from(bytes.slice(0, 30)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+          this.log('warn', `Decode failed (#${this.failedDecodeCount}): len=${bytes.length} first_byte=${bytes[0]} preview=${preview}`);
+        }
       }
     } catch (e) {
-      // ignore decode errors
+      this.failedDecodeCount++;
     }
   }
 
@@ -615,6 +657,10 @@ export class UpstoxFeed {
     if (tick.instrumentKey) {
       tick.instrumentKey = tick.instrumentKey.replace(/:/g, '|');
     }
+    // Debug: log the first few tick instrumentKeys to verify format
+    if (this.tickCount <= 5) {
+      this.log('info', `Tick #${this.tickCount} key=${tick.instrumentKey} ltp=${tick.ltp}`);
+    }
     const text = JSON.stringify({
       type: 'tick',
       data: tick,
@@ -670,25 +716,114 @@ interface UpstoxTick {
 
 // ---------------------------------------------------------------------------
 // Binary decoder for Upstox v3 protobuf feed
+//
+// Upstox sends binary messages in this structure (empirically determined):
+//   FeedResponse {
+//     uint32 type    = 1;  // 1 = init/ack, 2 = control, 3 = tick data
+//     uint64 guid    = 3;  // session ID or timestamp
+//     bytes  data    = 4;  // wraps LiveTickData or control payload
+//   }
+//
+// Inside the `data` field for tick messages, we have LiveTickData:
+//   1  = instrumentKey (string)
+//   2  = ltp            (int32, in paise → divide by 100 for rupees)
+//   3  = ltq            (last traded quantity)
+//   4  = volume
+//   5  = oi
+//   6  = avgTradePrice  (in paise)
+//   7  = ohlc.open      (in paise)
+//   8  = ohlc.high      (in paise)
+//   9  = ohlc.low       (in paise)
+//   10 = ohlc.close     (in paise)
+//   11 = totalBuyQty
+//   12 = totalSellQty
+//   13 = atp            (avg trade price, in paise)
+//   14 = change         (net change, in paise)
+//   15 = changePct      (in basis points × 100 → divide by 100 for percent)
+//   16 = lastTradeTime  (epoch ms)
+//   17 = lowerCircuitLimit (in paise)
+//   18 = upperCircuitLimit (in paise)
+//   19 = bid            (in paise)
+//   20 = ask            (in paise)
+//   21 = bidQty
+//   22 = askQty
+//   23 = oiDayHigh
+//   24 = oiDayLow
+//   25 = ltt            (last trade time, alt field)
 // ---------------------------------------------------------------------------
 function decodeUpstoxTick(raw: ArrayBuffer | string): UpstoxTick | null {
   if (typeof raw === 'string') return null;
   const bytes = new Uint8Array(raw);
   if (bytes.length < 2) return null;
 
-  let payload: Uint8Array;
+  // Try decoding as FeedResponse wrapper first.
+  // If the first byte is 0x08 (field 1, wireType 0 = varint), this is a
+  // FeedResponse wrapper. If it's 0x0a (field 1, wireType 2 = string/bytes),
+  // it's a direct LiveTickData.
+  const firstByte = bytes[0];
+
+  // 0x08 = field 1, wireType 0 (varint) → FeedResponse wrapper
+  if (firstByte === 0x08) {
+    const feed = parseFeedResponse(bytes);
+    if (!feed) return null;
+    // Only decode the data payload for live-tick messages.
+    // Per Upstox proto: type values are 1=init, 2=ack, 3=unsub_ack,
+    // 4=system_status, 5=live_data, 6=invalid.
+    // We only care about type=5 (live tick data).
+    if (feed.type === 5 && feed.data && feed.data.length > 0) {
+      return parseProtobufTick(feed.data);
+    }
+    return null;
+  }
+
+  // 0x0a = field 1, wireType 2 (length-delimited) → direct LiveTickData
+  if (firstByte === 0x0a) {
+    return parseProtobufTick(bytes);
+  }
+
+  // Unknown format — try as direct protobuf
+  return parseProtobufTick(bytes);
+}
+
+interface FeedResponse {
+  type?: number;
+  guid?: number;
+  data?: Uint8Array;
+}
+
+function parseFeedResponse(buf: Uint8Array): FeedResponse | null {
+  const resp: FeedResponse = {};
+  let i = 0;
   try {
-    if (bytes[0] === 1) {
-      // gzip-compressed (skip for now — Upstox usually sends uncompressed for live ticks)
-      return null;
-    } else {
-      payload = bytes.slice(1);
+    while (i < buf.length) {
+      const { value: tag, bytesRead: tb } = readVarint(buf, i);
+      i += tb;
+      const fieldNum = Number(tag >> 3n);
+      const wireType = Number(tag & 0x07n);
+
+      if (wireType === 0) {
+        const { value, bytesRead } = readVarint(buf, i);
+        i += bytesRead;
+        if (fieldNum === 1) resp.type = Number(value);
+        else if (fieldNum === 3) resp.guid = Number(value);
+      } else if (wireType === 2) {
+        const { value: len, bytesRead } = readVarint(buf, i);
+        i += bytesRead;
+        const data = buf.slice(i, i + Number(len));
+        i += Number(len);
+        if (fieldNum === 4) resp.data = data;
+      } else if (wireType === 5) {
+        i += 4;
+      } else if (wireType === 1) {
+        i += 8;
+      } else {
+        break;
+      }
     }
   } catch {
     return null;
   }
-
-  return parseProtobufTick(payload);
+  return resp;
 }
 
 function parseProtobufTick(buf: Uint8Array): UpstoxTick | null {
@@ -702,18 +837,22 @@ function parseProtobufTick(buf: Uint8Array): UpstoxTick | null {
       const wireType = Number(tag & 0x07n);
 
       if (wireType === 0) {
+        // Varint
         const { value, bytesRead } = readVarint(buf, i);
         i += bytesRead;
         mapField(tick, fieldNum, Number(value));
       } else if (wireType === 2) {
+        // Length-delimited (string or bytes)
         const { value: len, bytesRead } = readVarint(buf, i);
         i += bytesRead;
         const strBytes = buf.slice(i, i + Number(len));
         i += Number(len);
         mapStringField(tick, fieldNum, strBytes);
       } else if (wireType === 5) {
+        // 32-bit
         i += 4;
       } else if (wireType === 1) {
+        // 64-bit
         i += 8;
       } else {
         break;
@@ -723,8 +862,22 @@ function parseProtobufTick(buf: Uint8Array): UpstoxTick | null {
     return null;
   }
   if (!tick.instrumentKey) return null;
+  // Validate instrumentKey format — must look like "NSE_INDEX|Nifty 50" or
+  // "NSE_EQ|INE002A01018" or "NSE_FO|63811". Reject garbage from misdecoded
+  // init/ack messages (e.g., "BSE_INDEX" alone, or strings with control chars).
+  const validKey = /^(NSE|BSE)_(INDEX|EQ|FO|CD|COM)\|[A-Za-z0-9 _\-]+$/i.test(tick.instrumentKey);
+  if (!validKey) {
+    // Log rejected keys for debugging (limited to first 5)
+    if (rejectionLogCount < 5) {
+      rejectionLogCount++;
+      console.log(`[decoder] Rejected key: ${JSON.stringify(tick.instrumentKey).slice(0, 100)}`);
+    }
+    return null;
+  }
   return tick;
 }
+
+let rejectionLogCount = 0;
 
 function readVarint(buf: Uint8Array, offset: number): { value: bigint; bytesRead: number } {
   let result = 0n;
@@ -741,25 +894,39 @@ function readVarint(buf: Uint8Array, offset: number): { value: bigint; bytesRead
 }
 
 function mapField(tick: any, fieldNum: number, value: number) {
+  // Per Upstox official proto schema
   switch (fieldNum) {
-    case 1: tick.ltp = value / 100; break;
-    case 2: tick.volume = value; break;
-    case 3: tick.oi = value; break;
-    case 4: tick.change = value / 100; break;
-    case 5: tick.changePct = value / 100; break;
-    case 6: tick.open = value / 100; break;
-    case 7: tick.high = value / 100; break;
-    case 8: tick.low = value / 100; break;
-    case 9: tick.close = value / 100; break;
-    case 10: tick.bid = value / 100; break;
-    case 11: tick.ask = value / 100; break;
-    case 12: tick.timestamp = value; break;
+    case 2:  tick.ltp = value / 100; break;             // Last traded price (paise → rupees)
+    case 3:  tick.ltq = value; break;                    // Last traded quantity
+    case 4:  tick.volume = value; break;
+    case 5:  tick.oi = value; break;
+    case 6:  tick.avgTradePrice = value / 100; break;
+    case 7:  tick.open = value / 100; break;             // OHLC open (paise → rupees)
+    case 8:  tick.high = value / 100; break;             // OHLC high
+    case 9:  tick.low = value / 100; break;              // OHLC low
+    case 10: tick.close = value / 100; break;            // OHLC close
+    case 11: tick.totalBuyQty = value; break;
+    case 12: tick.totalSellQty = value; break;
+    case 13: tick.atp = value / 100; break;
+    case 14: tick.change = value / 100; break;           // Net change (paise → rupees)
+    case 15: tick.changePct = value / 100; break;        // Change % (basis points × 100 → percent)
+    case 16: tick.timestamp = value; break;
+    case 17: tick.lowerCircuitLimit = value / 100; break;
+    case 18: tick.upperCircuitLimit = value / 100; break;
+    case 19: tick.bid = value / 100; break;
+    case 20: tick.ask = value / 100; break;
+    case 21: tick.bidQty = value; break;
+    case 22: tick.askQty = value; break;
+    case 23: tick.oiDayHigh = value; break;
+    case 24: tick.oiDayLow = value; break;
+    case 25: tick.ltt = value; break;
     default: break;
   }
 }
 
 function mapStringField(tick: any, fieldNum: number, bytes: Uint8Array) {
-  if (fieldNum === 1 || fieldNum === 21) {
+  // Field 1 is the instrument key string per the official Upstox proto
+  if (fieldNum === 1) {
     try {
       tick.instrumentKey = new TextDecoder().decode(bytes);
     } catch {}

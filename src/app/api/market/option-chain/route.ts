@@ -286,19 +286,28 @@ export async function GET(req: NextRequest) {
     let peInstrumentKey: string | null = null;
 
     if (upstoxRow) {
-      // Real Upstox data for this strike
-      ceLtp = upstoxRow.call_options?.market_data?.last_price ?? ceIntrinsic + 5;
-      peLtp = upstoxRow.put_options?.market_data?.last_price ?? peIntrinsic + 5;
-      ceOi = upstoxRow.call_options?.market_data?.oi ?? 0;
-      peOi = upstoxRow.put_options?.market_data?.oi ?? 0;
-      ceVol = upstoxRow.call_options?.market_data?.volume ?? 0;
-      peVol = upstoxRow.put_options?.market_data?.volume ?? 0;
+      // Real Upstox data for this strike.
+      // NOTE: Upstox option-chain `market_data` uses field name `ltp` (NOT `last_price`),
+      // and does NOT include `net_change`. We compute change = ltp - close_price.
+      const ceMd = upstoxRow.call_options?.market_data;
+      const peMd = upstoxRow.put_options?.market_data;
+      const ceLtpRaw = typeof ceMd?.ltp === 'number' ? ceMd.ltp : null;
+      const peLtpRaw = typeof peMd?.ltp === 'number' ? peMd.ltp : null;
+      ceLtp = ceLtpRaw != null ? ceLtpRaw : ceIntrinsic + 5;
+      peLtp = peLtpRaw != null ? peLtpRaw : peIntrinsic + 5;
+      ceOi = ceMd?.oi ?? 0;
+      peOi = peMd?.oi ?? 0;
+      ceVol = ceMd?.volume ?? 0;
+      peVol = peMd?.volume ?? 0;
       ceIv = upstoxRow.call_options?.option_greeks?.iv ?? 15;
       peIv = upstoxRow.put_options?.option_greeks?.iv ?? 15;
-      ceChg = upstoxRow.call_options?.market_data?.net_change ?? 0;
-      peChg = upstoxRow.put_options?.market_data?.net_change ?? 0;
-      ceChgPct = ceLtp > 0 ? (ceChg / ceLtp) * 100 : 0;
-      peChgPct = peLtp > 0 ? (peChg / peLtp) * 100 : 0;
+      // Upstox doesn't return net_change — derive from ltp - close_price
+      const ceClose = ceMd?.close_price;
+      const peClose = peMd?.close_price;
+      ceChg = ceLtpRaw != null && typeof ceClose === 'number' ? ceLtpRaw - ceClose : 0;
+      peChg = peLtpRaw != null && typeof peClose === 'number' ? peLtpRaw - peClose : 0;
+      ceChgPct = ceClose && ceClose > 0 ? (ceChg / ceClose) * 100 : 0;
+      peChgPct = peClose && peClose > 0 ? (peChg / peClose) * 100 : 0;
       ceInstrumentKey = upstoxRow.call_options?.instrument_key ?? null;
       peInstrumentKey = upstoxRow.put_options?.instrument_key ?? null;
     } else {
