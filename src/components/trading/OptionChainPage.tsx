@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatNumber, cn } from '@/lib/utils';
 import {
@@ -671,6 +671,7 @@ function OptionChainTable({
   const { strikes, atm, symbol, expiry } = data;
   const atmRowRef = useRef<HTMLTableRowElement | null>(null);
   const scrolledRef = useRef(false);
+  const [viewMode, setViewMode] = useState<'LTP' | 'OI'>('LTP');
 
   /* Auto-scroll the ATM strike into view once on initial render.
      We use a flag so that switching expiry re-triggers the scroll. */
@@ -693,37 +694,81 @@ function OptionChainTable({
   // Recompute ITM/OTM using live spot if available
   const effectiveSpot = liveSpot && liveSpot > 0 ? liveSpot : data.spot;
 
+  // Find where the spot price line should be inserted (between which two strikes)
+  const spotLineInsertIndex = strikes.findIndex((row) => row.strikePrice > effectiveSpot);
+
   return (
     <div className="overflow-x-auto">
-      {/* Desktop / wide-tablet view: 7-column CALL | Strike | PUT layout */}
+      {/* LTP / OI Toggle */}
+      <div className="relative flex items-center justify-center py-2.5 border-b border-border bg-bg-surface-alt">
+        <span className="text-[11px] font-medium text-text-tertiary mr-2">View:</span>
+        <div className="relative inline-flex items-center bg-bg-surface rounded-full p-0.5">
+          <span
+            className={cn(
+              'absolute inset-y-0.5 rounded-full bg-brand-primary/20 transition-all duration-300 ease-out',
+              viewMode === 'LTP' ? 'left-0.5 w-[calc(50%-2px)]' : 'left-[calc(50%+1px)] w-[calc(50%-2px)]'
+            )}
+          />
+          <button
+            onClick={() => setViewMode('LTP')}
+            className={cn(
+              'relative z-10 px-4 py-1 rounded-full text-[11px] font-bold tracking-wide transition-colors duration-200',
+              viewMode === 'LTP'
+                ? 'text-text-primary'
+                : 'text-text-tertiary hover:text-text-secondary'
+            )}
+          >
+            LTP
+          </button>
+          <button
+            onClick={() => setViewMode('OI')}
+            className={cn(
+              'relative z-10 px-4 py-1 rounded-full text-[11px] font-bold tracking-wide transition-colors duration-200',
+              viewMode === 'OI'
+                ? 'text-text-primary'
+                : 'text-text-tertiary hover:text-text-secondary'
+            )}
+          >
+            OI
+          </button>
+        </div>
+      </div>
+
       <table className="w-full text-xs sm:text-sm">
         <thead>
           <tr className="bg-bg-surface-alt text-text-secondary border-b border-border">
             {/* CALL side */}
-            <th colSpan={4} className="px-2 sm:px-3 py-2 text-center text-profit-green font-semibold border-r border-border">
+            <th colSpan={2} className="px-2 sm:px-3 py-2 text-center text-profit-green font-semibold border-r border-border">
               CALLS
             </th>
             <th rowSpan={2} className="px-2 sm:px-3 py-2 text-center font-semibold text-text-primary border-r border-border">
               STRIKE
             </th>
             {/* PUT side */}
-            <th colSpan={4} className="px-2 sm:px-3 py-2 text-center text-loss-red font-semibold">
+            <th colSpan={2} className="px-2 sm:px-3 py-2 text-center text-loss-red font-semibold">
               PUTS
             </th>
           </tr>
           <tr className="bg-bg-surface-alt text-text-tertiary border-b border-border text-[10px] sm:text-[11px] uppercase tracking-wide">
-            <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">OI</th>
-            <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">Vol</th>
-            <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">IV</th>
-            <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium border-r border-border">LTP</th>
-            <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">LTP</th>
-            <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">IV</th>
-            <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">Vol</th>
-            <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">OI</th>
+            {viewMode === 'LTP' ? (
+              <>
+                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">IV</th>
+                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium border-r border-border">LTP</th>
+                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">LTP</th>
+                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">IV</th>
+              </>
+            ) : (
+              <>
+                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">OI</th>
+                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium border-r border-border">Vol</th>
+                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">Vol</th>
+                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">OI</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
-          {strikes.map((row) => {
+          {strikes.map((row, idx) => {
             // Recompute ITM status from live spot
             const diff = effectiveSpot - row.strikePrice;
             const itm = diff > 0 ? 'CE' : diff < 0 ? 'PE' : null;
@@ -747,99 +792,136 @@ function OptionChainTable({
             const ceLive = !!ceTick?.timestamp && Date.now() - ceTick.timestamp < 30000;
             const peLive = !!peTick?.timestamp && Date.now() - peTick.timestamp < 30000;
 
+            // Insert spot price row before this strike if applicable
+            const showSpotLine = spotLineInsertIndex === idx && spotLineInsertIndex > 0;
+
             return (
-              <tr
-                key={row.strikePrice}
-                ref={isAtm ? atmRowRef : undefined}
-                className={cn(
-                  'border-b border-border/60 transition-colors hover:bg-bg-surface-alt/50',
-                  isAtm && 'bg-tint-blue/40'
-                )}
-              >
-                {/* CALL side */}
-                <td className={cn(
-                  'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
-                  isCeItm && 'bg-profit-green/[0.06]'
-                )}>
-                  {formatOi(ceOi)}
-                </td>
-                <td className={cn(
-                  'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-tertiary',
-                  isCeItm && 'bg-profit-green/[0.06]'
-                )}>
-                  {formatOi(ceVol)}
-                </td>
-                <td className={cn(
-                  'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
-                  isCeItm && 'bg-profit-green/[0.06]'
-                )}>
-                  {row.ce.iv.toFixed(1)}
-                </td>
-                <td className={cn(
-                  'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold border-r border-border',
-                  isCeItm ? 'text-profit-green bg-profit-green/[0.06]' : 'text-text-primary'
-                )}>
-                  <span className={cn(ceUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] mr-1')}>
-                    {ceUp ? '▲' : '▼'}
-                  </span>
-                  {formatNumber(ceLtp, 2)}
-                  {ceLive && (
-                    <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
-                  )}
-                </td>
-
-                {/* STRIKE — clickable, opens strike overview page */}
-                <td className={cn(
-                  'px-2 sm:px-3 py-2 text-center font-mono tabular-nums font-bold border-r border-border',
-                  isAtm ? 'text-brand-primary bg-tint-blue' : 'text-text-primary'
-                )}>
-                  <a
-                    href={strikeHref(row.strikePrice)}
-                    className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-brand-primary/10 hover:text-brand-primary transition-colors"
-                    aria-label={`View ${row.strikePrice} strike overview`}
-                    title="View strike overview"
-                  >
-                    {row.strikePrice}
-                    {isAtm && (
-                      <span className="text-[9px] font-semibold text-brand-primary bg-brand-primary/10 px-1 py-0.5 rounded">
-                        ATM
+              <React.Fragment key={row.strikePrice}>
+                {/* ---- SPOT PRICE HORIZONTAL LINE ---- */}
+                {showSpotLine && (
+                  <tr className="bg-[#2a2a2a]">
+                    <td colSpan={5} className="px-2 sm:px-3 py-1.5 text-center">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-white tracking-wide">
+                        <span className="inline-flex h-1.5 w-1.5 rounded-full bg-brand-primary animate-pulse" />
+                        Spot Price: {formatNumber(effectiveSpot, 2)}
                       </span>
-                    )}
-                  </a>
-                </td>
-
-                {/* PUT side */}
-                <td className={cn(
-                  'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold',
-                  isPeItm ? 'text-loss-red bg-loss-red/[0.06]' : 'text-text-primary'
-                )}>
-                  {formatNumber(peLtp, 2)}
-                  <span className={cn(peUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] ml-1')}>
-                    {peUp ? '▲' : '▼'}
-                  </span>
-                  {peLive && (
-                    <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                    </td>
+                  </tr>
+                )}
+                <tr
+                  ref={isAtm ? atmRowRef : undefined}
+                  className={cn(
+                    'border-b border-border/60 transition-colors hover:bg-bg-surface-alt/50',
+                    isAtm && 'bg-tint-blue/40'
                   )}
-                </td>
-                <td className={cn(
-                  'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
-                  isPeItm && 'bg-loss-red/[0.06]'
-                )}>
-                  {row.pe.iv.toFixed(1)}
-                </td>
-                <td className={cn(
-                  'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-tertiary',
-                  isPeItm && 'bg-loss-red/[0.06]'
-                )}>
-                  {formatOi(peVol)}
-                </td>
-                <td className={cn(
-                  'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
-                  isPeItm && 'bg-loss-red/[0.06]'
-                )}>
-                  {formatOi(peOi)}
-                </td>
-              </tr>
+                >
+                  {/* CALL side — columns change based on viewMode */}
+                  {viewMode === 'LTP' ? (
+                    <>
+                      {/* IV */}
+                      <td className={cn(
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
+                        isCeItm && 'bg-profit-green/[0.06]'
+                      )}>
+                        {row.ce.iv.toFixed(1)}
+                      </td>
+                      {/* LTP */}
+                      <td className={cn(
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold border-r border-border',
+                        isCeItm ? 'text-profit-green bg-profit-green/[0.06]' : 'text-text-primary'
+                      )}>
+                        <span className={cn(ceUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] mr-1')}>
+                          {ceUp ? '▲' : '▼'}
+                        </span>
+                        {formatNumber(ceLtp, 2)}
+                        {ceLive && (
+                          <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                        )}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      {/* OI */}
+                      <td className={cn(
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
+                        isCeItm && 'bg-profit-green/[0.06]'
+                      )}>
+                        {formatOi(ceOi)}
+                      </td>
+                      {/* Volume */}
+                      <td className={cn(
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-tertiary border-r border-border',
+                        isCeItm && 'bg-profit-green/[0.06]'
+                      )}>
+                        {formatOi(ceVol)}
+                      </td>
+                    </>
+                  )}
+
+                  {/* STRIKE — clickable, opens strike overview page */}
+                  <td className={cn(
+                    'px-2 sm:px-3 py-2 text-center font-mono tabular-nums font-bold border-r border-border',
+                    isAtm ? 'text-brand-primary bg-tint-blue' : 'text-text-primary'
+                  )}>
+                    <a
+                      href={strikeHref(row.strikePrice)}
+                      className="inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-brand-primary/10 hover:text-brand-primary transition-colors"
+                      aria-label={`View ${row.strikePrice} strike overview`}
+                      title="View strike overview"
+                    >
+                      {row.strikePrice}
+                      {isAtm && (
+                        <span className="text-[9px] font-semibold text-brand-primary bg-brand-primary/10 px-1 py-0.5 rounded">
+                          ATM
+                        </span>
+                      )}
+                    </a>
+                  </td>
+
+                  {/* PUT side — columns change based on viewMode */}
+                  {viewMode === 'LTP' ? (
+                    <>
+                      {/* LTP */}
+                      <td className={cn(
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold',
+                        isPeItm ? 'text-loss-red bg-loss-red/[0.06]' : 'text-text-primary'
+                      )}>
+                        {formatNumber(peLtp, 2)}
+                        <span className={cn(peUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] ml-1')}>
+                          {peUp ? '▲' : '▼'}
+                        </span>
+                        {peLive && (
+                          <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                        )}
+                      </td>
+                      {/* IV */}
+                      <td className={cn(
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
+                        isPeItm && 'bg-loss-red/[0.06]'
+                      )}>
+                        {row.pe.iv.toFixed(1)}
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      {/* Volume */}
+                      <td className={cn(
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-tertiary',
+                        isPeItm && 'bg-loss-red/[0.06]'
+                      )}>
+                        {formatOi(peVol)}
+                      </td>
+                      {/* OI */}
+                      <td className={cn(
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
+                        isPeItm && 'bg-loss-red/[0.06]'
+                      )}>
+                        {formatOi(peOi)}
+                      </td>
+                    </>
+                  )}
+                </tr>
+              </React.Fragment>
             );
           })}
         </tbody>
