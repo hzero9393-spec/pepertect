@@ -150,7 +150,7 @@ export async function getStoredToken(userId: string): Promise<StoredToken | null
       userEmail: row.userEmail,
       userIdUpstox: row.userIdUpstox,
     };
-  } catch (e) {
+  } catch (e: any) {
     // DB not available (e.g. local SQLite where Prisma is configured for PostgreSQL)
     // — return null so the caller falls back to env var or synthetic data.
     console.warn('[upstox] getStoredToken: DB lookup failed, returning null:', e?.message ?? e);

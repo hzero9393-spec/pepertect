@@ -29,104 +29,85 @@ function generateOHLC(basePrice: number) {
   };
 }
 
+/**
+ * GET /api/market/stocks
+ *
+ * Returns the full stock universe (~430 stocks). Strategy:
+ *   1. Try DB (db.stock.findMany). If DB returns ≥100 rows, return those.
+ *   2. If DB fails (e.g. local SQLite where Prisma is configured for PostgreSQL,
+ *      or Vercel DB not yet provisioned), fall back to the static DEDUPED_STOCKS
+ *      universe with deterministic OHLC generated from each stock's base price.
+ *   3. Last-ditch: return the 5 hardcoded FALLBACK_STOCKS.
+ *
+ * This guarantees the Market page always shows stocks, even when the DB is
+ * unreachable — critical for the paper trading UX.
+ */
 export async function GET(req: NextRequest) {
   const auth = await authenticateRequest(req);
   if (auth instanceof NextResponse) return auth;
 
+  // 1) Try DB
   try {
-    let stocks = await db.stock.findMany({
-      take: 1000,
-      orderBy: { symbol: 'asc' },
-    });
-
-    // If DB is empty OR has fewer than 100 stocks, lazily seed the comprehensive
-    // 430+ stock universe. This handles both fresh DBs and partially-seeded ones
-    // (e.g. from older deployments that only had ~25 stocks).
-    if (stocks.length < 100) {
-      try {
-        // Find which symbols are already in the DB so we only insert missing ones
-        const existingSymbols = new Set(stocks.map((s: any) => s.symbol));
-        const toSeed = DEDUPED_STOCKS.filter((m) => !existingSymbols.has(m.symbol));
-
-        if (toSeed.length > 0) {
-          // Use createMany in batches of 50 to stay within Vercel's 30s function
-          // timeout and avoid overwhelming the DB connection pool.
-          const BATCH_SIZE = 50;
-          for (let i = 0; i < toSeed.length; i += BATCH_SIZE) {
-            const batch = toSeed.slice(i, i + BATCH_SIZE);
-            try {
-              await db.stock.createMany({
-                data: batch.map((m) => ({
-                  symbol: m.symbol,
-                  name: m.name,
-                  sector: m.sector,
-                  lotSize: m.lotSize,
-                  tickSize: 0.05,
-                  ...generateOHLC(m.ltp),
-                })),
-                skipDuplicates: true,
-              });
-            } catch (batchErr) {
-              console.error(`Stock seed batch ${i} error:`, batchErr);
-              // Continue with next batch — partial seeding is better than none
-            }
-          }
-        }
-
-        // Re-fetch all stocks after seeding (existing + newly created) so we
-        // return a complete sorted list to the caller.
-        stocks = await db.stock.findMany({
-          take: 1000,
-          orderBy: { symbol: 'asc' },
-        });
-        // If seeding failed entirely, fall back to the minimal list
-        if (stocks.length === 0) {
-          stocks = await Promise.all(
-            FALLBACK_STOCKS.map((m) =>
-              db.stock.create({
-                data: {
-                  symbol: m.symbol,
-                  name: m.name,
-                  sector: m.sector,
-                  lotSize: m.lotSize,
-                  tickSize: 0.05,
-                  ...generateOHLC(m.ltp),
-                },
-              })
-            )
-          );
-        }
-      } catch (seedErr) {
-        console.error('Stock seeding error:', seedErr);
-        // Return the fallback list directly without persisting
-        return NextResponse.json({
-          success: true,
-          data: FALLBACK_STOCKS.map((s) => ({
-            symbol: s.symbol,
-            name: s.name,
-            sector: s.sector,
-            lotSize: s.lotSize,
-            ...generateOHLC(s.ltp),
-          })),
-        });
-      }
+    let stocks: any[] = [];
+    let dbOk = false;
+    try {
+      stocks = await db.stock.findMany({
+        take: 1000,
+        orderBy: { symbol: 'asc' },
+      });
+      dbOk = true;
+    } catch (dbErr: any) {
+      // DB not available — fall through to static universe
+      console.warn('[stocks] DB lookup failed, using static universe:', dbErr?.message ?? dbErr);
     }
 
-    const enriched = stocks.map((s: any) => ({
-      ...s,
-      ltp: s.ltp ?? 0,
-      change: s.change ?? 0,
-      changePct: s.changePct ?? 0,
-      open: s.open ?? 0,
-      high: s.high ?? 0,
-      low: s.low ?? 0,
-      close: s.close ?? 0,
-      volume: s.volume ?? 0,
-    }));
+    if (dbOk && stocks.length >= 100) {
+      // DB has full universe — enrich and return
+      const enriched = stocks.map((s: any) => ({
+        ...s,
+        ltp: s.ltp ?? 0,
+        change: s.change ?? 0,
+        changePct: s.changePct ?? 0,
+        open: s.open ?? 0,
+        high: s.high ?? 0,
+        low: s.low ?? 0,
+        close: s.close ?? 0,
+        volume: s.volume ?? 0,
+      }));
+      return NextResponse.json({
+        success: true,
+        data: enriched,
+        meta: { source: 'db', count: enriched.length },
+      });
+    }
 
-    return NextResponse.json({ success: true, data: enriched });
-  } catch (error) {
+    // 2) DB unavailable OR not seeded — return the full static 430+ universe
+    const staticStocks = DEDUPED_STOCKS.map((m) => ({
+      symbol: m.symbol,
+      name: m.name,
+      sector: m.sector,
+      lotSize: m.lotSize,
+      tickSize: 0.05,
+      ...generateOHLC(m.ltp),
+    }));
+    return NextResponse.json({
+      success: true,
+      data: staticStocks,
+      meta: { source: 'static', count: staticStocks.length },
+    });
+  } catch (error: any) {
     console.error('Fetch stocks error:', error);
-    return NextResponse.json({ success: false, error: 'Failed to fetch stocks' }, { status: 500 });
+    // 3) Last-ditch fallback — return the 5 hardcoded stocks
+    return NextResponse.json({
+      success: true,
+      data: FALLBACK_STOCKS.map((s) => ({
+        symbol: s.symbol,
+        name: s.name,
+        sector: s.sector,
+        lotSize: s.lotSize,
+        ...generateOHLC(s.ltp),
+      })),
+      meta: { source: 'fallback', count: FALLBACK_STOCKS.length },
+    });
   }
 }

@@ -64,11 +64,20 @@ export async function GET(
   const symUpper = symbol.toUpperCase();
 
   try {
-    let stock = await db.stock.findUnique({ where: { symbol: symUpper } });
+    let stock: any = null;
+    let dbOk = false;
 
-    // 1) Try the in-memory universe — works for ALL 430+ stocks and 5 indices
-    //    without needing a prior lazy-seed.
-    if (!stock && STOCK_UNIVERSE_MAP[symUpper]) {
+    // 1) Try DB first
+    try {
+      stock = await db.stock.findUnique({ where: { symbol: symUpper } });
+      dbOk = true;
+    } catch (dbErr: any) {
+      // DB not available — fall through to in-memory universe
+      console.warn('[stock] DB lookup failed, using static universe:', dbErr?.message ?? dbErr);
+    }
+
+    // 2) If DB available but stock not found, try the in-memory universe and seed
+    if (dbOk && !stock && STOCK_UNIVERSE_MAP[symUpper]) {
       const mock = STOCK_UNIVERSE_MAP[symUpper];
       const ohlc = generateMockOHLC(mock.ltp);
       try {
@@ -85,9 +94,28 @@ export async function GET(
         });
       } catch {
         // Race condition — another request created it in parallel.
-        // Re-fetch instead of failing.
         stock = await db.stock.findUnique({ where: { symbol: symUpper } });
       }
+    }
+
+    // 3) DB unavailable — return the in-memory universe entry directly with mock OHLC.
+    //    This makes /stock/RELIANCE, /stock/NIFTY etc. work even when the DB is down.
+    if (!dbOk && STOCK_UNIVERSE_MAP[symUpper]) {
+      const mock = STOCK_UNIVERSE_MAP[symUpper];
+      const ohlc = generateMockOHLC(mock.ltp);
+      return NextResponse.json({
+        success: true,
+        data: {
+          symbol: symUpper,
+          name: mock.name,
+          sector: mock.sector,
+          lotSize: mock.lotSize,
+          tickSize: 0.05,
+          exchange: mock.exchange || 'NSE',
+          ...ohlc,
+        },
+        meta: { source: 'static' },
+      });
     }
 
     if (!stock) {
@@ -109,6 +137,24 @@ export async function GET(
     return NextResponse.json({ success: true, data: result });
   } catch (error) {
     console.error('Fetch stock error:', error);
+    // Last-ditch fallback: try the in-memory universe
+    if (STOCK_UNIVERSE_MAP[symUpper]) {
+      const mock = STOCK_UNIVERSE_MAP[symUpper];
+      const ohlc = generateMockOHLC(mock.ltp);
+      return NextResponse.json({
+        success: true,
+        data: {
+          symbol: symUpper,
+          name: mock.name,
+          sector: mock.sector,
+          lotSize: mock.lotSize,
+          tickSize: 0.05,
+          exchange: mock.exchange || 'NSE',
+          ...ohlc,
+        },
+        meta: { source: 'fallback' },
+      });
+    }
     return NextResponse.json({ success: false, error: 'Failed to fetch stock' }, { status: 500 });
   }
 }
