@@ -306,7 +306,7 @@ export function WatchlistPage() {
                   </button>
                   <button
                     onClick={() => { setRenaming(g.id); setRenameValue(g.name); }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity px-1"
+                    className="transition-opacity px-1 text-text-tertiary hover:text-brand-primary"
                     aria-label="Rename list"
                     title="Rename list"
                   >
@@ -315,11 +315,11 @@ export function WatchlistPage() {
                   {!isDefault && (
                     <button
                       onClick={() => handleDeleteGroup(g.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity px-1"
+                      className="transition-opacity px-1 text-text-tertiary hover:text-loss-red"
                       aria-label="Delete list"
                       title="Delete list"
                     >
-                      <Trash2 className="h-3 w-3 text-loss-red" />
+                      <Trash2 className="h-3 w-3" />
                     </button>
                   )}
               </>

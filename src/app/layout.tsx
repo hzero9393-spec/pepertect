@@ -28,15 +28,26 @@ const ibmPlexMono = IBM_Plex_Mono({
 export const metadata: Metadata = {
   title: "Pepertect",
   description:
-    "Production-grade NSE paper trading platform — practice equity, futures, and options trading with virtual capital.",
+    "Pepertect — Production-grade NSE paper trading platform. Practice equity, futures, and options trading with virtual capital.",
+  keywords: ["paper trading", "NSE", "options", "futures", "stock market", "trading simulator", "Pepertect"],
+  openGraph: {
+    title: "Pepertect — NSE Paper Trading Platform",
+    description: "Practice equity, futures, and options trading with virtual capital.",
+    type: "website",
+  },
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [
+      { url: '/favicon.ico', sizes: '32x32' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/apple-touch-icon.png',
   },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Pepertect",
+    display: "standalone",
   },
 };
 

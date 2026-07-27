@@ -609,3 +609,53 @@ Stage Summary:
 - Token auto-refresh also auto-pushes new token to CF Worker (WS hot reload).
 - File changed: src/lib/upstox.ts
 - Production: https://pepertect.vercel.app — commit f8d74d4
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Replace website favicon/logo from Z-CDN to Pepertect branding
+
+Work Log:
+- Analyzed screenshot: browser tab was showing Z-logo from z-cdn.chatglm.cn/z-ai/static/logo.svg
+- Created custom Pepertect favicon SVG (gradient blue rounded square with "P" letter)
+- Generated PNG icons in multiple sizes: 16x16, 32x32 (favicon.ico), 180x180 (apple-touch-icon), 192x192, 512x512
+- Updated layout.tsx: icons now point to local /favicon.ico and /favicon.svg
+- Updated manifest.json: icons now point to local /favicon.svg, /icon-192.png, /icon-512.png
+- Added OpenGraph metadata for Google/SEO branding
+- Removed external CDN dependency for icons
+
+Stage Summary:
+- Created files: favicon.svg, favicon.ico, apple-touch-icon.png, icon-192.png, icon-512.png
+- Modified: layout.tsx (icons, openGraph, keywords), manifest.json (local icons)
+- Google will now show Pepertect "P" logo instead of Z-logo
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Watchlist page - make delete button always visible
+
+Work Log:
+- Identified that rename/delete buttons on watchlist group tabs used opacity-0 + group-hover:opacity-100
+- This hides the buttons on mobile (no hover state)
+- Changed to always-visible with subtle color: text-text-tertiary hover:text-brand-primary for pencil, hover:text-loss-red for trash
+
+Stage Summary:
+- Modified: WatchlistPage.tsx (group tab action buttons)
+- Delete and rename buttons now always visible on all devices
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Position page - add Trade History with expandable detail panels
+
+Work Log:
+- Added TradeHistoryList component with expandable trade cards
+- Each trade shows: symbol, side (BUY/SELL), type (OPEN/CLOSE), qty × price, P&L amount + percentage
+- Click to expand shows: 3-box summary (P&L, Return%, Brokerage) + detail rows (symbol, side, type, segment, qty, price, strike, option, expiry, date)
+- Added tabTrades filtered by active tab (Stock/Index)
+- Added History icon import, React import for JSX, ChevronDown for expand arrow
+- Built and verified successfully with no errors
+
+Stage Summary:
+- Modified: PositionsPage.tsx (added TradeHistory section + TradeHistoryList + DetailRow components)
+- Trades are filtered per active tab and displayed as clickable expandable cards

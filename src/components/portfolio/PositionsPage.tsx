@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/shared/common';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
-import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap } from 'lucide-react';
+import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap, ChevronDown, History } from 'lucide-react';
+import React from 'react';
 import type { Position, Trade } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
@@ -420,6 +421,11 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     return trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
   }, [trades]);
 
+  // Filtered trades for current tab (Stock or Index)
+  const tabTrades = useMemo(() => {
+    return trades.filter((t) => (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)));
+  }, [trades, activeTab]);
+
   return (
     <div className="space-y-6">
       {/* Upstox reconnect banner (shown when token is expired) */}
@@ -752,6 +758,165 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           )}
         </CardContent>
       </Card>
+
+      {/* ============== TRADE HISTORY ============== */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <History className="h-4 w-4 text-brand-primary" />
+              <CardTitle className="font-heading text-base font-semibold">Trade History</CardTitle>
+              <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+                {tabTrades.length}
+              </span>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {tabTrades.length === 0 ? (
+            <EmptyState
+              icon={History}
+              title="No trades yet"
+              description={activeTab === 'stock' ? 'Your equity trade history will appear here' : 'Your F&O trade history will appear here'}
+              action={<a href="/trade"><Button size="sm">Start Trading</Button></a>}
+            />
+          ) : (
+            <TradeHistoryList trades={tabTrades} />
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/* ========================================================================
+ * TradeHistoryList — expandable trade history cards
+ * ======================================================================== */
+function TradeHistoryList({ trades }: { trades: Trade[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (trades.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      {trades.map((trade) => {
+        const isExpanded = expandedId === trade.id;
+        const pnl = Number(trade.pnl) || 0;
+        const price = Number(trade.price) || 0;
+        const qty = Number(trade.quantity) || 0;
+        const invested = price * qty;
+        const profitPct = invested > 0 ? (pnl / invested) * 100 : 0;
+        const isBuy = trade.side === 'BUY';
+        const isOpen = trade.type === 'OPEN';
+        const tradeDate = trade.createdAt ? new Date(trade.createdAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const expiryDate = trade.expiry ? new Date(trade.expiry).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+
+        return (
+          <div
+            key={trade.id}
+            className={cn(
+              'rounded-lg border transition-all duration-200 cursor-pointer',
+              isExpanded ? 'border-brand-primary/50 bg-bg-surface-alt/50' : 'border-border-default bg-bg-base hover:border-border'
+            )}
+            onClick={() => setExpandedId(isExpanded ? null : trade.id)}
+          >
+            {/* Header row */}
+            <div className="flex items-center gap-3 p-3">
+              <div className={cn(
+                'flex h-8 w-8 items-center justify-center rounded-md shrink-0',
+                isOpen ? 'bg-tint-blue' : 'bg-tint-purple'
+              )}>
+                <Layers className="h-4 w-4 text-brand-primary" />
+              </div>
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <span className="font-mono text-sm font-semibold text-text-primary truncate">{trade.symbol}</span>
+                <span className={cn(
+                  'pill text-[9px] font-bold px-1.5 py-0',
+                  isBuy ? 'bg-profit-green/15 text-profit-green' : 'bg-loss-red/15 text-loss-red'
+                )}>
+                  {trade.side}
+                </span>
+                <span className={cn(
+                  'pill text-[9px] font-bold px-1.5 py-0',
+                  isOpen ? 'bg-tint-blue text-brand-primary' : 'bg-tint-purple text-info-purple'
+                )}>
+                  {trade.type}
+                </span>
+                <span className="font-mono text-[10px] text-text-secondary">{qty} × ₹{formatNumber(price)}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="text-right">
+                  <p className={cn('font-mono text-sm font-bold tabular-nums', getPnlColor(pnl))}>
+                    {pnl >= 0 ? '+' : ''}₹{formatNumber(pnl)}
+                  </p>
+                  <p className={cn('font-mono text-[10px] tabular-nums', getPnlColor(profitPct))}>
+                    {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
+                  </p>
+                </div>
+                <ChevronDown className={cn(
+                  'h-4 w-4 text-text-tertiary transition-transform duration-200',
+                  isExpanded && 'rotate-180'
+                )} />
+              </div>
+            </div>
+
+            {/* Expanded detail panel */}
+            {isExpanded && (
+              <div className="border-t border-border px-3 py-3 bg-bg-surface-alt/30">
+                {/* Summary boxes */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="rounded-md bg-bg-surface p-2 text-center">
+                    <p className="text-[10px] text-text-secondary">P&L</p>
+                    <p className={cn('font-mono text-sm font-bold tabular-nums', getPnlColor(pnl))}>
+                      {pnl >= 0 ? '+' : ''}₹{formatNumber(pnl)}
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-bg-surface p-2 text-center">
+                    <p className="text-[10px] text-text-secondary">Return</p>
+                    <p className={cn('font-mono text-sm font-bold tabular-nums', getPnlColor(profitPct))}>
+                      {profitPct >= 0 ? '+' : ''}{profitPct.toFixed(2)}%
+                    </p>
+                  </div>
+                  <div className="rounded-md bg-bg-surface p-2 text-center">
+                    <p className="text-[10px] text-text-secondary">Brokerage</p>
+                    <p className="font-mono text-sm font-bold text-text-primary">
+                      ₹{formatNumber(Number(trade.brokerage) || 0)}
+                    </p>
+                  </div>
+                </div>
+                {/* Detail rows */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                  <DetailRow label="Symbol" value={trade.symbol} />
+                  <DetailRow label="Side" value={trade.side} />
+                  <DetailRow label="Type" value={trade.type} />
+                  <DetailRow label="Segment" value={trade.segment} />
+                  <DetailRow label="Quantity" value={String(trade.quantity)} />
+                  <DetailRow label="Price" value={`₹${formatNumber(price, 2)}`} />
+                  {trade.strikePrice != null && trade.strikePrice > 0 && (
+                    <DetailRow label="Strike" value={`₹${formatNumber(Number(trade.strikePrice))}`} />
+                  )}
+                  {trade.optionType && (
+                    <DetailRow label="Option" value={trade.optionType} />
+                  )}
+                  {expiryDate && (
+                    <DetailRow label="Expiry" value={expiryDate} />
+                  )}
+                  <DetailRow label="Date" value={tradeDate} />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-text-secondary">{label}</span>
+      <span className="font-mono font-semibold text-text-primary">{value}</span>
     </div>
   );
 }
