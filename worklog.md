@@ -565,3 +565,22 @@ Stage Summary:
 - Future auto-reconnect: OAuth callback now also updates Vercel env var so redeployment preserves the fresh token.
 - Files changed (7): useLiveQuote.ts, UpstoxReconnectBanner.tsx (new), PositionsPage.tsx, TradePage.tsx, DashboardPage.tsx, OptionStrikeOverviewPage.tsx, callback/route.ts, globals.css
 - Production: https://pepertect.vercel.app — commit 199afe9
+---
+Task ID: fix-nan-hours-and-decode-counting
+Agent: main
+Task: User showed screenshot of "Upstox Connected!" page displaying "Token valid for: NaN hours"
+
+Work Log:
+- Diagnosed: Upstox OAuth response didn't include `expires_in` field, so `String(undefined)` → "undefined" → `Number("undefined")` → NaN.
+- Fixed upstox-status/page.tsx: Added `!isNaN(Number(expiresIn))` check — falls back to "24 hours" if invalid.
+- Fixed Cloudflare Worker binary decoder: control/init/ack messages (type 1-4, 6) were incorrectly counted as decode failures. `decodeUpstoxTick` now returns `{ tick, decoded }` to distinguish valid non-tick messages from corrupt data.
+- Deployed worker v4 with decoder fix and pushed token refresh to force DO code reload.
+- Verified: REST API returns real live data (Nifty: 23996, BankNifty: 57101).
+- Verified: Production `/api/upstox/status` shows connected=true, worker upstoxReady=true, liveProbe email=hzero9393@gmail.com.
+
+Stage Summary:
+- NaN hours bug fixed — now shows "24 hours" when expires_in is missing.
+- Worker decoder no longer falsely counts control messages as decode failures.
+- Live data confirmed flowing on production.
+- Files: src/app/upstox-status/page.tsx, cloudflare-worker/src/index.ts
+- Production: https://pepertect.vercel.app — commit eacd0ce
