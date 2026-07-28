@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: false,
       error: 'Failed to activate trial',
-      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
+      details: errorMessage,
     }, { status: 500 });
   }
 }
