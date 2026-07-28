@@ -30,6 +30,8 @@ export async function POST(req: NextRequest) {
 
     // ============================================
     // PRE-CHECK: Has this user already used FREE TRIAL?
+    // Only block if trial was EXPIRED (actually used and ended)
+    // Allow if: no trial exists OR trial is still active (just update preferences)
     // ============================================
     console.log('Checking if user already used free trial...');
     
@@ -49,30 +51,53 @@ export async function POST(req: NextRequest) {
       const trialEndsAt = new Date(existingTrial.startDate.getTime() + TRIAL_DURATION_MS);
       
       if (existingTrial.status === 'ACTIVE' && now < trialEndsAt) {
-        // Trial is STILL ACTIVE - don't let them restart
+        // Trial is STILL ACTIVE - save preferences but don't create new trial
+        console.log('Trial still active, updating preferences only...');
+        const preferences: Record<string, unknown> = {
+          experience,
+          goal,
+          markets,
+          onboardingCompleted: true,
+          onboardingCompletedAt: new Date().toISOString(),
+        };
+        const existingPrefs = user.notifSettings as Record<string, unknown> | null;
+        const mergedPrefs = existingPrefs ? { ...existingPrefs, ...preferences } : preferences;
+
+        await db.user.update({
+          where: { id: payload.userId },
+          data: {
+            virtualCapital: capital || user.virtualCapital || 100000,
+            notifSettings: mergedPrefs,
+          },
+        });
+
         return NextResponse.json({
-          success: false,
-          error: 'ALREADY_ACTIVE',
-          message: 'You already have an active free trial! Enjoy your Premium features.',
+          success: true,
+          message: 'Preferences updated! Your trial is already active.',
+          trialActivated: false, // Was already active
           trialStatus: {
             active: true,
             endsAt: trialEndsAt.toISOString(),
             daysLeft: Math.floor((trialEndsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
           }
-        }, { status: 400 });
+        });
       }
       
-      // Trial was used before (expired or cancelled)
-      return NextResponse.json({
-        success: false,
-        error: 'TRIAL_ALREADY_USED',
-        message: 'You have already used your one-time free trial offer. Upgrade to Premium to continue enjoying all features!',
-        trialStatus: {
-          active: false,
-          used: true,
-          usedAt: existingTrial.startDate.toISOString(),
-        }
-      }, { status: 400 });
+      // Trial was EXPIRED or CANCELLED - actually used before
+      if (now >= trialEndsAt || existingTrial.status !== 'ACTIVE') {
+        console.log('Trial expired/cancelled, blocking reactivation...');
+        return NextResponse.json({
+          success: false,
+          error: 'TRIAL_ALREADY_USED',
+          message: 'You have already used your one-time free trial offer. Upgrade to Premium to continue enjoying all features!',
+          trialStatus: {
+            active: false,
+            used: true,
+            usedAt: existingTrial.startDate.toISOString(),
+            expiredAt: trialEndsAt.toISOString(),
+          }
+        }, { status: 400 });
+      }
     }
 
     /* ---- Save preferences ---- */

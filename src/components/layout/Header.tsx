@@ -10,7 +10,6 @@ import {
 import { getInitials } from '@/lib/utils';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
 import { StockSearch } from '@/components/shared/StockSearch';
-import { NotificationBell } from '@/components/shared/NotificationBell';
 
 export function Header() {
   const { isAuthenticated, user } = useAuthStore();
@@ -145,9 +144,6 @@ export function Header() {
             <Moon className="h-4 w-4" />
           )}
         </button>
-
-        {/* Notifications - Interactive Bell with Dropdown */}
-        <NotificationBell />
 
         {/* User avatar (right side) */}
         <a

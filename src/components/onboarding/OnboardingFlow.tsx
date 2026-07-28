@@ -341,8 +341,14 @@ export function OnboardingFlow() {
             token,
           );
         }
-        setShowReward(true);
-        setTimeout(() => soundRef.current.success(), 400);
+        // Show reward for new activation OR redirect if already active
+        if (result.trialActivated === false) {
+          // Trial was already active, just go to dashboard
+          window.location.href = '/dashboard';
+        } else {
+          setShowReward(true);
+          setTimeout(() => soundRef.current.success(), 400);
+        }
       } else {
         // Handle specific error types with user-friendly messages
         if (result.error === 'TRIAL_ALREADY_USED' || result.message?.includes('already used')) {
@@ -468,26 +474,9 @@ export function OnboardingFlow() {
         </div>
       </main>
 
-      {/* ====== FOOTER NAVIGATION (only for steps without inline buttons) ====== */}
-      {step > 0 && step < TOTAL_STEPS - 1 && step !== 3 && step !== 4 && (
-        <footer className="flex items-center justify-between px-5 pb-8 pt-4 sm:px-8">
-          <button
-            onClick={goBack}
-            className="flex h-10 items-center gap-1.5 rounded-lg px-4 text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
-          <button
-            onClick={goNext}
-            disabled={step === 1 && !data.experience}
-            className="flex h-10 items-center gap-1.5 rounded-lg bg-brand-primary px-5 text-sm font-semibold text-white hover:bg-brand-primary-hover transition-colors active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none"
-          >
-            Continue
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </footer>
-      )}
+      {/* ====== FOOTER NAVIGATION (only for steps with manual advance: Capital & Market) ====== */}
+      {/* Steps 1 & 2 auto-advance on selection - no footer needed */}
+      {/* Steps 3 & 4 have their own inline Continue buttons - no footer needed */}
 
       {/* ====== REWARD OVERLAY WITH COUNTING ANIMATION ====== */}
       <AnimatePresence>
@@ -879,7 +868,7 @@ function CapitalStep({ value, onSelect, onContinue }: {
         ))}
       </motion.div>
 
-      <div className="mt-6 flex justify-end">
+      <div className="mt-6 flex justify-between">
         <button
           onClick={onContinue}
           className="flex h-10 items-center gap-1.5 rounded-lg bg-brand-primary px-5 text-sm font-semibold text-white hover:bg-brand-primary-hover transition-colors active:scale-[0.97]"
@@ -949,7 +938,7 @@ function MarketStep({ values, onToggle, onContinue }: {
         })}
       </motion.div>
 
-      <div className="mt-6 flex justify-end">
+      <div className="mt-6 flex justify-between">
         <button
           onClick={onContinue}
           disabled={values.length === 0}

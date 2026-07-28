@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { cn, formatINR } from '@/lib/utils';
 import {
   Gift, Clock, CheckCircle2, Sparkles, Zap, TrendingUp, BookOpen,
   ArrowRight, Loader2, AlertTriangle, Crown, ChevronLeft, ShieldCheck,
+  Smartphone, Download,
 } from 'lucide-react';
 
 interface TrialStatus {
@@ -59,6 +60,10 @@ export function FreeTrialPage() {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
+  // Real-time countdown state
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
   const fetchStatus = async () => {
     if (!token) return;
     try {
@@ -77,6 +82,44 @@ export function FreeTrialPage() {
   useEffect(() => {
     fetchStatus();
   }, [token]);
+
+  // Real-time countdown timer - updates every second
+  useEffect(() => {
+    if (!status?.active || !status.endsAt) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      return;
+    }
+
+    const updateTimeLeft = () => {
+      const now = new Date().getTime();
+      const endTime = new Date(status.endsAt!).getTime();
+      const diff = Math.max(0, endTime - now);
+
+      if (diff <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        // Refresh status to show expired
+        fetchStatus();
+        return;
+      }
+
+      setTimeLeft({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((diff % (1000 * 60)) / 1000),
+      });
+    };
+
+    // Initial call
+    updateTimeLeft();
+    
+    // Update every second
+    intervalRef.current = setInterval(updateTimeLeft, 1000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [status?.active, status?.endsAt]);
 
   const startTrial = async () => {
     setStarting(true);
@@ -103,6 +146,28 @@ export function FreeTrialPage() {
       setError('Network error. Please try again.');
     } finally {
       setStarting(false);
+    }
+  };
+
+  // Install app handler
+  const handleInstallApp = async () => {
+    // Check if beforeinstallprompt event is available
+    const deferredPrompt = (window as unknown as { deferredPrompt?: BeforeInstallPromptEvent }).deferredPrompt;
+    
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        localStorage.setItem('pepertect_app_installed', 'true');
+      }
+    } else {
+      // Fallback: Show instructions or redirect
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        alert('To install: Tap the Share button, then "Add to Home Screen"');
+      } else {
+        alert('Look for the install icon in your browser\'s address bar to install this app.');
+      }
     }
   };
 
@@ -136,7 +201,7 @@ export function FreeTrialPage() {
         Back to Profile
       </a>
 
-      {/* ============== HERO CARD ============== */}
+      {/* ============== HERO CARD WITH LIVE TIMER ============== */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-primary via-brand-primary to-blue-700 text-white p-6 shadow-xl">
         {/* Decorative shapes */}
         <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full bg-white/10 blur-2xl" />
@@ -158,28 +223,34 @@ export function FreeTrialPage() {
             Cancel anytime; your virtual capital and positions stay safe.
           </p>
 
-          {/* Status block */}
+          {/* Status block with REAL-TIME COUNTDOWN */}
           <div className="mt-5 bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
             {status?.active ? (
               <>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-3">
                   <span className="flex h-2.5 w-2.5 rounded-full bg-profit-green animate-pulse" />
-                  <span className="text-sm font-semibold">Trial Active</span>
+                  <span className="text-sm font-semibold">Trial Active — Counting Down</span>
                 </div>
-                <div className="mt-2 flex items-baseline gap-2">
-                  <span className="font-heading text-4xl font-bold tabular-nums">{status.daysLeft}</span>
-                  <span className="text-sm">days</span>
-                  <span className="font-heading text-2xl font-bold tabular-nums ml-2">{status.hoursLeft}</span>
-                  <span className="text-sm">hours left</span>
+                
+                {/* REAL-TIME COUNTDOWN TIMER: 25d / 14h / 32m / 18s format */}
+                <div className="flex items-center justify-center gap-1 sm:gap-2 py-2">
+                  <TimeUnit value={timeLeft.days} label="days" />
+                  <span className="text-2xl font-bold text-white/50">/</span>
+                  <TimeUnit value={timeLeft.hours} label="hrs" />
+                  <span className="text-2xl font-bold text-white/50">/</span>
+                  <TimeUnit value={timeLeft.minutes} label="min" />
+                  <span className="text-2xl font-bold text-white/50">/</span>
+                  <TimeUnit value={timeLeft.seconds} label="sec" pulse />
                 </div>
+
                 {/* Progress bar */}
-                <div className="mt-3 h-2 w-full rounded-full bg-white/20 overflow-hidden">
+                <div className="mt-4 h-2 w-full rounded-full bg-white/20 overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-gradient-to-r from-accent-gold to-profit-green transition-all"
+                    className="h-full rounded-full bg-gradient-to-r from-accent-gold to-profit-green transition-all duration-1000 ease-linear"
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
-                <p className="mt-2 text-[11px] text-white/80">
+                <p className="mt-2 text-[11px] text-white/80 text-center">
                   Started {status.startedAt ? new Date(status.startedAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                   {' · '}Ends {status.endsAt ? new Date(status.endsAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                 </p>
@@ -237,6 +308,28 @@ export function FreeTrialPage() {
         <div className="card-soft p-3 bg-tint-red border border-loss-red/30 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-loss-red shrink-0" />
           <p className="text-sm font-medium text-loss-red">{error}</p>
+        </div>
+      )}
+
+      {/* ============== INSTALL APP CARD (when trial active) ============== */}
+      {status?.active && (
+        <div className="card-soft p-5 bg-gradient-to-br from-tint-blue to-bg-surface border border-brand-primary/20">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-primary/10">
+              <Smartphone className="h-6 w-6 text-brand-primary" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-heading text-sm font-bold text-text-primary">Install Pepertect App</h3>
+              <p className="text-xs text-text-secondary mt-0.5">Get full-screen experience & faster access</p>
+            </div>
+            <button
+              onClick={handleInstallApp}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-primary text-white font-semibold text-sm hover:bg-brand-primary-hover transition-colors active:scale-[0.98]"
+            >
+              <Download className="h-4 w-4" />
+              Install
+            </button>
+          </div>
         </div>
       )}
 
@@ -361,6 +454,23 @@ export function FreeTrialPage() {
   );
 }
 
+/* ========== TIME UNIT COMPONENT FOR COUNTDOWN ========== */
+function TimeUnit({ value, label, pulse }: { value: number; label: string; pulse?: boolean }) {
+  return (
+    <div className="flex flex-col items-center">
+      <div className={cn(
+        "flex min-w-[52px] sm:min-w-[60px] items-center justify-center rounded-lg bg-white/15 backdrop-blur-sm px-2 py-1.5 sm:px-3",
+        pulse && "animate-pulse"
+      )}>
+        <span className="font-mono text-xl sm:text-2xl font-bold tabular-nums text-white">
+          {String(value).padStart(2, '0')}
+        </span>
+      </div>
+      <span className="text-[10px] text-white/70 mt-1 uppercase tracking-wider">{label}</span>
+    </div>
+  );
+}
+
 function FeatureRow({ ok, label }: { ok: boolean; label: string }) {
   return (
     <li className="flex items-start gap-2 text-xs">
@@ -372,4 +482,10 @@ function FeatureRow({ ok, label }: { ok: boolean; label: string }) {
       <span className={cn(ok ? 'text-text-primary' : 'text-text-tertiary line-through')}>{label}</span>
     </li>
   );
+}
+
+// Type for install prompt
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }

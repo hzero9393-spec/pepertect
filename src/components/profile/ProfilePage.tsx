@@ -1020,8 +1020,6 @@ function InstallAppButton() {
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt && !isIOS) return;
-    
     setInstalling(true);
     
     if (deferredPrompt) {
@@ -1032,58 +1030,70 @@ function InstallAppButton() {
         setInstalled(true);
       }
       setDeferredPrompt(null);
+    } else {
+      // Fallback: Show instructions based on platform
+      if (isIOS) {
+        alert('To install: Tap the Share button below, then scroll and tap "Add to Home Screen"');
+      } else {
+        alert('Look for the install icon (⬇️ or +) in your browser\'s address bar to install this app.');
+      }
     }
     
     setInstalling(false);
   };
 
-  // Don't show if already installed or no prompt available (and not iOS)
-  if (installed) return null;
-  if (!deferredPrompt && !isIOS) return null;
+  // Always show the button now (don't hide if no prompt)
+  if (installed) {
+    return (
+      <div className="rounded-xl border border-profit-green/30 bg-tint-green/10 p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-profit-green/20">
+            <Check className="h-5 w-5 text-profit-green" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-profit-green">App Installed!</p>
+            <p className="text-xs text-text-secondary">Pepertect is ready to use from your home screen</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="rounded-xl border border-border bg-gradient-to-r from-brand-primary/5 to-accent-gold/5 p-4">
+    <div className="rounded-xl border border-brand-primary/20 bg-gradient-to-r from-brand-primary/5 to-accent-gold/5 p-4">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary/10">
           <Smartphone className="h-5 w-5 text-brand-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-text-primary">Install Pepertect</p>
-          <p className="text-xs text-text-secondary">Add to home screen for quick access</p>
+          <p className="text-sm font-semibold text-text-primary">Install Pepertect App</p>
+          <p className="text-xs text-text-secondary">
+            {isIOS ? 'Tap Share → "Add to Home Screen"' : 'Add to home screen for quick access'}
+          </p>
         </div>
         
-        {isIOS ? (
-          <a
-            href="/free-trial"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-bg-surface-alt border border-border text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
-          >
-            Learn How
-            <ChevronRight className="h-4 w-4" />
-          </a>
-        ) : (
-          <button
-            onClick={handleInstall}
-            disabled={installing}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover transition-colors disabled:opacity-50"
-          >
-            {installing ? (
-              <>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Installing...
-              </>
-            ) : (
-              <>
-                <Download className="h-4 w-4" />
-                Install
-              </>
-            )}
-          </button>
-        )}
+        <button
+          onClick={handleInstall}
+          disabled={installing}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover transition-colors disabled:opacity-50 active:scale-[0.98]"
+        >
+          {installing ? (
+            <>
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              Installing...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" />
+              Install
+            </>
+          )}
+        </button>
       </div>
       
-      {isIOS && (
+      {!deferredPrompt && !isIOS && (
         <p className="mt-2 text-[11px] text-text-tertiary text-center">
-          Tap Share → "Add to Home Screen" to install
+          💡 Look for the install icon in your browser&apos;s address bar
         </p>
       )}
     </div>
