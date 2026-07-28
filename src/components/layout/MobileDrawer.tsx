@@ -6,8 +6,8 @@ import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/stores/useAuthStore';
 import {
   X, Zap, LayoutDashboard, TrendingUp, BarChart3, Briefcase, Eye,
-  GraduationCap, CreditCard, HelpCircle, Settings, User,
-  LogOut, ChevronRight, Sun, Moon, Bell, ListTree, Wallet,
+  GraduationCap, HelpCircle, Settings, User,
+  LogOut, ChevronRight, Sun, Moon, ListTree, Wallet,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -34,14 +34,12 @@ const PRIMARY_ITEMS: DrawerItem[] = [
 
 const SECONDARY_ITEMS: DrawerItem[] = [
   { id: 'learning', label: 'Learning', icon: GraduationCap, premium: true },
-  { id: 'subscription', label: 'Pricing', icon: CreditCard },
   { id: 'support', label: 'Support', icon: HelpCircle },
 ];
 
 const ACCOUNT_ITEMS: DrawerItem[] = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
 ];
 
 interface MobileDrawerProps {
