@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, X, Check, CheckCheck, Settings, TrendingUp, AlertTriangle, Target, Gift, Star, Info } from 'lucide-react';
+import { Bell, X, Check, CheckCheck, Settings, Trash2, TrendingUp, AlertTriangle, Target, Gift, Star, Info } from 'lucide-react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { cn } from '@/lib/utils';
 
@@ -123,6 +123,7 @@ export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const hasPlayedSound = useRef(false);
 
@@ -153,11 +154,11 @@ export function NotificationBell() {
     }
   }, [token, loading]);
 
-  // Initial fetch + polling every 30 seconds for real-time updates
+  // Initial fetch + polling every 15 seconds for real-time updates
   useEffect(() => {
     fetchNotifications();
     
-    const interval = setInterval(fetchNotifications, 30000); // 30 second WebSocket-like polling
+    const interval = setInterval(fetchNotifications, 15000); // 15 second polling for faster updates
     
     return () => clearInterval(interval);
   }, [fetchNotifications]);
@@ -206,6 +207,28 @@ export function NotificationBell() {
     }
   };
 
+  // Delete ALL notifications
+  const deleteAllNotifications = async () => {
+    if (!confirm('Delete all notifications? This cannot be undone.')) return;
+    
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/notifications/delete-all', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (res.ok) {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    } catch (error) {
+      console.error('Failed to delete notifications:', error);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   // Handle notification click - mark as read & navigate
   const handleNotificationClick = async (notif: Notification) => {
     // Mark as read if unread
@@ -222,6 +245,7 @@ export function NotificationBell() {
       router.push(url);
     }
   };
+  
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -378,14 +402,28 @@ export function NotificationBell() {
               )}
             </div>
 
-            {/* Footer */}
-            <div className="p-3 border-t border-border bg-bg-surface/30">
+            {/* Footer with Delete All & Settings */}
+            <div className="p-3 border-t border-border bg-bg-surface/30 flex items-center justify-between">
+              <button
+                onClick={deleteAllNotifications}
+                disabled={deleting || notifications.length === 0}
+                className={cn(
+                  "flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium transition-colors",
+                  deleting || notifications.length === 0
+                    ? "text-text-tertiary cursor-not-allowed"
+                    : "text-loss-red hover:bg-loss-red/10"
+                )}
+              >
+                <Trash2 className="h-4 w-4" />
+                {deleting ? 'Deleting...' : 'Clear All'}
+              </button>
+              
               <a
-                href="/settings?tab=notifications"
-                className="flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface-alt transition-colors"
+                href="/settings/notifications"
+                className="flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface-alt transition-colors"
               >
                 <Settings className="h-4 w-4" />
-                Notification Settings
+                Settings
               </a>
             </div>
           </motion.div>

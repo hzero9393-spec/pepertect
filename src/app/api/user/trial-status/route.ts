@@ -91,6 +91,7 @@ async function computeTrialStatus(userId: string): Promise<TrialStatus> {
       eligible: false,
       active: false,
       expired: true,
+      trialUsed: true, // Mark that trial was used before
       daysLeft: 0,
       hoursLeft: 0,
       startedAt: existingTrial.startDate.toISOString(),
@@ -98,7 +99,7 @@ async function computeTrialStatus(userId: string): Promise<TrialStatus> {
       plan: TRIAL_PLAN,
       planPrice: TRIAL_PLAN_PRICE,
       durationDays: 30,
-      message: 'Your free trial has ended. Upgrade to PREMIUM to continue.',
+      message: 'You have already used your free trial. Upgrade to PREMIUM to continue.',
     };
   }
 

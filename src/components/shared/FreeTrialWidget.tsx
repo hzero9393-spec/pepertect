@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { cn } from '@/lib/utils';
 import {
   Gift, Clock, Sparkles, ArrowRight, Loader2, CheckCircle2, Crown,
+  XCircle, Info,
 } from 'lucide-react';
 
 interface TrialStatus {
@@ -19,6 +20,7 @@ interface TrialStatus {
   planPrice: number;
   durationDays: number;
   message: string;
+  trialUsed?: boolean; // NEW: track if trial was already used
 }
 
 interface Props {
@@ -33,6 +35,7 @@ interface Props {
  * - If eligible (never started): prominent "Start Free Trial" CTA card.
  * - If active: countdown card with days/hours remaining + "View Details".
  * - If expired: subtle "Trial ended" banner linking to /subscription.
+ * - If trial already used (trialUsed=true): shows "Already Activated" message.
  * - If user already has PREMIUM (paid): renders null (no trial messaging).
  */
 export function FreeTrialWidget({ variant = 'card', className }: Props) {
@@ -76,6 +79,10 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
         if (user) login({ ...user, tier: 'PREMIUM' }, token!);
         setTimeout(() => fetchStatus(), 500);
       } else {
+        // Check if error is "already used"
+        if (data.error?.includes('already') || data.error?.includes('used')) {
+          setStatus(prev => prev ? { ...prev, eligible: false, expired: true, trialUsed: true, message: data.error } : null);
+        }
         setError(data.error || 'Failed to start trial');
       }
     } catch {
@@ -103,7 +110,7 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
     if (status.active) {
       return (
         <a
-          href="/free-trial"
+          href="/settings"
           className={cn(
             'flex items-center gap-3 rounded-xl bg-gradient-to-r from-brand-primary/10 to-accent-gold/10 border border-brand-primary/20 px-4 py-2.5 hover:from-brand-primary/15 hover:to-accent-gold/15 transition-colors',
             className
@@ -111,13 +118,31 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
         >
           <Clock className="h-4 w-4 text-brand-primary shrink-0" />
           <p className="text-xs font-medium text-text-primary flex-1 min-w-0 truncate">
-            <span className="text-brand-primary font-semibold">Free PREMIUM Trial:</span>{' '}
+            <span className="text-brand-primary font-semibold">Premium Trial Active:</span>{' '}
             {status.daysLeft}d {status.hoursLeft}h left
           </p>
           <ArrowRight className="h-3.5 w-3.5 text-brand-primary shrink-0" />
         </a>
       );
     }
+    
+    // Trial already used - show subtle message
+    if (status.trialUsed || (status.expired && !status.eligible)) {
+      return (
+        <div
+          className={cn(
+            'flex items-center gap-3 rounded-xl bg-bg-surface-alt border border-border px-4 py-2.5',
+            className
+          )}
+        >
+          <CheckCircle2 className="h-4 w-4 text-text-tertiary shrink-0" />
+          <p className="text-xs font-medium text-text-tertiary flex-1 min-w-0 truncate">
+            Free Trial Already Used
+          </p>
+        </div>
+      );
+    }
+    
     if (status.expired) {
       return (
         <a
@@ -135,6 +160,7 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
         </a>
       );
     }
+    
     // eligible — navigate to onboarding flow
     return (
       <a
@@ -155,6 +181,32 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
   }
 
   // ------- CARD VARIANT -------
+  
+  // TRIAL ALREADY USED - show message (NOT eligible, NOT active, but has history)
+  if (status.trialUsed || (status.expired && status.startedAt)) {
+    return (
+      <div className={cn('card-soft p-4 bg-bg-surface-alt border border-border', className)}>
+        <div className="flex items-center gap-2 mb-2">
+          <CheckCircle2 className="h-5 w-5 text-text-tertiary" />
+          <span className="text-xs font-semibold text-text-tertiary uppercase tracking-wide">Trial Used</span>
+        </div>
+        <p className="font-heading text-sm font-bold text-text-primary mb-1">
+          Free Trial Already Activated
+        </p>
+        <p className="text-xs text-text-secondary mb-3">
+          You've already used your one-time free trial. Upgrade to PREMIUM to continue enjoying all features!
+        </p>
+        <a
+          href="/subscription"
+          className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brand-primary text-white text-xs font-bold px-4 hover:bg-brand-primary-hover transition-colors"
+        >
+          <Crown className="h-3.5 w-3.5" />
+          Upgrade Now
+        </a>
+      </div>
+    );
+  }
+  
   if (status.active) {
     const totalHoursLeft = status.daysLeft * 24 + status.hoursLeft;
     const progressPct = Math.max(0, Math.min(100, ((30 * 24 - totalHoursLeft) / (30 * 24)) * 100));
@@ -165,7 +217,7 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
           <div className="flex items-center gap-2">
             <span className="flex h-2 w-2 rounded-full bg-profit-green animate-pulse" />
             <span className="text-xs font-semibold text-profit-green uppercase tracking-wide">
-              Trial Active
+              Premium Trial Active
             </span>
           </div>
           <div className="mt-2 flex items-baseline gap-1.5">
@@ -180,12 +232,12 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
               style={{ width: `${progressPct}%` }}
             />
           </div>
-          <a
-            href="/free-trial"
-            className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-brand-primary hover:underline"
-          >
-            View Details <ArrowRight className="h-3 w-3" />
-          </a>
+          <div className="mt-3 p-2.5 rounded-lg bg-profit-green/10 border border-profit-green/20">
+            <p className="text-[11px] text-profit-green font-medium flex items-center gap-1.5">
+              <Info className="h-3.5 w-3.5 shrink-0" />
+              Enjoying all Premium features! Upgrade before trial ends to keep access.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -209,33 +261,48 @@ export function FreeTrialWidget({ variant = 'card', className }: Props) {
     );
   }
 
-  // eligible
+  // eligible - show Start Free Trial
   return (
     <div className={cn('card-soft p-4 bg-gradient-to-br from-accent-gold/10 to-brand-primary/5 border border-accent-gold/30 relative overflow-hidden', className)}>
       <div className="absolute -right-8 -top-8 h-24 w-24 rounded-full bg-accent-gold/20 blur-2xl" />
       <div className="relative">
         <div className="flex items-center gap-2">
           <Gift className="h-5 w-5 text-accent-gold" />
-          <span className="text-xs font-semibold text-accent-gold uppercase tracking-wide">Free Trial</span>
+          <span className="text-xs font-semibold text-accent-gold uppercase tracking-wide">Limited Offer</span>
         </div>
         <p className="mt-2 font-heading text-base font-bold text-text-primary">
           30 Days of PREMIUM — Free
         </p>
         <p className="mt-1 text-xs text-text-secondary">
-          Unlock unlimited trades, advanced analytics, and AI insights. No card required.
+          Unlock unlimited trades, advanced analytics, and AI insights. One-time offer, no card required.
         </p>
         {error && <p className="mt-2 text-xs text-loss-red font-medium">{error}</p>}
         <div className="mt-3 flex items-center gap-2">
-          <a
-            href="/onboarding"
-            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-brand-primary text-white text-xs font-bold px-3 hover:bg-brand-primary-hover transition-colors"
+          <button
+            onClick={startTrial}
+            disabled={starting}
+            className={cn(
+              "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-white text-xs font-bold px-4 transition-colors",
+              starting 
+                ? "bg-brand-primary/50 cursor-not-allowed" 
+                : "bg-brand-primary hover:bg-brand-primary-hover"
+            )}
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            Start Free Trial
-          </a>
+            {starting ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Activating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3.5 w-3.5" />
+                Activate Free Trial
+              </>
+            )}
+          </button>
           <a
             href="/free-trial"
-            className="inline-flex h-9 items-center justify-center gap-1 text-xs font-semibold text-text-secondary hover:text-text-primary"
+            className="inline-flex h-9 items-center gap-1 text-xs font-semibold text-text-secondary hover:text-text-primary"
           >
             Learn more <ArrowRight className="h-3 w-3" />
           </a>

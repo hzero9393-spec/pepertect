@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Download, Smartphone, Monitor } from 'lucide-react';
+import { X, Download, Smartphone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface InstallPromptProps {
@@ -19,7 +19,6 @@ export function InstallPrompt({ className }: InstallPromptProps) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   
   // Initialize dismissed state from localStorage
-  // Shows once per day (not once ever!) unless app is installed
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === 'undefined') return false;
     const installed = localStorage.getItem('pepertect_app_installed');
@@ -49,7 +48,7 @@ export function InstallPrompt({ className }: InstallPromptProps) {
         if (!dismissed) {
           setShowPrompt(true);
         }
-      }, 10000); // 10 seconds after page load
+      }, 15000); // 15 seconds after page load
     };
 
     // Listen for app installed
@@ -62,13 +61,12 @@ export function InstallPrompt({ className }: InstallPromptProps) {
     window.addEventListener('appinstalled', handleAppInstalled);
 
     // For iOS or if no deferred prompt, show anyway after longer delay
-    // But ONLY if not dismissed today and not installed
     if ((isIOSDevice || !deferredPrompt) && !dismissed) {
       setTimeout(() => {
         if (!dismissed) {
           setShowPrompt(true);
         }
-      }, 30000); // 30 seconds
+      }, 45000); // 45 seconds
     }
 
     return () => {
@@ -113,13 +111,13 @@ export function InstallPrompt({ className }: InstallPromptProps) {
           exit={{ opacity: 0, y: 50 }}
           transition={{ type: "spring", damping: 25, stiffness: 300 }}
           className={cn(
-            "fixed bottom-4 left-4 right-4 z-40 sm:left-auto sm:right-4 sm:max-w-sm",
+            "fixed bottom-4 left-4 right-4 z-40 sm:left-auto sm:right-4 sm:max-w-xs",
             className
           )}
         >
           <div className="rounded-2xl border border-border bg-background shadow-xl overflow-hidden">
-            {/* Header */}
-            <div className="relative p-4 pb-3 bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white">
+            {/* Compact Header */}
+            <div className="relative p-4 bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white">
               <button
                 onClick={handleDismiss}
                 className="absolute top-2 right-2 p-1 rounded-lg hover:bg-white/20 transition-colors"
@@ -129,44 +127,31 @@ export function InstallPrompt({ className }: InstallPromptProps) {
               
               <div className="flex items-center gap-3 pr-6">
                 {/* App Icon */}
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm shadow-lg">
-                  <span className="text-2xl font-bold">P</span>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+                  <Smartphone className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base">Install Pepertect</h3>
-                  <p className="text-xs text-white/80">Paper Trading Platform</p>
+                  <h3 className="font-bold text-sm">Install Pepertect</h3>
+                  <p className="text-[11px] text-white/80">Add to Home Screen</p>
                 </div>
               </div>
             </div>
 
             {/* Content */}
             <div className="p-4 space-y-3">
-              <p className="text-sm text-text-secondary leading-relaxed">
-                Install Pepertect on your device for:
+              <p className="text-xs text-text-secondary leading-relaxed">
+                Get full screen experience & faster access. Install Pepertect on your device!
               </p>
-
-              <ul className="space-y-2">
-                {[
-                  { icon: Smartphone, text: 'Full screen experience' },
-                  { icon: Download, text: 'Offline access' },
-                  { icon: Monitor, text: 'Faster loading times' },
-                ].map((item, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm text-text-primary">
-                    <item.icon className="h-4 w-4 text-profit-green shrink-0" />
-                    {item.text}
-                  </li>
-                ))}
-              </ul>
 
               {/* iOS Instructions */}
               {isIOS ? (
                 <div className="p-3 rounded-xl bg-bg-surface-alt border border-border">
-                  <p className="text-xs font-medium text-text-primary mb-1">
-                    How to install:
+                  <p className="text-[11px] font-medium text-text-primary mb-1.5">
+                    📱 How to install:
                   </p>
                   <ol className="text-[11px] text-text-secondary space-y-1 list-decimal list-inside">
-                    <li>Tap the Share button in Safari</li>
-                    <li>Scroll and tap "Add to Home Screen"</li>
+                    <li>Tap the Share button below</li>
+                    <li>Scroll & tap "Add to Home Screen"</li>
                     <li>Tap "Add" to confirm</li>
                   </ol>
                 </div>
@@ -174,30 +159,29 @@ export function InstallPrompt({ className }: InstallPromptProps) {
 
               {/* Actions */}
               <div className="flex gap-2 pt-1">
-                {!isIOS && (
+                {!isIOS ? (
                   <button
                     onClick={handleInstall}
                     className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-brand-primary text-white font-semibold text-sm hover:bg-brand-primary-hover transition-colors active:scale-[0.98]"
                   >
                     <Download className="h-4 w-4" />
-                    Install Now
+                    Install App
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleDismiss}
+                    className="flex-1 py-2.5 rounded-xl bg-brand-primary text-white font-semibold text-sm hover:bg-brand-primary-hover transition-colors active:scale-[0.98]"
+                  >
+                    Got it!
                   </button>
                 )}
                 <button
                   onClick={handleDismiss}
-                  className={cn(
-                    "py-2.5 rounded-xl font-medium text-sm transition-colors",
-                    isIOS ? "w-full bg-bg-surface-alt text-text-secondary hover:bg-bg-surface" : "px-4 text-text-tertiary hover:text-text-secondary"
-                  )}
+                  className="px-4 py-2.5 rounded-xl font-medium text-sm text-text-secondary hover:text-text-primary hover:bg-bg-surface-alt transition-colors"
                 >
-                  Not now
+                  Later
                 </button>
               </div>
-              
-              {/* Small hint that it will show again tomorrow */}
-              <p className="text-[10px] text-center text-text-tertiary italic">
-                You'll see this prompt again tomorrow
-              </p>
             </div>
           </div>
         </motion.div>

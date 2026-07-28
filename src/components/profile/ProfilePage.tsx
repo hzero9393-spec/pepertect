@@ -11,7 +11,7 @@ import {
   Camera, Copy, Check, Monitor, ShieldCheck, BadgeCheck,
   Clock, Store, Grid as GridIcon,
   TrendingUp, Moon, Sun, X, Loader2, AlertTriangle,
-  RotateCcw, Trash2, Gift, Sparkles, Timer, Crown, Zap,
+  Gift, Sparkles, Timer, Crown, Zap,
 } from 'lucide-react';
 import type { Portfolio } from '@/types';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
@@ -39,11 +39,6 @@ export function ProfilePage() {
   const [logoutAllOpen, setLogoutAllOpen] = useState(false);
   const [logoutAllSubmitting, setLogoutAllSubmitting] = useState(false);
   const [logoutAllResult, setLogoutAllResult] = useState<{ success: boolean; message: string } | null>(null);
-
-  // Reset Data modal state
-  const [resetDataOpen, setResetDataOpen] = useState(false);
-  const [resetDataSubmitting, setResetDataSubmitting] = useState(false);
-  const [resetDataResult, setResetDataResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Trial Expiry Timer state
   const [trialEndsAt, setTrialEndsAt] = useState<Date | null>(null);
@@ -254,40 +249,6 @@ export function ProfilePage() {
       setLogoutAllResult({ success: false, message: 'Network error' });
     } finally {
       setLogoutAllSubmitting(false);
-    }
-  };
-
-  // ---- Reset Trading Data (deletes all orders/positions/trades, resets portfolio) ----
-  const handleResetData = async () => {
-    setResetDataSubmitting(true);
-    setResetDataResult(null);
-    try {
-      const res = await fetch('/api/user/reset-data', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirm: true }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setResetDataResult({
-          success: true,
-          message: data.message || 'All trading data has been reset to defaults.',
-        });
-        // Refresh portfolio after a brief pause
-        setTimeout(() => {
-          fetch('/api/portfolio', { headers: { Authorization: `Bearer ${token}` } })
-            .then((r) => r.json())
-            .then((d) => { if (d.success) setPortfolio(d.data); })
-            .catch(() => {});
-          setResetDataOpen(false);
-        }, 1800);
-      } else {
-        setResetDataResult({ success: false, message: data.error || 'Failed to reset data' });
-      }
-    } catch {
-      setResetDataResult({ success: false, message: 'Network error' });
-    } finally {
-      setResetDataSubmitting(false);
     }
   };
 
@@ -721,14 +682,6 @@ export function ProfilePage() {
             href="/settings/language"
           />
           <PreferenceRow
-            icon={Trash2}
-            label="Reset Trading Data"
-            value="Clear all positions, orders & trades"
-            href="#"
-            danger
-            onClick={() => setResetDataOpen(true)}
-          />
-          <PreferenceRow
             icon={Monitor}
             label="Remove from this device"
             value="Sign out only here"
@@ -746,91 +699,6 @@ export function ProfilePage() {
           />
         </div>
       </div>
-
-      {/* ============== RESET DATA MODAL ============== */}
-      {resetDataOpen && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-          onClick={() => !resetDataSubmitting && setResetDataOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm card-soft p-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="icon-tile-sm bg-tint-red">
-                  <RotateCcw className="h-4 w-4 text-loss-red" />
-                </div>
-                <h3 className="font-heading text-base font-bold text-text-primary">
-                  Reset Trading Data?
-                </h3>
-              </div>
-              <button
-                onClick={() => !resetDataSubmitting && setResetDataOpen(false)}
-                className="text-text-tertiary hover:text-text-primary"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <p className="text-sm text-text-secondary mb-4">
-              This will permanently delete <strong className="text-text-primary">all your trades, orders,
-              positions, and watchlist</strong>, and reset your portfolio balance back to{' '}
-              <strong className="text-text-primary">₹1,00,000</strong>. This action cannot be undone.
-            </p>
-            <div className="rounded-lg bg-tint-yellow/40 border border-accent-gold/30 p-2.5 mb-3">
-              <p className="text-xs text-accent-gold font-medium flex items-start gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                Your account, subscription, learning progress, and avatar will NOT be affected.
-              </p>
-            </div>
-            {resetDataResult && (
-              <div
-                className={cn(
-                  'mb-3 rounded-lg p-2.5 text-xs font-medium',
-                  resetDataResult.success
-                    ? 'bg-tint-green text-profit-green'
-                    : 'bg-tint-red text-loss-red'
-                )}
-              >
-                {resetDataResult.message}
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setResetDataOpen(false)}
-                disabled={resetDataSubmitting}
-                className="flex-1 h-10 rounded-lg border border-border text-sm font-semibold text-text-secondary hover:bg-bg-surface-alt"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleResetData}
-                disabled={resetDataSubmitting}
-                className={cn(
-                  'flex-1 h-10 rounded-lg text-white text-sm font-bold flex items-center justify-center gap-1.5',
-                  resetDataSubmitting
-                    ? 'bg-loss-red/50 cursor-not-allowed'
-                    : 'bg-loss-red hover:bg-loss-red/90'
-                )}
-              >
-                {resetDataSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Resetting...
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw className="h-4 w-4" />
-                    Reset Everything
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ============== LOGOUT ALL MODAL ============== */}
       {logoutAllOpen && (

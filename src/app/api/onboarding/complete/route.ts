@@ -28,6 +28,53 @@ export async function POST(req: NextRequest) {
 
     console.log('User found:', user.id);
 
+    // ============================================
+    // PRE-CHECK: Has this user already used FREE TRIAL?
+    // ============================================
+    console.log('Checking if user already used free trial...');
+    
+    const existingTrial = await db.subscription.findFirst({
+      where: { 
+        userId: payload.userId,
+        razorpaySubId: 'TRIAL'
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (existingTrial) {
+      console.log('⚠️ User already has trial record:', existingTrial.id, 'status:', existingTrial.status);
+      
+      // Check if trial is still active
+      const now = new Date();
+      const trialEndsAt = new Date(existingTrial.startDate.getTime() + TRIAL_DURATION_MS);
+      
+      if (existingTrial.status === 'ACTIVE' && now < trialEndsAt) {
+        // Trial is STILL ACTIVE - don't let them restart
+        return NextResponse.json({
+          success: false,
+          error: 'ALREADY_ACTIVE',
+          message: 'You already have an active free trial! Enjoy your Premium features.',
+          trialStatus: {
+            active: true,
+            endsAt: trialEndsAt.toISOString(),
+            daysLeft: Math.floor((trialEndsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
+          }
+        }, { status: 400 });
+      }
+      
+      // Trial was used before (expired or cancelled)
+      return NextResponse.json({
+        success: false,
+        error: 'TRIAL_ALREADY_USED',
+        message: 'You have already used your one-time free trial offer. Upgrade to Premium to continue enjoying all features!',
+        trialStatus: {
+          active: false,
+          used: true,
+          usedAt: existingTrial.startDate.toISOString(),
+        }
+      }, { status: 400 });
+    }
+
     /* ---- Save preferences ---- */
     const preferences: Record<string, unknown> = {
       experience,
@@ -50,110 +97,68 @@ export async function POST(req: NextRequest) {
     console.log('User updated successfully');
 
     /* ---- Activate free trial (PREMIUM for 30 days) ---- */
-    console.log('Checking for existing trial...');
-    
-    // Check if user already has ANY trial subscription (handle partial/failed previous attempts)
-    const existingTrial = await db.subscription.findFirst({
-      where: { 
-        userId: payload.userId,
-        razorpaySubId: 'TRIAL'
-      },
-      orderBy: { createdAt: 'desc' },
+    console.log('Activating new trial subscription...');
+
+    // Double-check no trial exists (race condition protection)
+    const retryCheck = await db.subscription.findFirst({
+      where: { userId: payload.userId, razorpaySubId: 'TRIAL' },
     });
 
-    let trialActivated = false;
-
-    if (existingTrial) {
-      // Update existing trial instead of creating new one
-      console.log('Existing trial found, updating...', existingTrial.id);
-      const now = new Date();
-      const endDate = new Date(now.getTime() + TRIAL_DURATION_MS);
-      
-      await db.subscription.update({
-        where: { id: existingTrial.id },
-        data: {
-          plan: 'PREMIUM',
-          status: 'ACTIVE',
-          startDate: now,
-          endDate,
-          autoRenew: false,
-        },
-      });
-      trialActivated = true;
-      console.log('Trial updated successfully');
-    } else {
-      // Check if user already has a paid PREMIUM subscription
-      console.log('No existing trial, checking for paid PREMIUM...');
-      const paidSub = await db.subscription.findFirst({
-        where: { userId: payload.userId, status: 'ACTIVE', plan: 'PREMIUM', NOT: { razorpaySubId: 'TRIAL' } },
-      });
-
-      if (!paidSub) {
-        console.log('Creating new trial subscription...');
-        const now = new Date();
-        const endDate = new Date(now.getTime() + TRIAL_DURATION_MS);
-
-        try {
-          await db.subscription.create({
-            data: {
-              userId: payload.userId,
-              plan: 'PREMIUM',
-              status: 'ACTIVE',
-              startDate: now,
-              endDate,
-              autoRenew: false,
-              razorpaySubId: 'TRIAL',
-            },
-          });
-          trialActivated = true;
-          console.log('Trial subscription created');
-        } catch (createError: unknown) {
-          // Handle race condition - if trial was created between our check and create
-          const errMsg = createError instanceof Error ? createError.message : '';
-          console.error('Create trial error (may be race condition):', errMsg);
-          
-          if (errMsg.includes('Unique constraint') || errMsg.includes('unique constraint')) {
-            // Trial was created by another request, update it
-            const retryTrial = await db.subscription.findFirst({
-              where: { userId: payload.userId, razorpaySubId: 'TRIAL' },
-            });
-            if (retryTrial) {
-              const now = new Date();
-              const endDate = new Date(now.getTime() + TRIAL_DURATION_MS);
-              await db.subscription.update({
-                where: { id: retryTrial.id },
-                data: { status: 'ACTIVE', startDate: now, endDate, plan: 'PREMIUM' },
-              });
-              trialActivated = true;
-              console.log('Trial updated after race condition');
-            }
-          } else {
-            throw createError; // Re-throw if it's a different error
-          }
-        }
-
-        if (trialActivated) {
-          // Upgrade tier to PREMIUM
-          console.log('Upgrading user tier to PREMIUM...');
-          await db.user.update({
-            where: { id: payload.userId },
-            data: { tier: 'PREMIUM' },
-          });
-          console.log('User tier upgraded');
-        }
-      } else {
-        console.log('User already has active PREMIUM subscription');
-        trialActivated = true; // User already has premium
-      }
+    if (retryCheck) {
+      return NextResponse.json({
+        success: false,
+        error: 'TRIAL_ALREADY_USED',
+        message: 'Free trial already activated for your account.',
+      }, { status: 400 });
     }
 
-    // Also ensure tier is upgraded if trial was activated/updated
-    if (trialActivated || existingTrial) {
-      console.log('Ensuring user tier is PREMIUM...');
-      await db.user.update({
-        where: { id: payload.userId },
-        data: { tier: 'PREMIUM' },
-      }).catch(() => {}); // Ignore if already PREMIUM
+    // Check if user already has a paid PREMIUM subscription
+    const paidSub = await db.subscription.findFirst({
+      where: { userId: payload.userId, status: 'ACTIVE', plan: 'PREMIUM', NOT: { razorpaySubId: 'TRIAL' } },
+    });
+
+    if (paidSub) {
+      console.log('User already has paid PREMIUM, skipping trial creation');
+      // Still save preferences and update portfolio
+    } else {
+      console.log('Creating new trial subscription...');
+      const now = new Date();
+      const endDate = new Date(now.getTime() + TRIAL_DURATION_MS);
+
+      try {
+        await db.subscription.create({
+          data: {
+            userId: payload.userId,
+            plan: 'PREMIUM',
+            status: 'ACTIVE',
+            startDate: now,
+            endDate,
+            autoRenew: false,
+            razorpaySubId: 'TRIAL',
+          },
+        });
+        console.log('Trial subscription created successfully');
+
+        // Upgrade tier to PREMIUM
+        console.log('Upgrading user tier to PREMIUM...');
+        await db.user.update({
+          where: { id: payload.userId },
+          data: { tier: 'PREMIUM' },
+        });
+        console.log('User tier upgraded to PREMIUM');
+      } catch (createError: unknown) {
+        const errMsg = createError instanceof Error ? createError.message : '';
+        console.error('Create trial error:', errMsg);
+        
+        if (errMsg.includes('Unique constraint') || errMsg.includes('unique constraint')) {
+          return NextResponse.json({
+            success: false,
+            error: 'TRIAL_ALREADY_USED',
+            message: 'Free trial already activated for your account.',
+          }, { status: 400 });
+        }
+        throw createError;
+      }
     }
 
     /* ---- Update portfolio balance ---- */
@@ -194,12 +199,10 @@ export async function POST(req: NextRequest) {
           console.log('Transaction created');
         } catch (txError) {
           console.warn('Transaction creation failed (non-critical):', txError);
-          // Don't fail the whole activation if transaction fails
         }
       }
     } else {
       console.log('Creating new portfolio...');
-      // Create portfolio if it doesn't exist
       try {
         const newPortfolio = await db.portfolio.create({
           data: {
@@ -210,7 +213,6 @@ export async function POST(req: NextRequest) {
         });
         console.log('New portfolio created:', newPortfolio.id);
         
-        console.log('Creating initial transaction...');
         try {
           await db.transaction.create({
             data: {
@@ -227,7 +229,7 @@ export async function POST(req: NextRequest) {
         }
       } catch (portfolioError) {
         console.error('Failed to create portfolio:', portfolioError);
-        throw portfolioError; // This is critical, re-throw
+        throw portfolioError;
       }
     }
 
@@ -255,7 +257,6 @@ export async function POST(req: NextRequest) {
           }
         } catch (watchlistError) {
           console.warn(`Failed to add ${market} to watchlist:`, watchlistError);
-          // Non-critical, don't fail activation
         }
       }
     }
@@ -264,10 +265,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       message: 'Free trial activated successfully',
+      trialActivated: true,
     });
   } catch (error) {
     console.error('Onboarding activation error:', error);
-    // Return detailed error for debugging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('Error details:', errorMessage);
     
