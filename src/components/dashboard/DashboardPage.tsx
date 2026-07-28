@@ -198,8 +198,8 @@ export function DashboardPage() {
       {/* Upstox reconnect banner (shown when token is expired) */}
       <UpstoxReconnectBanner status={wsStatus} />
 
-      {/* ============== FREE TRIAL WIDGET ============== */}
-      <FreeTrialWidget variant="card" />
+      {/* ============== FREE TRIAL WIDGET (only show for FREE users who haven't activated trial) ============== */}
+      {(user?.tier !== 'PREMIUM') && <FreeTrialWidget variant="card" />}
 
       {/* ============== HERO CARD ============== */}
       <div className="card-soft hero-gradient p-5 relative overflow-hidden">

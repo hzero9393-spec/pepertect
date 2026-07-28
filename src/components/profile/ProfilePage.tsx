@@ -316,96 +316,90 @@ export function ProfilePage() {
 
   return (
     <div className="space-y-4">
-      {/* ============== FREE TRIAL WIDGET ============== */}
-      <FreeTrialWidget variant="card" />
+      {/* ============== FREE TRIAL WIDGET (only show when trial NOT active) ============== */}
+      {(trialStatus !== 'active') && <FreeTrialWidget variant="card" />}
 
-      {/* ============== TRIAL EXPIRY TIMER (when active) ============== */}
+      {/* ============== 30 DAYS PREMIUM TRIAL - COUNTDOWN TIMER (when active) ============== */}
       {trialStatus === 'active' && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden rounded-2xl border border-brand-primary/30 bg-gradient-to-br from-brand-primary/10 via-bg-surface to-accent-gold/5 p-5"
+          className="relative overflow-hidden rounded-2xl border border-brand-primary/20 bg-gradient-to-br from-brand-primary/5 via-bg-surface to-accent-gold/5 p-4"
         >
           {/* Background decoration */}
-          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary/5 rounded-full blur-2xl" />
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-accent-gold/5 rounded-full blur-2xl" />
+          <div className="absolute top-0 right-0 w-28 h-28 bg-brand-primary/10 rounded-full blur-2xl" />
+          <div className="absolute bottom-0 left-0 w-20 h-20 bg-accent-gold/10 rounded-full blur-2xl" />
           
           <div className="relative">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary">
-                <Timer className="h-4 w-4 text-white" />
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-primary to-brand-primary-hover">
+                <Sparkles className="h-3.5 w-3.5 text-white" />
               </div>
-              <div>
-                <h3 className="font-heading text-sm font-bold text-text-primary">Free Trial Expiry</h3>
-                <p className="text-[11px] text-text-secondary">Your PREMIUM plan expires in</p>
+              <div className="flex-1">
+                <h3 className="font-heading text-sm font-bold text-text-primary">30 Days Premium Trial</h3>
+                <p className="text-[10px] text-text-secondary">Your free PREMIUM access expires in</p>
               </div>
-              <div className="ml-auto flex items-center gap-1">
-                <span className="flex h-2 w-2 rounded-full bg-profit-green animate-pulse" />
-                <span className="text-[10px] font-semibold text-profit-green uppercase">Active</span>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-profit-green/10">
+                <span className="flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
+                <span className="text-[9px] font-semibold text-profit-green uppercase">Active</span>
               </div>
             </div>
 
-            {/* Countdown Display */}
-            <div className="grid grid-cols-4 gap-2">
+            {/* Countdown Display - Styled */}
+            <div className="grid grid-cols-4 gap-1.5 mb-3">
               {[
                 { value: timeLeft.days, label: 'Days' },
-                { value: timeLeft.hours, label: 'Hours' },
-                { value: timeLeft.minutes, label: 'Mins' },
-                { value: timeLeft.seconds, label: 'Secs' },
+                { value: timeLeft.hours, label: 'Hrs' },
+                { value: timeLeft.minutes, label: 'Min' },
+                { value: timeLeft.seconds, label: 'Sec' },
               ].map((item, i) => (
                 <motion.div
                   key={item.label}
-                  initial={{ scale: 0.9 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: i * 0.1 }}
-                  className="text-center p-2.5 rounded-xl bg-bg-surface/80 backdrop-blur-sm border border-border"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: i * 0.08, type: 'spring', stiffness: 300 }}
+                  className="text-center p-2 rounded-xl bg-white/60 dark:bg-bg-surface/80 backdrop-blur-sm border border-border/50"
                 >
                   <span className={cn(
-                    "font-mono text-lg sm:text-xl font-bold tabular-nums block",
-                    item.value <= 1 && (item.label === 'Days' || item.label === 'Hours') 
+                    "font-mono text-xl sm:text-2xl font-bold tabular-nums block leading-none",
+                    item.value <= 1 && (item.label === 'Days' || item.label === 'Hrs') 
                       ? "text-loss-red" 
-                      : "text-text-primary"
+                      : item.label === 'Days'
+                        ? "text-brand-primary"
+                        : "text-text-primary"
                   )}>
                     {String(item.value).padStart(2, '0')}
                   </span>
-                  <span className="text-[9px] text-text-tertiary uppercase tracking-wider">{item.label}</span>
+                  <span className="text-[8px] text-text-tertiary uppercase tracking-wider mt-1 block">{item.label}</span>
                 </motion.div>
               ))}
             </div>
 
             {/* Progress bar */}
-            <div className="mt-4">
-              <div className="flex justify-between text-[10px] text-text-secondary mb-1.5">
-                <span>Trial Progress</span>
-                <span>{timeLeft.days} days remaining</span>
+            <div className="mb-2">
+              <div className="flex justify-between text-[9px] text-text-secondary mb-1">
+                <span>Trial Usage</span>
+                <span>{30 - timeLeft.days}/30 days used</span>
               </div>
-              <div className="h-2 w-full rounded-full bg-bg-surface-alt overflow-hidden">
+              <div className="h-1.5 w-full rounded-full bg-bg-surface-alt overflow-hidden">
                 <motion.div
                   className="h-full rounded-full bg-gradient-to-r from-brand-primary via-accent-gold to-brand-primary-hover"
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.max(0, Math.min(100, ((30 - timeLeft.days) / 30) * 100))}%` }}
-                  transition={{ duration: 1, ease: 'easeOut' }}
+                  transition={{ duration: 1.5, ease: 'easeOut' }}
                 />
               </div>
             </div>
 
-            {/* CTA Buttons */}
-            <div className="mt-4 flex gap-2">
-              <a
-                href="/subscription"
-                className="flex-1 flex items-center justify-center gap-1.5 h-10 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors"
-              >
-                <Crown className="h-3.5 w-3.5" />
-                Upgrade Now
-              </a>
-              <a
-                href="/free-trial"
-                className="flex items-center justify-center gap-1.5 h-10 px-4 rounded-lg border border-border text-xs font-semibold text-text-secondary hover:bg-bg-surface-alt hover:text-text-primary transition-colors"
-              >
-                Details
-                <ChevronRight className="h-3 w-3" />
-              </a>
-            </div>
+            {/* CTA */}
+            <a
+              href="/subscription"
+              className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white text-xs font-semibold hover:shadow-lg hover:shadow-brand-primary/25 transition-all mt-1"
+            >
+              <Crown className="h-3.5 w-3.5" />
+              Upgrade to Premium — ₹299/mo
+            </a>
           </div>
         </motion.div>
       )}
