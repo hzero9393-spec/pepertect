@@ -1,16 +1,18 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/useAppStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, TrendingUp, BarChart3, Briefcase, Eye,
-  GraduationCap, CreditCard, HelpCircle, Settings, User,
+  GraduationCap, HelpCircle, Settings, User,
   ChevronLeft, ChevronRight, LogOut, Zap, ListTree, Wallet, History,
+  Wallet as WalletIcon,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { getInitials } from '@/lib/utils';
+import { getInitials, formatINR } from '@/lib/utils';
 
 interface NavItem {
   id: string;
@@ -31,7 +33,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'history', label: 'Wallet History', icon: Wallet },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
   { id: 'learning', label: 'Learn', icon: GraduationCap, premium: true },
-  { id: 'subscription', label: 'Pricing', icon: CreditCard },
   { id: 'support', label: 'Support', icon: HelpCircle },
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -39,8 +40,33 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useAppStore();
-  const { user, logout, isAuthenticated } = useAuthStore();
+  const { user, logout, isAuthenticated, token } = useAuthStore();
   const pathname = usePathname();
+  const [availableMargin, setAvailableMargin] = useState<number | null>(null);
+
+  // Fetch user's available margin for display
+  useEffect(() => {
+    if (!token || !isAuthenticated) return;
+    
+    const fetchBalance = async () => {
+      try {
+        const res = await fetch('/api/portfolio', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && data.data) {
+          setAvailableMargin(Number(data.data.availableMargin) || null);
+        }
+      } catch {
+        // Silent fail
+      }
+    };
+
+    fetchBalance();
+    // Refresh balance every 30 seconds
+    const interval = setInterval(fetchBalance, 30000);
+    return () => clearInterval(interval);
+  }, [token, isAuthenticated]);
 
   if (!isAuthenticated) return null;
 
@@ -113,9 +139,21 @@ export function Sidebar() {
         })}
       </nav>
 
-      {/* User section */}
+      {/* User section with Balance */}
       {sidebarOpen && user && (
-        <div className="border-t border-border-default p-3">
+        <div className="border-t border-border-default p-3 space-y-3">
+          {/* Balance Card */}
+          <div className="rounded-xl bg-gradient-to-r from-brand-primary/10 to-accent-gold/10 p-3 border border-brand-primary/20">
+            <div className="flex items-center gap-2 mb-1">
+              <WalletIcon className="h-4 w-4 text-brand-primary" />
+              <span className="text-[11px] font-medium text-text-secondary">Available Margin</span>
+            </div>
+            <p className="font-heading text-lg font-bold text-text-primary tabular-nums">
+              {availableMargin !== null ? formatINR(availableMargin) : '₹--'}
+            </p>
+          </div>
+          
+          {/* User Info */}
           <div className="flex items-center gap-3">
             <Avatar className="h-8 w-8">
               <AvatarFallback className="bg-brand-primary text-xs text-white">
@@ -133,6 +171,27 @@ export function Sidebar() {
               aria-label="Logout"
             >
               <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Collapsed User Section (no balance visible) */}
+      {!sidebarOpen && user && (
+        <div className="border-t border-border-default p-2">
+          <div className="flex flex-col items-center gap-2">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-brand-primary text-xs text-white">
+                {getInitials(user.name || user.email)}
+              </AvatarFallback>
+            </Avatar>
+            <button
+              onClick={logout}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary hover:bg-bg-surface-alt hover:text-loss-red"
+              title="Logout"
+              aria-label="Logout"
+            >
+              <LogOut className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>

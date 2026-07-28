@@ -56,6 +56,9 @@ export function DashboardPage() {
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Yesterday's stats (for showing previous day's performance)
+  const [yesterdayStats, setYesterdayStats] = useState<{ wins: number; totalTrades: number; pnl: number } | null>(null);
+
   // Trial status for hiding upgrade buttons
   const [trialEndsAt, setTrialEndsAt] = useState<Date | null>(null);
   const [trialStatus, setTrialStatus] = useState<'active' | 'expired' | 'none'>('none');
@@ -167,21 +170,31 @@ export function DashboardPage() {
       if (!token) return;
       try {
         const headers = { Authorization: `Bearer ${token}` };
-        const [pRes, posRes, idxRes, ordRes] = await Promise.all([
+        const [pRes, posRes, idxRes, ordRes, ytdRes] = await Promise.all([
           fetch('/api/portfolio', { headers }),
           fetch('/api/positions', { headers }),
           fetch('/api/market/indices', { headers }),
           fetch('/api/orders', { headers }),
+          fetch('/api/trades?yesterday=true', { headers }), // Get yesterday's trades
         ]);
         const pData = await pRes.json();
         const posData = await posRes.json();
         const idxData = await idxRes.json();
         const ordData = await ordRes.json();
+        const ytdData = await ytdRes.json();
 
         if (pData.success) setPortfolio(pData.data);
         if (posData.success) setPositions(posData.data);
         if (idxData.success) setIndices(idxData.data);
         if (ordData.success) setRecentOrders(ordData.data.slice(0, 5));
+        
+        // Calculate yesterday's stats from trades
+        if (ytdData.success && Array.isArray(ytdData.data)) {
+          const trades = ytdData.data;
+          const wins = trades.filter((t: { pnl: number }) => t.pnl > 0).length;
+          const totalPnl = trades.reduce((sum: number, t: { pnl: number }) => sum + t.pnl, 0);
+          setYesterdayStats({ wins, totalTrades: trades.length, pnl: totalPnl });
+        }
       } catch (err) {
         console.error('Dashboard fetch error:', err);
       } finally {
@@ -251,10 +264,14 @@ export function DashboardPage() {
 
   const totalPnl = portfolio?.totalPnl ?? 0;
   const totalPnlPositive = totalPnl >= 0;
-  const winRate = portfolio?.winRate ?? 0;
-  const wins = portfolio?.winningTrades ?? 0;
-  const totalTrades = portfolio?.totalTrades ?? 0;
-  const losses = Math.max(0, totalTrades - wins);
+  
+  // Use yesterday's stats if available, otherwise fall back to cumulative
+  const displayWins = yesterdayStats?.wins ?? portfolio?.winningTrades ?? 0;
+  const displayTotalTrades = yesterdayStats?.totalTrades ?? portfolio?.totalTrades ?? 0;
+  const displayPnl = yesterdayStats?.pnl ?? totalPnl;
+  const displayPnlPositive = displayPnl >= 0;
+  const winRate = displayTotalTrades > 0 ? Math.round((displayWins / displayTotalTrades) * 100) : 0;
+  const losses = Math.max(0, displayTotalTrades - displayWins);
   const invested = portfolio?.investedAmount ?? 0;
   const totalPnlPct = invested > 0 ? (totalPnl / invested) * 100 : 0;
 
@@ -399,16 +416,16 @@ export function DashboardPage() {
           value={formatINR(portfolio?.availableMargin ?? tierFallback)}
           subtext={`Invested: ${formatINR(portfolio?.investedAmount ?? 0)}`}
         />
-        {/* Win Rate */}
+        {/* Win Rate - Shows Yesterday's Performance */}
         <MetricCard
           icon={Trophy}
           iconBg="bg-tint-yellow"
           iconColor="text-accent-gold"
-          label="Win Rate"
+          label={yesterdayStats ? "Yesterday's Win Rate" : "Win Rate"}
           value={
-            <span className="text-brand-primary">{winRate}%</span>
+            <span className={displayPnlPositive ? "text-profit-green" : "text-loss-red"}>{winRate}%</span>
           }
-          subtext={`${wins} Wins • ${losses} Losses`}
+          subtext={`${displayWins} Wins • ${losses} Losses${yesterdayStats ? ` • P&L: ${displayPnl >= 0 ? '+' : ''}${formatINR(displayPnl)}` : ''}`}
         />
       </div>
 

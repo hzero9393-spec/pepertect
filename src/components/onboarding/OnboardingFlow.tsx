@@ -248,6 +248,9 @@ export function OnboardingFlow() {
   const [activationError, setActivationError] = useState<string | null>(null);
 
   /* ---------- Auth + trial eligibility check ---------- */
+  const [trialCheckDone, setTrialCheckDone] = useState(false);
+  const [trialCheckError, setTrialCheckError] = useState<string | null>(null);
+
   useEffect(() => {
     setMounted(true);
     if (!token) { window.location.href = '/login'; return; }
@@ -258,12 +261,35 @@ export function OnboardingFlow() {
         });
         const d = await res.json();
         if (d.success && d.data) {
-          if (d.data.active) { window.location.href = '/dashboard'; return; }
-          if (!d.data.eligible && d.data.expired) { window.location.href = '/subscription'; return; }
-          if (!d.data.eligible && !d.data.expired) { window.location.href = '/dashboard'; return; }
+          // If trial is ACTIVE - go to dashboard (user already going through or completed)
+          if (d.data.active) { 
+            window.location.href = '/dashboard'; 
+            return; 
+          }
+          // If trial was USED before (expired + trialUsed flag) - go to subscription
+          if (d.data.trialUsed || (d.data.expired && d.data.startedAt)) { 
+            window.location.href = '/subscription'; 
+            return; 
+          }
+          // If eligible (new user) - show onboarding flow
+          if (d.data.eligible) {
+            setChecked(true);
+            setTrialCheckDone(true);
+            return;
+          }
+          // For any other case (edge cases), show onboarding
+          setChecked(true);
+          setTrialCheckDone(true);
+        } else {
+          // API error - show onboarding anyway
+          setChecked(true);
+          setTrialCheckDone(true);
         }
-      } catch { /* show flow anyway */ }
-      setChecked(true);
+      } catch { 
+        // Network error - show onboarding anyway
+        setChecked(true);
+        setTrialCheckDone(true);
+      }
     })();
   }, [token]);
 
@@ -318,7 +344,16 @@ export function OnboardingFlow() {
         setShowReward(true);
         setTimeout(() => soundRef.current.success(), 400);
       } else {
-        setActivationError(result.error || 'Failed to activate trial. Please try again.');
+        // Handle specific error types with user-friendly messages
+        if (result.error === 'TRIAL_ALREADY_USED' || result.message?.includes('already used')) {
+          setActivationError('This free trial offer has already been used on your account. You can upgrade to Premium to continue enjoying all features!');
+        } else if (result.error === 'ALREADY_ACTIVE' || result.message?.includes('already active')) {
+          setActivationError('You already have an active free trial! Enjoy your Premium features.');
+          // Redirect to dashboard after short delay
+          setTimeout(() => window.location.href = '/dashboard', 2000);
+        } else {
+          setActivationError(result.error || result.message || 'Failed to activate trial. Please try again.');
+        }
       }
     } catch (err) {
       console.error('Activation error:', err);
@@ -433,8 +468,8 @@ export function OnboardingFlow() {
         </div>
       </main>
 
-      {/* ====== FOOTER NAVIGATION ====== */}
-      {step > 0 && step < TOTAL_STEPS - 1 && (
+      {/* ====== FOOTER NAVIGATION (only for steps without inline buttons) ====== */}
+      {step > 0 && step < TOTAL_STEPS - 1 && step !== 3 && step !== 4 && (
         <footer className="flex items-center justify-between px-5 pb-8 pt-4 sm:px-8">
           <button
             onClick={goBack}

@@ -11,7 +11,8 @@ import {
   Camera, Copy, Check, Monitor, ShieldCheck, BadgeCheck,
   Clock, Store, Grid as GridIcon,
   TrendingUp, Moon, Sun, X, Loader2, AlertTriangle,
-  Gift, Sparkles, Timer, Crown, Zap,
+  Trash2, Gift, Sparkles, Timer, Crown, Zap,
+  Download, Smartphone,
 } from 'lucide-react';
 import type { Portfolio } from '@/types';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
@@ -778,6 +779,9 @@ export function ProfilePage() {
           </div>
         </div>
       )}
+
+      {/* ============== INSTALL APP BUTTON ============== */}
+      <InstallAppButton />
     </div>
   );
 }
@@ -977,4 +981,123 @@ function TimeUnit({
       </span>
     </div>
   );
+}
+
+// ─── Install App Button Component ──────────────────────────
+function InstallAppButton() {
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+
+  useEffect(() => {
+    // Check if iOS
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setIsIOS(ios);
+
+    // Check if already installed
+    if (localStorage.getItem('pepertect_app_installed')) {
+      setInstalled(true);
+    }
+
+    // Listen for install prompt
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', () => {
+      localStorage.setItem('pepertect_app_installed', 'true');
+      setInstalled(true);
+      setDeferredPrompt(null);
+    });
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt && !isIOS) return;
+    
+    setInstalling(true);
+    
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        localStorage.setItem('pepertect_app_installed', 'true');
+        setInstalled(true);
+      }
+      setDeferredPrompt(null);
+    }
+    
+    setInstalling(false);
+  };
+
+  // Don't show if already installed or no prompt available (and not iOS)
+  if (installed) return null;
+  if (!deferredPrompt && !isIOS) return null;
+
+  return (
+    <div className="rounded-xl border border-border bg-gradient-to-r from-brand-primary/5 to-accent-gold/5 p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary/10">
+          <Smartphone className="h-5 w-5 text-brand-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-text-primary">Install Pepertect</p>
+          <p className="text-xs text-text-secondary">Add to home screen for quick access</p>
+        </div>
+        
+        {isIOS ? (
+          <a
+            href="/free-trial"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-bg-surface-alt border border-border text-sm font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
+          >
+            Learn How
+            <ChevronRight className="h-4 w-4" />
+          </a>
+        ) : (
+          <button
+            onClick={handleInstall}
+            disabled={installing}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover transition-colors disabled:opacity-50"
+          >
+            {installing ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Installing...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Install
+              </>
+            )}
+          </button>
+        )}
+      </div>
+      
+      {isIOS && (
+        <p className="mt-2 text-[11px] text-text-tertiary text-center">
+          Tap Share → "Add to Home Screen" to install
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Type declaration for BeforeInstallPromptEvent
+declare global {
+  interface WindowEventMap {
+    beforeinstallprompt: BeforeInstallPromptEvent;
+  }
+}
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }

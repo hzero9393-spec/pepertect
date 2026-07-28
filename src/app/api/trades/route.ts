@@ -7,10 +7,31 @@ export async function GET(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
 
   try {
+    // Check for yesterday filter
+    const url = new URL(req.url);
+    const yesterdayOnly = url.searchParams.get('yesterday') === 'true';
+    
+    let whereClause: Record<string, unknown> = { userId: auth.userId };
+    
+    if (yesterdayOnly) {
+      // Get trades from yesterday (00:00:00 to 23:59:59)
+      const now = new Date();
+      const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+      const yesterdayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+      
+      whereClause = {
+        userId: auth.userId,
+        createdAt: {
+          gte: yesterdayStart,
+          lte: yesterdayEnd,
+        },
+      };
+    }
+
     const trades = await db.trade.findMany({
-      where: { userId: auth.userId },
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: 100,
     });
 
     const mapped = trades.map((t) => ({
