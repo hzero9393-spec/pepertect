@@ -50,6 +50,13 @@ scripts/
 worklog.md
 .env*
 
+# Design Reference (do not push)
+DESIGN_SYSTEM.md
+DESIGN_*.md
+
+# Environment Reference (do not push)
+ENV_REFERENCE.md
+
 # OpenNext
 .open-next
 

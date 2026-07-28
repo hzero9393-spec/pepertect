@@ -9,7 +9,7 @@ import {
   BookOpen, BarChart3, Zap, GraduationCap, Target,
   Layers, Trophy, TrendingUp, Activity,
   LineChart, Wallet, Shield, ChevronRight,
-  Sparkles, Clock, Volume2, VolumeX,
+  Sparkles, Clock, Volume2, VolumeX, PartyPopper, Gift,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -51,9 +51,9 @@ const GOAL_OPTIONS = [
 ];
 
 const CAPITAL_OPTIONS = [
-  { value: 100000, label: '1,00,000', sub: 'Standard', popular: true },
-  { value: 500000, label: '5,00,000', sub: 'Trader', popular: false },
-  { value: 1000000, label: '10,00,000', sub: 'Pro', popular: false },
+  { value: 100000, label: '₹1,00,000', sub: 'Standard (Recommended)', popular: true },
+  { value: 500000, label: '₹5,00,000', sub: 'Trader', popular: false },
+  { value: 1000000, label: '₹10,00,000', sub: 'Pro', popular: false },
 ];
 
 const MARKET_OPTIONS = [
@@ -141,15 +141,15 @@ class SoundEngine {
   success() {
     if (this._muted) return;
     const c = this.getCtx(), t = c.currentTime;
-    [523, 659, 784].forEach((f, i) => {
+    [523, 659, 784, 1047].forEach((f, i) => {
       const o = c.createOscillator(), g = c.createGain();
       o.connect(g); g.connect(c.destination);
       o.type = 'sine';
-      o.frequency.setValueAtTime(f, t + i * 0.14);
-      g.gain.setValueAtTime(0, t + i * 0.14);
-      g.gain.linearRampToValueAtTime(0.08, t + i * 0.14 + 0.04);
-      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.14 + 0.35);
-      o.start(t + i * 0.14); o.stop(t + i * 0.14 + 0.35);
+      o.frequency.setValueAtTime(f, t + i * 0.12);
+      g.gain.setValueAtTime(0, t + i * 0.12);
+      g.gain.linearRampToValueAtTime(0.08, t + i * 0.12 + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.12 + 0.35);
+      o.start(t + i * 0.12); o.stop(t + i * 0.12 + 0.35);
     });
   }
 
@@ -197,26 +197,34 @@ function AnimatedCounter({ target, duration = 3000, onComplete, onTick }: {
 }
 
 /* ================================================================
-   CHECKMARK DRAW (SVG animated circle + check)
+   CONFETTI CELEBRATION COMPONENT
    ================================================================ */
-function AnimatedCheck({ className }: { className?: string }) {
+function ConfettiCelebration() {
   return (
-    <svg className={cn('w-16 h-16', className)} viewBox="0 0 64 64" fill="none">
-      <motion.circle
-        cx="32" cy="32" r="28"
-        stroke="currentColor" strokeWidth="3" strokeLinecap="round"
-        initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        style={{ strokeDasharray: 176, strokeDashoffset: 176 }}
-      />
-      <motion.path
-        d="M20 33 L28 41 L44 25"
-        stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-        initial={{ pathLength: 0 }} animate={{ pathLength: 1 }}
-        transition={{ duration: 0.35, delay: 0.4, ease: 'easeOut' }}
-        style={{ strokeDasharray: 40, strokeDashoffset: 40 }}
-      />
-    </svg>
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {[...Array(20)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute w-2 h-2 rounded-sm"
+          style={{
+            left: `${Math.random() * 100}%`,
+            top: `-10px`,
+            backgroundColor: ['#2563EB', '#F59E0B', '#10B981', '#EF4444', '#8B5CF6'][i % 5],
+          }}
+          initial={{ y: -10, rotate: 0, opacity: 1 }}
+          animate={{
+            y: window.innerHeight + 20,
+            rotate: 360 + Math.random() * 360,
+            opacity: 0,
+          }}
+          transition={{
+            duration: 2 + Math.random() * 1.5,
+            delay: Math.random() * 0.5,
+            ease: 'easeOut',
+          }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -237,6 +245,7 @@ export function OnboardingFlow() {
   const [activating, setActivating] = useState(false);
   const [showReward, setShowReward] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [activationError, setActivationError] = useState<string | null>(null);
 
   /* ---------- Auth + trial eligibility check ---------- */
   useEffect(() => {
@@ -266,6 +275,7 @@ export function OnboardingFlow() {
 
   const goBack = useCallback(() => {
     soundRef.current.click();
+    setActivationError(null);
     if (step > 0) { setDir(-1); setStep(s => s - 1); }
   }, [step]);
 
@@ -281,8 +291,10 @@ export function OnboardingFlow() {
   /* ---------- Submit & activate ---------- */
   const handleActivate = useCallback(async () => {
     if (!token) return;
+    setActivationError(null);
     setActivating(true);
     try {
+      // Call the onboarding complete API
       const res = await fetch('/api/onboarding/complete', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -294,6 +306,7 @@ export function OnboardingFlow() {
         }),
       });
       const result = await res.json();
+      
       if (result.success) {
         /* Update local state */
         if (user) {
@@ -304,9 +317,12 @@ export function OnboardingFlow() {
         }
         setShowReward(true);
         setTimeout(() => soundRef.current.success(), 400);
+      } else {
+        setActivationError(result.error || 'Failed to activate trial. Please try again.');
       }
     } catch (err) {
       console.error('Activation error:', err);
+      setActivationError('Network error. Please check your connection and try again.');
     } finally {
       setActivating(false);
     }
@@ -411,7 +427,7 @@ export function OnboardingFlow() {
               {step === 2 && <GoalStep value={data.goal} onSelect={(v) => selectAutoAdvance('goal', v)} />}
               {step === 3 && <CapitalStep value={data.capital} onSelect={(v) => { soundRef.current.select(); setData(p => ({ ...p, capital: v })); }} onContinue={goNext} />}
               {step === 4 && <MarketStep values={data.markets} onToggle={(v) => { soundRef.current.select(); setData(p => ({ ...p, markets: p.markets.includes(v) ? p.markets.filter(m => m !== v) : [...p.markets, v] })); }} onContinue={goNext} />}
-              {step === 5 && <ConfirmStep data={data} onActivate={handleActivate} activating={activating} />}
+              {step === 5 && <ConfirmStep data={data} onActivate={handleActivate} activating={activating} error={activationError} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -438,7 +454,7 @@ export function OnboardingFlow() {
         </footer>
       )}
 
-      {/* ====== REWARD OVERLAY ====== */}
+      {/* ====== REWARD OVERLAY WITH COUNTING ANIMATION ====== */}
       <AnimatePresence>
         {showReward && (
           <motion.div
@@ -451,6 +467,9 @@ export function OnboardingFlow() {
               background: 'linear-gradient(135deg, #1E40AF 0%, #2563EB 40%, #3B82F6 100%)',
             }}
           >
+            {/* Confetti celebration */}
+            <ConfettiCelebration />
+
             {/* Subtle floating orbs */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
               <div className="absolute -top-20 -left-20 h-80 w-80 rounded-full bg-white/10 blur-3xl animate-pulse" />
@@ -469,33 +488,83 @@ export function OnboardingFlow() {
                 boxShadow: '0 24px 80px -12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2)',
               }}
             >
-              {/* Animated checkmark */}
-              <div className="flex justify-center mb-4">
-                <AnimatedCheck className="text-white" />
-              </div>
+              {/* 🎉 Celebration Icon */}
+              <motion.div 
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 15, delay: 0.2 }}
+                className="flex justify-center mb-4"
+              >
+                <div className="relative">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-yellow-300 to-yellow-500 shadow-lg shadow-yellow-500/30">
+                    <PartyPopper className="h-10 w-10 text-white" />
+                  </div>
+                  {/* Sparkles around icon */}
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [0, 1.2, 1] }}
+                    transition={{ delay: 0.6, duration: 0.4 }}
+                    className="absolute -top-1 -right-1"
+                  >
+                    ✨
+                  </motion.div>
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [0, 1.2, 1] }}
+                    transition={{ delay: 0.7, duration: 0.4 }}
+                    className="absolute -bottom-1 -left-1"
+                  >
+                    🎊
+                  </motion.div>
+                </div>
+              </motion.div>
 
-              <h2 className="font-heading text-2xl sm:text-3xl font-bold">
-                Free Trial Activated
-              </h2>
-              <p className="mt-2 text-sm text-blue-100">
-                {data.capital >= 100000
-                  ? `Virtual Balance Credited`
-                  : 'Your account is ready'}
-              </p>
+              <motion.h2 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4, duration: 0.4 }}
+                className="font-heading text-2xl sm:text-3xl font-bold"
+              >
+                Congratulations! 🎉
+              </motion.h2>
+              
+              <motion.p 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.4 }}
+                className="mt-2 text-sm text-blue-100"
+              >
+                Your Free Trial is Activated!
+              </motion.p>
 
-              {/* Counter */}
-              <div className="mt-6 mb-2">
+              <motion.p 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.6 }}
+                className="mt-1 text-xs text-blue-200/80"
+              >
+                Virtual Balance Credited Successfully
+              </motion.p>
+
+              {/* Counter Animation - 0 → ₹Target */}
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.8, duration: 0.5 }}
+                className="mt-6 mb-2 p-4 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20"
+              >
+                <p className="text-xs text-blue-200 mb-2">Your Virtual Trading Balance</p>
                 <div className="inline-flex items-baseline gap-1">
-                  <span className="text-lg text-blue-200 font-medium">₹</span>
-                  <span className="font-heading text-5xl sm:text-6xl font-bold tabular-nums">
+                  <span className="text-xl text-yellow-300 font-bold">₹</span>
+                  <span className="font-heading text-4xl sm:text-5xl font-bold tabular-nums text-white">
                     <AnimatedCounter
                       target={data.capital}
-                      duration={3000}
+                      duration={2500}
                       onTick={() => soundRef.current.tick()}
                     />
                   </span>
                 </div>
-                <p className="text-xs text-blue-200 mt-1">Virtual Trading Balance</p>
+                <p className="text-[10px] text-blue-200/60 mt-2">Credited instantly • No real money required</p>
               </div>
 
               {/* Features list */}
@@ -503,6 +572,7 @@ export function OnboardingFlow() {
                 variants={staggerContainer}
                 initial="hidden"
                 animate="show"
+                transition={{ delay: 1.2 }}
                 className="mt-6 space-y-2.5 text-left"
               >
                 {REWARD_FEATURES.map((feat) => (
@@ -520,20 +590,25 @@ export function OnboardingFlow() {
               </motion.div>
 
               {/* Plan badge */}
-              <div className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-sm">
-                <Sparkles className="h-3 w-3" />
-                PRO Plan — Free for 30 days
-              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 2, duration: 0.4 }}
+                className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-accent-gold/30 to-brand-primary/30 px-4 py-1.5 text-xs font-semibold backdrop-blur-sm border border-white/20"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-yellow-300" />
+                <span>PREMIUM Plan Active — Free for 30 Days</span>
+              </motion.div>
 
-              {/* CTA */}
+              {/* CTA Button */}
               <motion.button
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 3.5, duration: 0.4 }}
+                transition={{ delay: 3, duration: 0.4 }}
                 onClick={goToDashboard}
-                className="mt-6 w-full inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-white text-brand-primary font-bold text-sm hover:bg-blue-50 transition-colors active:scale-[0.97]"
+                className="mt-6 w-full inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-white text-brand-primary font-bold text-sm hover:bg-blue-50 transition-all active:scale-[0.97] shadow-lg shadow-black/10"
               >
-                Go to Dashboard
+                Start Trading Now
                 <ArrowRight className="h-4 w-4" />
               </motion.button>
             </motion.div>
@@ -746,7 +821,7 @@ function CapitalStep({ value, onSelect, onContinue }: {
             </div>
             <div className="flex-1">
               <p className={cn('font-mono text-lg font-bold tabular-nums', value === opt.value ? 'text-brand-primary' : 'text-text-primary')}>
-                ₹{opt.label}
+                {opt.label}
               </p>
               <p className="text-xs text-text-secondary">{opt.sub}</p>
             </div>
@@ -854,12 +929,13 @@ function MarketStep({ values, onToggle, onContinue }: {
 }
 
 /* ================================================================
-   STEP: CONFIRMATION
+   STEP: CONFIRMATION (with error display)
    ================================================================ */
-function ConfirmStep({ data, onActivate, activating }: {
+function ConfirmStep({ data, onActivate, activating, error }: {
   data: OnboardingData;
   onActivate: () => void;
   activating: boolean;
+  error: string | null;
 }) {
   const expLabel = EXPERIENCE_OPTIONS.find(o => o.value === data.experience)?.label ?? data.experience;
   const goalLabel = GOAL_OPTIONS.find(o => o.value === data.goal)?.label ?? data.goal;
@@ -881,37 +957,48 @@ function ConfirmStep({ data, onActivate, activating }: {
       </div>
 
       {/* Plan details */}
-      <div className="mt-4 rounded-xl bg-tint-blue p-4 border border-brand-primary/20">
+      <div className="mt-4 rounded-xl bg-gradient-to-r from-tint-blue to-tint-purple p-4 border border-brand-primary/20">
         <div className="flex items-center gap-2 mb-1">
           <Sparkles className="h-4 w-4 text-brand-primary" />
           <span className="text-sm font-semibold text-text-primary">30-Day Free PREMIUM Trial</span>
         </div>
         <p className="text-xs text-text-secondary leading-relaxed">
           Full access to all premium features. No credit card required.
-          Your virtual balance of ₹{data.capital.toLocaleString('en-IN')} will be credited instantly.
+          Your virtual balance of <strong className="text-profit-green">₹{data.capital.toLocaleString('en-IN')}</strong> will be credited instantly.
           After 30 days, you can continue with the free plan or upgrade.
         </p>
       </div>
+
+      {/* Error message */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mt-3 rounded-lg border border-loss-red/30 bg-loss-red/5 px-4 py-3"
+        >
+          <p className="text-xs text-loss-red font-medium">{error}</p>
+        </motion.div>
+      )}
 
       {/* Activate button */}
       <div className="mt-6">
         <button
           onClick={onActivate}
           disabled={activating}
-          className="w-full inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-brand-primary text-white font-bold text-sm hover:bg-brand-primary-hover transition-all active:scale-[0.97] disabled:opacity-60 disabled:pointer-events-none shadow-lg shadow-brand-primary/25"
+          className="w-full inline-flex h-14 items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white font-bold text-base hover:shadow-xl hover:shadow-brand-primary/30 transition-all active:scale-[0.98] disabled:opacity-60 disabled:pointer-events-none disabled:hover:shadow-none"
         >
           {activating ? (
             <>
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
-                className="h-4 w-4 rounded-full border-2 border-white border-t-transparent"
+                className="h-5 w-5 rounded-full border-2.5 border-white border-t-transparent"
               />
               Activating...
             </>
           ) : (
             <>
-              <Sparkles className="h-4 w-4" />
+              <Gift className="h-5 w-5" />
               Activate Free Trial
             </>
           )}

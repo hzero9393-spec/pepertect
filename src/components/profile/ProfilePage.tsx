@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useTheme } from 'next-themes';
 import { getInitials, formatINR, cn } from '@/lib/utils';
@@ -10,7 +11,7 @@ import {
   Camera, Copy, Check, Monitor, ShieldCheck, BadgeCheck,
   Clock, Store, Grid as GridIcon,
   TrendingUp, Moon, Sun, X, Loader2, AlertTriangle,
-  RotateCcw, Trash2, Gift,
+  RotateCcw, Trash2, Gift, Sparkles, Timer, Crown, Zap,
 } from 'lucide-react';
 import type { Portfolio } from '@/types';
 import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
@@ -44,6 +45,11 @@ export function ProfilePage() {
   const [resetDataSubmitting, setResetDataSubmitting] = useState(false);
   const [resetDataResult, setResetDataResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Trial Expiry Timer state
+  const [trialEndsAt, setTrialEndsAt] = useState<Date | null>(null);
+  const [trialStatus, setTrialStatus] = useState<'active' | 'expired' | 'none'>('none');
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
   const mounted = typeof window !== 'undefined';
 
   useEffect(() => {
@@ -68,6 +74,54 @@ export function ProfilePage() {
   useEffect(() => {
     setAvatarUrl(user?.avatar ?? null);
   }, [user?.avatar]);
+
+  // Fetch trial status and setup countdown timer
+  const fetchTrialStatus = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/user/trial-status', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const d = await res.json();
+      if (d.success && d.data) {
+        if (d.data.active && d.data.endsAt) {
+          setTrialStatus('active');
+          setTrialEndsAt(new Date(d.data.endsAt));
+        } else if (d.data.expired) {
+          setTrialStatus('expired');
+        }
+      }
+    } catch { /* silent fail */ }
+  }, [token]);
+
+  // Countdown timer effect
+  useEffect(() => {
+    fetchTrialStatus();
+    
+    const updateTimer = () => {
+      if (!trialEndsAt) return;
+      const now = new Date();
+      const diff = trialEndsAt.getTime() - now.getTime();
+      
+      if (diff <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        setTrialStatus('expired');
+        return;
+      }
+      
+      setTimeLeft({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((diff % (1000 * 60)) / 1000),
+      });
+    };
+
+    const interval = setInterval(updateTimer, 1000);
+    updateTimer(); // Initial call
+    
+    return () => clearInterval(interval);
+  }, [trialEndsAt, token, fetchTrialStatus]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -264,6 +318,125 @@ export function ProfilePage() {
     <div className="space-y-4">
       {/* ============== FREE TRIAL WIDGET ============== */}
       <FreeTrialWidget variant="card" />
+
+      {/* ============== TRIAL EXPIRY TIMER (when active) ============== */}
+      {trialStatus === 'active' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative overflow-hidden rounded-2xl border border-brand-primary/30 bg-gradient-to-br from-brand-primary/10 via-bg-surface to-accent-gold/5 p-5"
+        >
+          {/* Background decoration */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-brand-primary/5 rounded-full blur-2xl" />
+          <div className="absolute bottom-0 left-0 w-24 h-24 bg-accent-gold/5 rounded-full blur-2xl" />
+          
+          <div className="relative">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary">
+                <Timer className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <h3 className="font-heading text-sm font-bold text-text-primary">Free Trial Expiry</h3>
+                <p className="text-[11px] text-text-secondary">Your PREMIUM plan expires in</p>
+              </div>
+              <div className="ml-auto flex items-center gap-1">
+                <span className="flex h-2 w-2 rounded-full bg-profit-green animate-pulse" />
+                <span className="text-[10px] font-semibold text-profit-green uppercase">Active</span>
+              </div>
+            </div>
+
+            {/* Countdown Display */}
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { value: timeLeft.days, label: 'Days' },
+                { value: timeLeft.hours, label: 'Hours' },
+                { value: timeLeft.minutes, label: 'Mins' },
+                { value: timeLeft.seconds, label: 'Secs' },
+              ].map((item, i) => (
+                <motion.div
+                  key={item.label}
+                  initial={{ scale: 0.9 }}
+                  animate={{ scale: 1 }}
+                  transition={{ delay: i * 0.1 }}
+                  className="text-center p-2.5 rounded-xl bg-bg-surface/80 backdrop-blur-sm border border-border"
+                >
+                  <span className={cn(
+                    "font-mono text-lg sm:text-xl font-bold tabular-nums block",
+                    item.value <= 1 && (item.label === 'Days' || item.label === 'Hours') 
+                      ? "text-loss-red" 
+                      : "text-text-primary"
+                  )}>
+                    {String(item.value).padStart(2, '0')}
+                  </span>
+                  <span className="text-[9px] text-text-tertiary uppercase tracking-wider">{item.label}</span>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Progress bar */}
+            <div className="mt-4">
+              <div className="flex justify-between text-[10px] text-text-secondary mb-1.5">
+                <span>Trial Progress</span>
+                <span>{timeLeft.days} days remaining</span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-bg-surface-alt overflow-hidden">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-brand-primary via-accent-gold to-brand-primary-hover"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.max(0, Math.min(100, ((30 - timeLeft.days) / 30) * 100))}%` }}
+                  transition={{ duration: 1, ease: 'easeOut' }}
+                />
+              </div>
+            </div>
+
+            {/* CTA Buttons */}
+            <div className="mt-4 flex gap-2">
+              <a
+                href="/subscription"
+                className="flex-1 flex items-center justify-center gap-1.5 h-10 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors"
+              >
+                <Crown className="h-3.5 w-3.5" />
+                Upgrade Now
+              </a>
+              <a
+                href="/free-trial"
+                className="flex items-center justify-center gap-1.5 h-10 px-4 rounded-lg border border-border text-xs font-semibold text-text-secondary hover:bg-bg-surface-alt hover:text-text-primary transition-colors"
+              >
+                Details
+                <ChevronRight className="h-3 w-3" />
+              </a>
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Trial Expired Banner */}
+      {trialStatus === 'expired' && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl border border-loss-red/30 bg-gradient-to-br from-loss-red/10 via-bg-surface to-tint-red/5 p-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tint-red">
+              <Crown className="h-5 w-5 text-loss-red" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-heading text-sm font-bold text-text-primary">Free Trial Ended</h3>
+              <p className="text-[11px] text-text-secondary mt-0.5">
+                Your 30-day free trial has expired. Upgrade to PREMIUM to continue enjoying all features.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/subscription"
+            className="mt-3 w-full flex items-center justify-center gap-1.5 h-10 rounded-lg bg-loss-red text-white text-xs font-semibold hover:bg-loss-red/90 transition-colors"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Upgrade to Premium — ₹299/month
+          </a>
+        </motion.div>
+      )}
 
       {/* ============== PROFILE HEADER CARD ============== */}
       <div className="card-soft p-4">
