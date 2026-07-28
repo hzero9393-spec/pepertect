@@ -8,6 +8,7 @@ import { useLiveQuote } from '@/hooks/useLiveQuote';
 import {
   Wallet, TrendingUp, TrendingDown, Activity, Trophy,
   BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame, History,
+  Calendar, Clock, ChevronDown, Sparkles, Crown,
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -41,6 +42,18 @@ function getMiniSeries(symbol: string, positive: boolean): number[] {
   return out;
 }
 
+// Date range options for dashboard filter
+const DATE_RANGES = [
+  { key: 'today', label: 'Today', icon: Calendar },
+  { key: 'tomorrow', label: 'Tomorrow', icon: Clock },
+  { key: 'week', label: 'Weekly', icon: BarChart3 },
+  { key: 'month', label: 'Monthly', icon: Calendar },
+  { key: '3months', label: '3 Months', icon: History },
+  { key: 'custom', label: 'Custom', icon: ChevronDown },
+] as const;
+
+type DateRangeKey = typeof DATE_RANGES[number]['key'];
+
 export function DashboardPage() {
   const { user, token } = useAuthStore();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
@@ -49,8 +62,25 @@ export function DashboardPage() {
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Trial status for hiding upgrade buttons
+  const [trialEndsAt, setTrialEndsAt] = useState<Date | null>(null);
+  const [trialStatus, setTrialStatus] = useState<'active' | 'expired' | 'none'>('none');
+  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+
+  // Date Range Filter state
+  const [selectedDateRange, setSelectedDateRange] = useState<DateRangeKey>('today');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
   // Tier-based fallback capital — used only when portfolio fetch hasn't returned yet
   const tierFallback = user?.tier === 'PREMIUM' ? 100000 : 10000;
+
+  // Helper: Should we show upgrade options? (hide if trial active with >2 days left)
+  const shouldShowUpgrade = useMemo(() => {
+    if (user?.tier === 'PREMIUM') return false; // Already premium, never show
+    if (trialStatus !== 'active') return true; // No active trial, show upgrade
+    // Active trial - only show if less than 2 days left
+    return timeLeft.days < 2;
+  }, [user?.tier, trialStatus, timeLeft.days]);
 
   // Live quotes via WebSocket (Cloudflare Worker → Upstox)
   const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
@@ -171,6 +201,51 @@ export function DashboardPage() {
     fetchData();
   }, [token]);
 
+  // Fetch trial status for upgrade button logic
+  useEffect(() => {
+    const fetchTrialStatus = async () => {
+      if (!token) return;
+      try {
+        const res = await fetch('/api/user/trial-status', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await res.json();
+        if (d.success && d.data) {
+          if (d.data.active && d.data.endsAt) {
+            setTrialStatus('active');
+            setTrialEndsAt(new Date(d.data.endsAt));
+          } else if (d.data.expired) {
+            setTrialStatus('expired');
+          }
+        }
+      } catch { /* silent fail */ }
+    };
+    fetchTrialStatus();
+  }, [token]);
+
+  // Countdown timer for trial
+  useEffect(() => {
+    if (!trialEndsAt) return;
+    const updateTimer = () => {
+      const now = new Date();
+      const diff = trialEndsAt.getTime() - now.getTime();
+      if (diff <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+        setTrialStatus('expired');
+        return;
+      }
+      setTimeLeft({
+        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((diff % (1000 * 60)) / 1000),
+      });
+    };
+    const interval = setInterval(updateTimer, 1000);
+    updateTimer();
+    return () => clearInterval(interval);
+  }, [trialEndsAt]);
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -198,8 +273,8 @@ export function DashboardPage() {
       {/* Upstox reconnect banner (shown when token is expired) */}
       <UpstoxReconnectBanner status={wsStatus} />
 
-      {/* ============== FREE TRIAL WIDGET (only show for FREE users who haven't activated trial) ============== */}
-      {(user?.tier !== 'PREMIUM') && <FreeTrialWidget variant="card" />}
+      {/* ============== FREE TRIAL WIDGET (HIDDEN when user has PREMIUM or active TRIAL) ============== */}
+      {(user?.tier !== 'PREMIUM' && user?.subscriptionTier !== 'TRIAL') && <FreeTrialWidget variant="card" />}
 
       {/* ============== HERO CARD ============== */}
       <div className="card-soft hero-gradient p-5 relative overflow-hidden">
@@ -238,9 +313,18 @@ export function DashboardPage() {
 
         <div className="relative">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-text-secondary">
-              {user?.tier === 'PREMIUM' ? 'PREMIUM Plan' : 'FREE Plan'}
-            </span>
+            {/* Plan Badge - Shows Trial Status */}
+            {trialStatus === 'active' ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-accent-gold/20 to-brand-primary/20 border border-accent-gold/30 text-[10px] font-bold text-brand-primary">
+                <Sparkles className="h-3 w-3 text-accent-gold" />
+                PREMIUM Trial
+                <span className="flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-text-secondary">
+                {user?.tier === 'PREMIUM' ? 'PREMIUM Plan' : 'FREE Plan'}
+              </span>
+            )}
             <span className="text-text-tertiary">·</span>
             <div className="flex items-center gap-1.5">
               <span className="live-dot-green" />
@@ -250,15 +334,90 @@ export function DashboardPage() {
           <h2 className="font-heading text-2xl font-bold text-text-primary mt-1">
             Welcome back, {user?.name?.split(' ')[0] || 'Trader'}
           </h2>
-          <div className="mt-2 flex items-center gap-1.5">
-            <a
-              href="/subscription"
-              className="text-sm font-semibold text-brand-primary hover:underline inline-flex items-center gap-1"
-            >
-              Upgrade <ArrowRight className="h-3.5 w-3.5" />
-            </a>
-          </div>
+          {/* Upgrade Link - ONLY shown when: not premium AND (no trial OR trial ending soon < 2 days) */}
+          {shouldShowUpgrade && (
+            <div className="mt-2 flex items-center gap-1.5">
+              <a
+                href="/subscription"
+                className="text-sm font-semibold text-brand-primary hover:underline inline-flex items-center gap-1"
+              >
+                Upgrade <ArrowRight className="h-3.5 w-3.5" />
+              </a>
+            </div>
+          )}
+          {/* Trial Active Notice - shows time left instead of upgrade */}
+          {trialStatus === 'active' && !shouldShowUpgrade && (
+            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/50 dark:bg-bg-surface/50 backdrop-blur-sm border border-border/30">
+              <Clock className="h-3.5 w-3.5 text-accent-gold" />
+              <span className="text-xs font-medium text-text-secondary">
+                Trial: <span className="font-mono font-bold text-brand-primary">{timeLeft.days}d {String(timeLeft.hours).padStart(2, '0')}:{String(timeLeft.minutes).padStart(2, '0')}:{String(timeLeft.seconds).padStart(2, '0')}</span> left
+              </span>
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* ============== DATE RANGE FILTER ============== */}
+      <div className="card-soft p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-brand-primary" />
+            <span className="text-xs font-semibold text-text-primary">Performance Period</span>
+          </div>
+          <span className="text-[10px] text-text-tertiary capitalize">{DATE_RANGES.find(d => d.key === selectedDateRange)?.label || 'Today'}</span>
+        </div>
+        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
+          {DATE_RANGES.map((range) => {
+            const Icon = range.icon;
+            const isActive = selectedDateRange === range.key;
+            return (
+              <button
+                key={range.key}
+                onClick={() => {
+                  setSelectedDateRange(range.key);
+                  if (range.key === 'custom') setShowDatePicker(!showDatePicker);
+                  else setShowDatePicker(false);
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all",
+                  isActive
+                    ? "bg-brand-primary text-white shadow-md shadow-brand-primary/25"
+                    : "bg-bg-surface-alt text-text-secondary hover:bg-bg-surface hover:text-text-primary"
+                )}
+              >
+                <Icon className={cn("h-3.5 w-3.5", isActive ? "text-white" : "text-text-tertiary")} />
+                {range.label}
+              </button>
+            );
+          })}
+        </div>
+        {/* Custom Date Picker (shown when 'custom' selected) */}
+        {showDatePicker && (
+          <div className="mt-3 pt-3 border-t border-border/50">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">From</label>
+                <input
+                  type="date"
+                  className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-bg-surface-alt text-xs font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">To</label>
+                <input
+                  type="date"
+                  className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-bg-surface-alt text-xs font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                />
+              </div>
+            </div>
+            <button
+              onClick={() => setShowDatePicker(false)}
+              className="mt-3 w-full h-9 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors"
+            >
+              Apply Filter
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ============== METRICS GRID 2x2 ============== */}

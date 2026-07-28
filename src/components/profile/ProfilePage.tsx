@@ -314,6 +314,12 @@ export function ProfilePage() {
     return map[language] || 'English';
   })();
 
+  // Helper: Should we show upgrade options? (hide if trial active with >2 days left)
+  const shouldShowUpgrade = 
+    user?.tier === 'PREMIUM' ? false : // Already premium
+    trialStatus !== 'active' ? true :   // No active trial, show upgrade
+    timeLeft.days < 2;                  // Active trial - only show if < 2 days left
+
   return (
     <div className="space-y-4">
       {/* ============== FREE TRIAL WIDGET (only show when trial NOT active) ============== */}
@@ -392,14 +398,23 @@ export function ProfilePage() {
               </div>
             </div>
 
-            {/* CTA */}
-            <a
-              href="/subscription"
-              className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white text-xs font-semibold hover:shadow-lg hover:shadow-brand-primary/25 transition-all mt-1"
-            >
-              <Crown className="h-3.5 w-3.5" />
-              Upgrade to Premium — ₹299/mo
-            </a>
+            {/* CTA - Only show when trial ending soon (< 2 days) */}
+            {shouldShowUpgrade ? (
+              <a
+                href="/subscription"
+                className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white text-xs font-semibold hover:shadow-lg hover:shadow-brand-primary/25 transition-all mt-1"
+              >
+                <Crown className="h-3.5 w-3.5" />
+                Upgrade to Premium — ₹299/mo
+              </a>
+            ) : (
+              /* Trial Active - Show "Enjoying Free" badge instead */
+              <div className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl bg-gradient-to-r from-profit-green/20 to-accent-gold/20 border border-profit-green/30 mt-1">
+                <Sparkles className="h-3.5 w-3.5 text-accent-gold" />
+                <span className="text-xs font-bold text-profit-green">Enjoying Premium FREE</span>
+                <span className="flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
+              </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -512,10 +527,59 @@ export function ProfilePage() {
               )}
             </button>
 
-            <div className="mt-2 flex items-center gap-2 flex-wrap">
-              <span className="pill bg-tint-blue text-brand-primary">
-                {user?.tier === 'PREMIUM' ? 'PREMIUM Plan' : 'FREE Plan'}
-              </span>
+            {/* ============== PLAN BADGE - Shows 30 Days Premium Trial when active ============== */}
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              {trialStatus === 'active' ? (
+                /* Active Trial Badge with mini countdown */
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand-primary/10 via-accent-gold/10 to-brand-primary-hover/10 border border-brand-primary/30"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="h-3.5 w-3.5 text-accent-gold" />
+                    <span className="text-xs font-bold text-brand-primary">30 Days Premium Trial</span>
+                  </div>
+                  {/* Mini countdown inline */}
+                  <div className="flex items-center gap-0.5 pl-2 border-l border-border/50">
+                    <span className="font-mono text-[10px] font-semibold tabular-nums text-text-primary">
+                      {String(timeLeft.days).padStart(2, '0')}d
+                    </span>
+                    <span className="text-text-tertiary text-[10px]">:</span>
+                    <span className="font-mono text-[10px] font-semibold tabular-nums text-text-primary">
+                      {String(timeLeft.hours).padStart(2, '0')}h
+                    </span>
+                    <span className="text-text-tertiary text-[10px]">:</span>
+                    <span className="font-mono text-[10px] font-semibold tabular-nums text-text-primary">
+                      {String(timeLeft.minutes).padStart(2, '0')}m
+                    </span>
+                    <span className="text-text-tertiary text-[10px]">:</span>
+                    <span className={cn(
+                      "font-mono text-[10px] font-semibold tabular-nums",
+                      timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes < 5 
+                        ? "text-loss-red animate-pulse" 
+                        : "text-text-primary"
+                    )}>
+                      {String(timeLeft.seconds).padStart(2, '0')}s
+                    </span>
+                  </div>
+                  <span className="flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
+                </motion.div>
+              ) : trialStatus === 'expired' ? (
+                /* Expired Trial Badge */
+                <span className="pill bg-tint-red text-loss-red inline-flex items-center gap-1">
+                  <Timer className="h-3 w-3" />
+                  Trial Expired
+                </span>
+              ) : (
+                /* Normal Plan Badge */
+                <span className={cn(
+                  "pill",
+                  user?.tier === 'PREMIUM' ? "bg-tint-blue text-brand-primary" : "bg-tint-yellow text-accent-gold"
+                )}>
+                  {user?.tier === 'PREMIUM' ? 'PREMIUM Plan' : 'FREE Plan'}
+                </span>
+              )}
               <span className="pill bg-bg-surface-alt text-text-secondary">{user?.role || 'USER'}</span>
               <span className="pill bg-tint-green text-profit-green inline-flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" />
@@ -582,7 +646,8 @@ export function ProfilePage() {
         )}
       </div>
 
-      {/* ============== FREE TRIAL QUICK LINK ============== */}
+      {/* ============== FREE TRIAL QUICK LINK (HIDDEN when trial is active) ============== */}
+      {trialStatus !== 'active' && (
       <div>
         <a
           href="/free-trial"
@@ -600,6 +665,7 @@ export function ProfilePage() {
           <ChevronRight className="h-4 w-4 text-accent-gold shrink-0" />
         </a>
       </div>
+      )}
 
       {/* ============== ACCOUNT DETAILS ============== */}
       <div>
