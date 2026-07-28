@@ -1019,10 +1019,22 @@ function InstallAppButton() {
     };
   }, []);
 
+  // Modal state for install instructions
+  const [showInstallModal, setShowInstallModal] = useState(false);
+
+  // Detect platform for install instructions
+  const getPlatform = (): 'ios' | 'android' | 'desktop' => {
+    if (isIOS) return 'ios';
+    if (/Android/i.test(navigator.userAgent)) return 'android';
+    return 'desktop';
+  };
+  const platform = getPlatform();
+
   const handleInstall = async () => {
     setInstalling(true);
     
     if (deferredPrompt) {
+      // Native install prompt available (Chrome/Android)
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
@@ -1031,12 +1043,8 @@ function InstallAppButton() {
       }
       setDeferredPrompt(null);
     } else {
-      // Fallback: Show instructions based on platform
-      if (isIOS) {
-        alert('To install: Tap the Share button below, then scroll and tap "Add to Home Screen"');
-      } else {
-        alert('Look for the install icon (⬇️ or +) in your browser\'s address bar to install this app.');
-      }
+      // Show instructions modal based on platform
+      setShowInstallModal(true);
     }
     
     setInstalling(false);
@@ -1060,43 +1068,142 @@ function InstallAppButton() {
   }
 
   return (
-    <div className="rounded-xl border border-brand-primary/20 bg-gradient-to-r from-brand-primary/5 to-accent-gold/5 p-4">
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary/10">
-          <Smartphone className="h-5 w-5 text-brand-primary" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-text-primary">Install Pepertect App</p>
-          <p className="text-xs text-text-secondary">
-            {isIOS ? 'Tap Share → "Add to Home Screen"' : 'Add to home screen for quick access'}
-          </p>
+    <>
+      <div className="rounded-xl border border-brand-primary/20 bg-gradient-to-r from-brand-primary/5 to-accent-gold/5 p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-primary/10">
+            <Smartphone className="h-5 w-5 text-brand-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-text-primary">Install Pepertect App</p>
+            <p className="text-xs text-text-secondary">
+              {isIOS ? 'Tap Share → "Add to Home Screen"' : 'Add to home screen for quick access'}
+            </p>
+          </div>
+          
+          <button
+            onClick={handleInstall}
+            disabled={installing}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover transition-colors disabled:opacity-50 active:scale-[0.98]"
+          >
+            {installing ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Installing...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Install
+              </>
+            )}
+          </button>
         </div>
         
-        <button
-          onClick={handleInstall}
-          disabled={installing}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover transition-colors disabled:opacity-50 active:scale-[0.98]"
-        >
-          {installing ? (
-            <>
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              Installing...
-            </>
-          ) : (
-            <>
-              <Download className="h-4 w-4" />
-              Install
-            </>
-          )}
-        </button>
+        {!deferredPrompt && !isIOS && (
+          <p className="mt-2 text-[11px] text-text-tertiary text-center">
+            💡 Click Install for step-by-step instructions
+          </p>
+        )}
       </div>
-      
-      {!deferredPrompt && !isIOS && (
-        <p className="mt-2 text-[11px] text-text-tertiary text-center">
-          💡 Look for the install icon in your browser&apos;s address bar
-        </p>
+
+      {/* Install Instructions Modal */}
+      {showInstallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowInstallModal(false)}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="bg-background rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-border"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="relative p-5 pb-4 bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white">
+              <button
+                onClick={() => setShowInstallModal(false)}
+                className="absolute top-3 right-3 p-2 rounded-lg hover:bg-white/20 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <div className="flex items-center gap-3 pr-8">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
+                  <Smartphone className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg">Install Pepertect</h3>
+                  <p className="text-sm text-white/80">Add to Home Screen</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Instructions */}
+            <div className="p-5 space-y-4">
+              {platform === 'ios' ? (
+                <div className="p-4 rounded-xl bg-bg-surface-alt border border-border">
+                  <p className="font-semibold text-sm text-text-primary mb-3">📱 iPhone / iPad Installation</p>
+                  <ol className="space-y-3">
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">1</span>
+                      <p className="text-sm text-text-secondary">Tap the <strong>Share</strong> button at the bottom of Safari</p>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">2</span>
+                      <p className="text-sm text-text-secondary">Scroll down and tap <strong>"Add to Home Screen"</strong></p>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">3</span>
+                      <p className="text-sm text-text-secondary">Tap <strong>"Add"</strong> to confirm</p>
+                    </li>
+                  </ol>
+                </div>
+              ) : platform === 'android' ? (
+                <div className="p-4 rounded-xl bg-bg-surface-alt border border-border">
+                  <p className="font-semibold text-sm text-text-primary mb-3">🤖 Android Installation</p>
+                  <ol className="space-y-3">
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">1</span>
+                      <p className="text-sm text-text-secondary">Open Pepertect in <strong>Chrome</strong></p>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">2</span>
+                      <p className="text-sm text-text-secondary">Tap <strong>⋮ menu</strong> → "Add to Home screen"</p>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">3</span>
+                      <p className="text-sm text-text-secondary">Tap <strong>"Add"</strong> to install</p>
+                    </li>
+                  </ol>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl bg-bg-surface-alt border border-border">
+                  <p className="font-semibold text-sm text-text-primary mb-3">💻 Desktop Installation</p>
+                  <ol className="space-y-3">
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">1</span>
+                      <p className="text-sm text-text-secondary">Open in <strong>Chrome</strong>, <strong>Edge</strong>, or <strong>Opera</strong></p>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">2</span>
+                      <p className="text-sm text-text-secondary">Click <strong>⬇️ Install icon</strong> in address bar</p>
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="flex-shrink-0 w-6 h-6 rounded-full bg-brand-primary text-white text-xs flex items-center justify-center font-bold">3</span>
+                      <p className="text-sm text-text-secondary">Click <strong>"Install"</strong> to confirm</p>
+                    </li>
+                  </ol>
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowInstallModal(false)}
+                className="w-full py-3 rounded-xl bg-brand-primary text-white font-semibold text-sm hover:bg-brand-primary-hover transition-colors"
+              >
+                Got it, thanks!
+              </button>
+            </div>
+          </motion.div>
+        </div>
       )}
-    </div>
+    </>
   );
 }
 

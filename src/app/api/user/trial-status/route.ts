@@ -142,6 +142,11 @@ export async function GET(req: NextRequest) {
  * POST — start the free trial now.
  * Body: { action: 'start' }  (default if no body)
  * Idempotent: if a trial is already active, returns its current status.
+ * 
+ * IMPORTANT: This endpoint also:
+ * 1. Sets virtualCapital to ₹1,00,000 on the user
+ * 2. Creates/updates portfolio with ₹1,00,000 balance
+ * 3. Creates transaction record for the credit
  */
 export async function POST(req: NextRequest) {
   const auth = await authenticateOrBypass(req);
@@ -163,14 +168,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if user already has a paid PREMIUM plan
+    // Check if user already has a paid PREMIUM plan (non-trial)
     const paidSub = await db.subscription.findFirst({
-      where: { userId: auth.userId, status: 'ACTIVE', plan: 'PREMIUM' },
+      where: { 
+        userId: auth.userId, 
+        status: 'ACTIVE', 
+        plan: 'PREMIUM',
+        NOT: { razorpaySubId: 'TRIAL' }  // Exclude trial subscriptions
+      },
     });
     if (paidSub) {
       return NextResponse.json({
         success: false,
-        error: 'You already have an active PREMIUM subscription.',
+        error: 'ALREADY_PREMIUM',
+        message: 'You already have an active PREMIUM subscription.',
       }, { status: 400 });
     }
 
@@ -181,21 +192,46 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingTrial) {
-      // Trial already started — just return current status (don't restart)
+      // Trial already started — check its status
       const status = await computeTrialStatus(auth.userId);
+      
+      if (status.active) {
+        // Trial is STILL ACTIVE - don't allow re-activation
+        return NextResponse.json({
+          success: false,
+          error: 'TRIAL_ACTIVE',
+          message: 'Your free trial is already active! You have ' + status.daysLeft + ' days remaining.',
+          data: status,
+        }, { status: 400 });
+      } else if (status.expired) {
+        // Trial was used before and has expired - BLOCK re-activation
+        return NextResponse.json({
+          success: false,
+          error: 'TRIAL_ALREADY_USED',
+          message: 'You have already used your one-time free trial. Upgrade to Premium to continue!',
+          data: status,
+        }, { status: 400 });
+      }
+      
+      // Fallback for edge cases
       return NextResponse.json({
-        success: true,
+        success: false,
+        error: 'TRIAL_USED',
+        message: 'You have already used your free trial offer.',
         data: status,
-        message: status.active
-          ? 'Trial already active.'
-          : 'Trial has already been used.',
-      });
+      }, { status: 400 });
     }
 
-    // Start a new trial subscription
+    // ============================================
+    // START FRESH TRIAL - Complete Setup
+    // ============================================
+    
     const now = new Date();
     const endDate = new Date(now.getTime() + TRIAL_DURATION_MS);
+    const INITIAL_CAPITAL = 100000; // ₹1 Lakh
 
+    // 1. Create trial subscription
+    console.log('Creating trial subscription for user:', auth.userId);
     await db.subscription.create({
       data: {
         userId: auth.userId,
@@ -207,23 +243,101 @@ export async function POST(req: NextRequest) {
         razorpaySubId: 'TRIAL',
       },
     });
+    console.log('Trial subscription created');
 
-    // Upgrade the user's tier to PREMIUM so the rest of the app unlocks trial benefits
+    // 2. Upgrade user tier to PREMIUM
     await db.user.update({
       where: { id: auth.userId },
-      data: { tier: 'PREMIUM' },
+      data: { 
+        tier: 'PREMIUM',
+        virtualCapital: INITIAL_CAPITAL,  // Set virtual capital to ₹1 Lakh
+      },
     });
+    console.log('User tier upgraded to PREMIUM, virtualCapital set to', INITIAL_CAPITAL);
+
+    // 3. Create or update portfolio with ₹1 Lakh balance
+    try {
+      const existingPortfolio = await db.portfolio.findUnique({
+        where: { userId: auth.userId },
+      });
+      
+      if (existingPortfolio) {
+        // Update existing portfolio
+        const prevBalance = Number(existingPortfolio.totalBalance);
+        const uplift = INITIAL_CAPITAL - prevBalance;
+        
+        await db.portfolio.update({
+          where: { userId: auth.userId },
+          data: {
+            totalBalance: INITIAL_CAPITAL,
+            availableMargin: { increment: Math.max(0, uplift) },
+          },
+        });
+        console.log('Portfolio updated, balance:', INITIAL_CAPITAL);
+        
+        // Record transaction only if balance increased
+        if (uplift > 0) {
+          const updatedPortfolio = await db.portfolio.findUnique({ where: { userId: auth.userId } });
+          try {
+            await db.transaction.create({
+              data: {
+                portfolioId: existingPortfolio.id,
+                type: 'CREDIT',
+                amount: uplift,
+                balance: Number(updatedPortfolio?.totalBalance ?? INITIAL_CAPITAL),
+                description: `Free trial activated — Virtual capital credited: ₹${INITIAL_CAPITAL.toLocaleString('en-IN')}`,
+              },
+            });
+            console.log('Transaction recorded for portfolio uplift');
+          } catch (txError) {
+            console.warn('Transaction creation failed (non-critical):', txError);
+          }
+        }
+      } else {
+        // Create new portfolio
+        const newPortfolio = await db.portfolio.create({
+          data: {
+            userId: auth.userId,
+            totalBalance: INITIAL_CAPITAL,
+            availableMargin: INITIAL_CAPITAL,
+          },
+        });
+        console.log('New portfolio created with balance:', INITIAL_CAPITAL);
+        
+        // Record initial transaction
+        try {
+          await db.transaction.create({
+            data: {
+              portfolioId: newPortfolio.id,
+              type: 'CREDIT',
+              amount: INITIAL_CAPITAL,
+              balance: INITIAL_CAPITAL,
+              description: `Free trial activated — Initial virtual capital: ₹${INITIAL_CAPITAL.toLocaleString('en-IN')}`,
+            },
+          });
+          console.log('Initial transaction recorded');
+        } catch (txError) {
+          console.warn('Initial transaction creation failed (non-critical):', txError);
+        }
+      }
+    } catch (portfolioError) {
+      console.error('Portfolio update error (non-critical):', portfolioError);
+      // Don't fail the trial activation if portfolio update fails
+    }
 
     const status = await computeTrialStatus(auth.userId);
+    console.log('Trial activated successfully for user:', auth.userId);
+    
     return NextResponse.json({
       success: true,
       data: status,
-      message: 'Free trial started! Enjoy PREMIUM features for 30 days.',
+      message: '🎉 Free trial activated! You received ₹1,00,000 virtual capital. Enjoy PREMIUM features for 30 days!',
+      virtualCapitalCredited: INITIAL_CAPITAL,
     });
   } catch (error) {
     console.error('Trial start error:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to start trial' },
+      { success: false, error: 'Failed to start trial', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
