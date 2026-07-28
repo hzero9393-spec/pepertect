@@ -351,18 +351,18 @@ export function ProfilePage() {
 
           {/* Countdown Display - Professional Format: 25d : 04h : 49m : 23s */}
           <div className="px-4 py-5 bg-bg-surface-alt/50">
-            <div className="flex items-center justify-center gap-1 sm:gap-2">
+            <div className="flex items-center justify-center gap-1 sm:gap-1.5">
               {/* Days */}
-              <TimeUnit value={timeLeft.days} label="days" isUrgent={timeLeft.days <= 2} />
+              <TimeUnit value={timeLeft.days} label="d" isUrgent={timeLeft.days <= 2} />
               <span className="text-lg font-bold text-text-tertiary select-none">:</span>
               {/* Hours */}
-              <TimeUnit value={timeLeft.hours} label="hrs" isUrgent={false} />
+              <TimeUnit value={timeLeft.hours} label="h" isUrgent={false} />
               <span className="text-lg font-bold text-text-tertiary select-none">:</span>
               {/* Minutes */}
-              <TimeUnit value={timeLeft.minutes} label="min" isUrgent={false} />
+              <TimeUnit value={timeLeft.minutes} label="m" isUrgent={false} />
               <span className="text-lg font-bold text-text-tertiary select-none">:</span>
               {/* Seconds */}
-              <TimeUnit value={timeLeft.seconds} label="sec" isUrgent={timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes < 5} pulse={true} />
+              <TimeUnit value={timeLeft.seconds} label="s" isUrgent={timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes < 5} pulse={true} />
             </div>
           </div>
 
@@ -1099,19 +1099,13 @@ function TimeUnit({
   pulse?: boolean;
 }) {
   return (
-    <div className="flex flex-col items-center min-w-[52px]">
+    <div className="flex flex-col items-center min-w-[44px]">
       <span className={cn(
         "font-mono text-xl sm:text-2xl font-bold tabular-nums leading-none",
         isUrgent ? "text-loss-red" : "text-text-primary",
         pulse && "animate-pulse"
       )}>
-        {String(value).padStart(2, '0')}
-      </span>
-      <span className={cn(
-        "text-[9px] text-text-tertiary uppercase tracking-wider mt-0.5",
-        isUrgent && "text-loss-red/70"
-      )}>
-        {label}
+        {String(value).padStart(2, '0')}{label}
       </span>
     </div>
   );

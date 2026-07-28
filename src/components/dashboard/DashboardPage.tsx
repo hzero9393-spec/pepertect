@@ -7,8 +7,8 @@ import { getVirtualCapitalForTier } from '@/lib/tier';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import {
   Wallet, TrendingUp, TrendingDown, Activity, Trophy,
-  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame, History,
-  Calendar, Clock, ChevronDown, Sparkles, Crown,
+  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame,
+  Clock, Sparkles, Crown,
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -42,17 +42,11 @@ function getMiniSeries(symbol: string, positive: boolean): number[] {
   return out;
 }
 
-// Date range options for dashboard filter
-const DATE_RANGES = [
-  { key: 'today', label: 'Today', icon: Calendar },
-  { key: 'tomorrow', label: 'Tomorrow', icon: Clock },
-  { key: 'week', label: 'Weekly', icon: BarChart3 },
-  { key: 'month', label: 'Monthly', icon: Calendar },
-  { key: '3months', label: '3 Months', icon: History },
-  { key: 'custom', label: 'Custom', icon: ChevronDown },
-] as const;
-
-type DateRangeKey = typeof DATE_RANGES[number]['key'];
+// T+0 Trading Day Model: Dashboard resets at midnight, shows only TODAY's data
+const getTodayStart = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+};
 
 export function DashboardPage() {
   const { user, token } = useAuthStore();
@@ -66,10 +60,6 @@ export function DashboardPage() {
   const [trialEndsAt, setTrialEndsAt] = useState<Date | null>(null);
   const [trialStatus, setTrialStatus] = useState<'active' | 'expired' | 'none'>('none');
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-
-  // Date Range Filter state
-  const [selectedDateRange, setSelectedDateRange] = useState<DateRangeKey>('today');
-  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // Tier-based fallback capital — used only when portfolio fetch hasn't returned yet
   const tierFallback = user?.tier === 'PREMIUM' ? 100000 : 10000;
@@ -357,67 +347,23 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* ============== DATE RANGE FILTER ============== */}
+      {/* ============== TODAY'S TRADING DAY INDICATOR ============== */}
       <div className="card-soft p-3">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-brand-primary" />
-            <span className="text-xs font-semibold text-text-primary">Performance Period</span>
-          </div>
-          <span className="text-[10px] text-text-tertiary capitalize">{DATE_RANGES.find(d => d.key === selectedDateRange)?.label || 'Today'}</span>
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-          {DATE_RANGES.map((range) => {
-            const Icon = range.icon;
-            const isActive = selectedDateRange === range.key;
-            return (
-              <button
-                key={range.key}
-                onClick={() => {
-                  setSelectedDateRange(range.key);
-                  if (range.key === 'custom') setShowDatePicker(!showDatePicker);
-                  else setShowDatePicker(false);
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all",
-                  isActive
-                    ? "bg-brand-primary text-white shadow-md shadow-brand-primary/25"
-                    : "bg-bg-surface-alt text-text-secondary hover:bg-bg-surface hover:text-text-primary"
-                )}
-              >
-                <Icon className={cn("h-3.5 w-3.5", isActive ? "text-white" : "text-text-tertiary")} />
-                {range.label}
-              </button>
-            );
-          })}
-        </div>
-        {/* Custom Date Picker (shown when 'custom' selected) */}
-        {showDatePicker && (
-          <div className="mt-3 pt-3 border-t border-border/50">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">From</label>
-                <input
-                  type="date"
-                  className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-bg-surface-alt text-xs font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">To</label>
-                <input
-                  type="date"
-                  className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-bg-surface-alt text-xs font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-                />
-              </div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary/10">
+              <Clock className="h-4 w-4 text-brand-primary" />
             </div>
-            <button
-              onClick={() => setShowDatePicker(false)}
-              className="mt-3 w-full h-9 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors"
-            >
-              Apply Filter
-            </button>
+            <div>
+              <p className="text-xs font-semibold text-text-primary">Today's Trading</p>
+              <p className="text-[10px] text-text-tertiary">Resets at 12:00 AM • T+0 Day Model</p>
+            </div>
           </div>
-        )}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-profit-green/10 border border-profit-green/20">
+            <span className="w-1.5 h-1.5 rounded-full bg-profit-green animate-pulse" />
+            <span className="text-[10px] font-bold text-profit-green uppercase tracking-wide">Live</span>
+          </div>
+        </div>
       </div>
 
       {/* ============== METRICS GRID 2x2 ============== */}
