@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
+import { InstallPrompt } from '@/components/shared/InstallPrompt';
 import { cn } from '@/lib/utils';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -50,6 +51,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <MobileBottomNav />
+      
+      {/* Install App Prompt - Shows for first-time users */}
+      <InstallPrompt />
     </div>
   );
 }

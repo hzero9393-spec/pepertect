@@ -3,6 +3,10 @@ import { authenticateOrBypass } from '@/lib/dev-auth';
 import { db } from '@/lib/db';
 import { calculateBrokerage } from '@/lib/brokerage';
 import { hasFeature } from '@/lib/tier';
+import {
+  notifyTradeExecuted,
+  notifyWelcome,
+} from '@/lib/notifications';
 
 const MOCK_LTP: Record<string, number> = {
   RELIANCE: 1882.75, TCS: 3945.60, INFY: 1568.30, HDFCBANK: 1685.20,
@@ -300,6 +304,11 @@ export async function POST(req: NextRequest) {
           }
         }
       }
+    }
+
+    // Send notification for executed order
+    if (orderType === 'MARKET') {
+      await notifyTradeExecuted(auth.userId, symbol, side, quantity, fillPrice, order.id);
     }
 
     return NextResponse.json({ success: true, data: order });

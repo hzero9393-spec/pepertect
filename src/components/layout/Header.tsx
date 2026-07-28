@@ -5,11 +5,12 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { useTheme } from 'next-themes';
 import { usePathname } from 'next/navigation';
 import {
-  Search, Sun, Moon, Bell, Zap, ArrowLeft,
+  Search, Sun, Moon, Zap, ArrowLeft,
 } from 'lucide-react';
 import { getInitials } from '@/lib/utils';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
 import { StockSearch } from '@/components/shared/StockSearch';
+import { NotificationBell } from '@/components/shared/NotificationBell';
 
 export function Header() {
   const { isAuthenticated, user } = useAuthStore();
@@ -145,17 +146,8 @@ export function Header() {
           )}
         </button>
 
-        {/* Notifications */}
-        <a
-          href="/notifications"
-          aria-label="Notifications"
-          className="relative flex h-10 w-10 md:h-9 md:w-9 items-center justify-center rounded-lg text-text-primary hover:bg-bg-surface-alt no-select"
-        >
-          <Bell className="h-5 w-5 md:h-[18px] md:w-[18px]" />
-          <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-loss-red text-[10px] font-bold text-white">
-            3
-          </span>
-        </a>
+        {/* Notifications - Interactive Bell with Dropdown */}
+        <NotificationBell />
 
         {/* User avatar (right side) */}
         <a

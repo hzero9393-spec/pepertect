@@ -104,6 +104,9 @@ export async function GET(req: NextRequest) {
         investedAmt: Number(p.investedAmt),
         strikePrice: p.strikePrice ? Number(p.strikePrice) : null,
         instrumentKey: p.instrumentKey ?? null,
+        // SL/Target fields
+        stopLoss: p.stopLoss ? Number(p.stopLoss) : null,
+        target: p.target ? Number(p.target) : null,
       };
     });
 
