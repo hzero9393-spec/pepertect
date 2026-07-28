@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X, Check, CheckCheck, Settings, TrendingUp, AlertTriangle, Target, Gift, Star, Info } from 'lucide-react';
 import { useAuthStore } from '@/stores/useAuthStore';
@@ -73,8 +74,51 @@ const getNotificationBg = (type: string, isRead: boolean) => {
   }
 };
 
+// Get navigation URL based on notification type and data
+function getNotificationUrl(notif: Notification): string | null {
+  try {
+    // Parse data if available
+    const data = notif.data ? JSON.parse(notif.data) : null;
+    
+    switch (notif.type) {
+      case 'TRADE':
+        // Trade notifications - go to positions or stock detail
+        if (data?.symbol) {
+          return `/stock/${data.symbol}`;
+        }
+        return '/positions';
+        
+      case 'SUBSCRIPTION':
+        // Subscription related - go to subscription or pricing
+        if (data?.trialDays || notif.title.includes('Trial')) {
+          return '/subscription';
+        }
+        return '/subscription';
+        
+      case 'MILESTONE':
+        // Achievements - go to positions to see portfolio
+        return '/positions';
+        
+      case 'PRICE_ALERT':
+        // Price alerts - go to watchlist or stock
+        if (data?.symbol) {
+          return `/stock/${data.symbol}`;
+        }
+        return '/watchlist';
+        
+      case 'SYSTEM':
+      default:
+        // System/other - stay on current page or go to dashboard
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 export function NotificationBell() {
   const { token } = useAuthStore();
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -162,7 +206,22 @@ export function NotificationBell() {
     }
   };
 
-  // Format time ago
+  // Handle notification click - mark as read & navigate
+  const handleNotificationClick = async (notif: Notification) => {
+    // Mark as read if unread
+    if (!notif.isRead) {
+      await markAsRead(notif.id);
+    }
+    
+    // Close dropdown
+    setIsOpen(false);
+    
+    // Navigate based on notification type
+    const url = getNotificationUrl(notif);
+    if (url) {
+      router.push(url);
+    }
+  };
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -277,7 +336,7 @@ export function NotificationBell() {
                     <motion.div
                       key={notif.id}
                       layout
-                      onClick={() => !notif.isRead && markAsRead(notif.id)}
+                      onClick={() => handleNotificationClick(notif)}
                       className={cn(
                         "p-3 cursor-pointer transition-colors hover:bg-bg-surface-alt/50",
                         getNotificationBg(notif.type, notif.isRead)

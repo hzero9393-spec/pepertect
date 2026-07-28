@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
-import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap, ChevronDown, History } from 'lucide-react';
+import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap, ChevronDown, History, Target, Edit3 } from 'lucide-react';
 import React from 'react';
 import type { Position, Trade } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -12,6 +12,7 @@ import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
+import { SLTargetModal } from '@/components/positions/SLTargetModal';
 
 /* Index symbols — used to classify positions as Index vs Stock */
 const INDEX_SYMBOLS = new Set(['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY']);
@@ -49,6 +50,9 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   const exitedRef = useRef<Set<string>>(new Set());
   /* Track the last shown auto-exit toast for each position */
   const [autoExitLog, setAutoExitLog] = useState<Array<{ symbol: string; reason: string; ltp: number; level: number; ts: number }>>([]);
+  /* ---------- SL/Target Modal State ---------- */
+  const [slTargetModalOpen, setSlTargetModalOpen] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
 
   /* ---------- Resolved instrument keys for OPTIONS positions ----------
    * For an OPTIONS position, `getUpstoxKey(pos.symbol)` returns the underlying
@@ -197,6 +201,34 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positions, optionKeyMap, subscribe, unsubscribe]);
+
+    /* ---------- Open SL/Target Modal ---------- */
+  const openSLTargetModal = (pos: Position) => {
+    setSelectedPosition(pos);
+    setSlTargetModalOpen(true);
+  };
+
+  const handleUpdateSLTarget = async (stopLoss: number | null, target: number | null) => {
+    if (!selectedPosition) return;
+    
+    const res = await fetch(`/api/positions/${selectedPosition.id}/sl-target`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stopLoss, target }),
+    });
+    
+    const data = await res.json();
+    if (data.success) {
+      // Update local state
+      setPositions(prev => prev.map(p => 
+        p.id === selectedPosition.id 
+          ? { ...p, stopLoss: stopLoss ?? undefined, target: target ?? undefined }
+          : p
+      ));
+    } else {
+      throw new Error(data.error || 'Failed to update');
+    }
+  };
 
   /* ---------- Auto-trigger SL / Target ---------- */
   // For each open position, check if live LTP has hit SL or Target.
@@ -773,14 +805,32 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
                           {livePnlPct >= 0 ? '+' : ''}{livePnlPct.toFixed(2)}%
                         </p>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-loss-red border-loss-red/30 hover:bg-loss-red/10 h-9"
-                        onClick={() => handleSquareOff(pos.id)}
-                      >
-                        <XCircle className="mr-1 h-3 w-3" /> Exit
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        {/* Edit SL/Target Button */}
+                        <button
+                          onClick={() => openSLTargetModal(pos)}
+                          className={cn(
+                            "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                            "border hover:shadow-sm active:scale-95",
+                            (pos.stopLoss || pos.target)
+                              ? "bg-brand-primary/10 border-brand-primary/30 text-brand-primary hover:bg-brand-primary/20"
+                              : "bg-bg-surface-alt border-border text-text-secondary hover:bg-bg-surface hover:text-text-primary"
+                          )}
+                          title="Set or Edit Stop Loss & Target"
+                        >
+                          <Target className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">{pos.stopLoss || pos.target ? 'Edit' : 'Set'} SL/TGT</span>
+                          <span className="sm:hidden">{pos.stopLoss || pos.target ? 'Edit' : 'Set'}</span>
+                        </button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-loss-red border-loss-red/30 hover:bg-loss-red/10 h-9"
+                          onClick={() => handleSquareOff(pos.id)}
+                        >
+                          <XCircle className="mr-1 h-3 w-3" /> Exit
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -797,6 +847,27 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           Start Trading
         </div>
       </a>
+
+      {/* ============== SL/TARGET MODAL ============== */}
+      {selectedPosition && (
+        <SLTargetModal
+          isOpen={slTargetModalOpen}
+          onClose={() => {
+            setSlTargetModalOpen(false);
+            setSelectedPosition(null);
+          }}
+          position={{
+            id: selectedPosition.id,
+            symbol: selectedPosition.symbol,
+            side: selectedPosition.side,
+            avgPrice: selectedPosition.avgPrice,
+            currentPrice: liveLtpByPosId.get(selectedPosition.id),
+            stopLoss: selectedPosition.stopLoss ?? null,
+            target: selectedPosition.target ?? null,
+          }}
+          onUpdate={handleUpdateSLTarget}
+        />
+      )}
     </div>
   );
 }

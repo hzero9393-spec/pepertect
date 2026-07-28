@@ -9,19 +9,30 @@ interface InstallPromptProps {
   className?: string;
 }
 
+// Helper to get today's date string (YYYY-MM-DD)
+function getTodayStr(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 export function InstallPrompt({ className }: InstallPromptProps) {
   const [showPrompt, setShowPrompt] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  
   // Initialize dismissed state from localStorage
+  // Shows once per day (not once ever!) unless app is installed
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === 'undefined') return false;
-    const dismissedBefore = localStorage.getItem('pepertect_install_dismissed');
     const installed = localStorage.getItem('pepertect_app_installed');
-    return !!(dismissedBefore || installed);
+    if (installed) return true;
+    
+    // Check if already dismissed TODAY
+    const lastDismissed = localStorage.getItem('pepertect_install_dismissed_date');
+    return lastDismissed === getTodayStr();
   });
+  
   const [isIOS, setIsIOS] = useState(false);
 
-  // Check if user has dismissed before
+  // Check if user has dismissed today or installed
   useEffect(() => {
     // Check if iOS
     const isIOSDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
@@ -35,7 +46,9 @@ export function InstallPrompt({ className }: InstallPromptProps) {
       
       // Show prompt after a delay (don't annoy immediately)
       setTimeout(() => {
-        setShowPrompt(true);
+        if (!dismissed) {
+          setShowPrompt(true);
+        }
       }, 10000); // 10 seconds after page load
     };
 
@@ -49,7 +62,8 @@ export function InstallPrompt({ className }: InstallPromptProps) {
     window.addEventListener('appinstalled', handleAppInstalled);
 
     // For iOS or if no deferred prompt, show anyway after longer delay
-    if (isIOSDevice || !deferredPrompt) {
+    // But ONLY if not dismissed today and not installed
+    if ((isIOSDevice || !deferredPrompt) && !dismissed) {
       setTimeout(() => {
         if (!dismissed) {
           setShowPrompt(true);
@@ -83,10 +97,11 @@ export function InstallPrompt({ className }: InstallPromptProps) {
   const handleDismiss = () => {
     setShowPrompt(false);
     setDismissed(true);
-    localStorage.setItem('pepertect_install_dismissed', Date.now().toString());
+    // Store TODAY's date - so it can show again tomorrow!
+    localStorage.setItem('pepertect_install_dismissed_date', getTodayStr());
   };
 
-  // Don't render if dismissed or no prompt available
+  // Don't render if dismissed today or no prompt available
   if (dismissed || !showPrompt) return null;
 
   return (
@@ -178,6 +193,11 @@ export function InstallPrompt({ className }: InstallPromptProps) {
                   Not now
                 </button>
               </div>
+              
+              {/* Small hint that it will show again tomorrow */}
+              <p className="text-[10px] text-center text-text-tertiary italic">
+                You'll see this prompt again tomorrow
+              </p>
             </div>
           </div>
         </motion.div>
