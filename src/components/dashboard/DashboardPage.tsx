@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatINR, formatNumber, cn, getInitials, formatOrderStatus } from '@/lib/utils';
-import { getVirtualCapitalForTier } from '@/lib/tier';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import {
-  Wallet, TrendingUp, TrendingDown, Activity, Trophy,
-  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame, History,
-  Calendar, Clock, ChevronDown, Sparkles, Crown,
+  TrendingUp, TrendingDown, Trophy, Target,
+  BarChart3, ArrowUpRight, ArrowDownRight, Clock, 
+  Activity, Zap, AlertCircle, Sparkles, Crown,
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -18,7 +17,7 @@ import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 
-// Map our internal index symbols to Upstox instrument keys
+// ─── Constants ──────────────────────────────────────────────
 const INDEX_TO_UPSTOX_KEY: Record<string, string> = {
   NIFTY: 'NSE_INDEX|Nifty 50',
   SENSEX: 'BSE_INDEX|SENSEX',
@@ -27,7 +26,11 @@ const INDEX_TO_UPSTOX_KEY: Record<string, string> = {
   NIFTYFS: 'NSE_INDEX|Nifty Fin Service',
 };
 
-// Deterministic mini-series for sparklines based on symbol
+// Market hours for Indian stock market
+const MARKET_OPEN = '09:15';
+const MARKET_CLOSE = '15:30';
+
+// ─── Helper Functions ───────────────────────────────────────
 function getMiniSeries(symbol: string, positive: boolean): number[] {
   let h = 0;
   for (let i = 0; i < symbol.length; i++) h = (Math.imul(31, h) + symbol.charCodeAt(i)) | 0;
@@ -42,18 +45,24 @@ function getMiniSeries(symbol: string, positive: boolean): number[] {
   return out;
 }
 
-// Date range options for dashboard filter
-const DATE_RANGES = [
-  { key: 'today', label: 'Today', icon: Calendar },
-  { key: 'tomorrow', label: 'Tomorrow', icon: Clock },
-  { key: 'week', label: 'Weekly', icon: BarChart3 },
-  { key: 'month', label: 'Monthly', icon: Calendar },
-  { key: '3months', label: '3 Months', icon: History },
-  { key: 'custom', label: 'Custom', icon: ChevronDown },
-] as const;
+// Generate intraday equity curve data points (simulated for demo)
+function generateEquityCurveData(pnl: number, isPositive: boolean): number[] {
+  const points: number[] = [];
+  let value = 50;
+  const volatility = Math.min(Math.abs(pnl) / 100, 5);
+  const trend = isPositive ? 1 : -1;
+  
+  for (let i = 0; i < 30; i++) {
+    const progress = i / 30;
+    const randomWalk = (Math.random() - 0.5) * volatility * 3;
+    const drift = trend * progress * Math.abs(pnl) / 50;
+    value = Math.max(10, Math.min(90, value + randomWalk + drift));
+    points.push(value);
+  }
+  return points;
+}
 
-type DateRangeKey = typeof DATE_RANGES[number]['key'];
-
+// ─── Main Component ─────────────────────────────────────────
 export function DashboardPage() {
   const { user, token } = useAuthStore();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
@@ -61,36 +70,25 @@ export function DashboardPage() {
   const [indices, setIndices] = useState<IndexData[]>([]);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Current time state for live updates
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   // Trial status for hiding upgrade buttons
   const [trialEndsAt, setTrialEndsAt] = useState<Date | null>(null);
   const [trialStatus, setTrialStatus] = useState<'active' | 'expired' | 'none'>('none');
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
 
-  // Date Range Filter state
-  const [selectedDateRange, setSelectedDateRange] = useState<DateRangeKey>('today');
-  const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // Tier-based fallback capital — used only when portfolio fetch hasn't returned yet
+  // Tier-based fallback capital
   const tierFallback = user?.tier === 'PREMIUM' ? 100000 : 10000;
 
-  // Helper: Should we show upgrade options? (hide if trial active with >2 days left)
-  const shouldShowUpgrade = useMemo(() => {
-    if (user?.tier === 'PREMIUM') return false; // Already premium, never show
-    if (trialStatus !== 'active') return true; // No active trial, show upgrade
-    // Active trial - only show if less than 2 days left
-    return timeLeft.days < 2;
-  }, [user?.tier, trialStatus, timeLeft.days]);
-
-  // Live quotes via WebSocket (Cloudflare Worker → Upstox)
+  // Live quotes via WebSocket
   const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
   const subscribedRef = useRef<Set<string>>(new Set());
 
-  /* Resolved option-strike instrument keys (parallel to PositionsPage logic).
-   * Without this, an OPTIONS position (e.g. NIFTY 32900 CE) would subscribe to
-   * NIFTY's underlying spot price (~24,000) instead of the option premium (~₹100),
-   * producing absurd P&L on the dashboard. */
+  // Option instrument resolution
   const [optionKeyMap, setOptionKeyMap] = useState<Map<string, string | null>>(new Map());
+  
   useEffect(() => {
     const optPositions = positions.filter(
       (p) =>
@@ -99,7 +97,6 @@ export function DashboardPage() {
         p.strikePrice != null &&
         p.optionType &&
         p.expiry &&
-        /* Skip positions that already have a stored instrumentKey. */
         !p.instrumentKey
     );
     if (optPositions.length === 0) {
@@ -121,9 +118,6 @@ export function DashboardPage() {
     return () => { cancelled = true; };
   }, [positions]);
 
-  // Helper: get the right Upstox key to subscribe to for a position.
-  // Prefers the stored instrumentKey (instant); falls back to option-chain
-  // resolution for legacy positions.
   function getLiveKeyForPosition(p: Position): string | null {
     if (p.instrumentKey) return p.instrumentKey;
     if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
@@ -132,7 +126,6 @@ export function DashboardPage() {
     return getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol] || null;
   }
 
-  // Compute Upstox instrument keys for the loaded indices + open positions
   const allKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const i of indices) {
@@ -145,10 +138,9 @@ export function DashboardPage() {
       if (k) keys.add(k);
     }
     return Array.from(keys);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [indices, positions, optionKeyMap]);
 
-  // Subscribe to live quotes whenever keys change
+  // Subscribe to live quotes
   useEffect(() => {
     if (allKeys.length === 0) return;
     const newKeys = allKeys.filter((k) => !subscribedRef.current.has(k));
@@ -172,6 +164,7 @@ export function DashboardPage() {
     };
   }, [unsubscribe]);
 
+  // Fetch dashboard data
   useEffect(() => {
     const fetchData = async () => {
       if (!token) return;
@@ -191,7 +184,7 @@ export function DashboardPage() {
         if (pData.success) setPortfolio(pData.data);
         if (posData.success) setPositions(posData.data);
         if (idxData.success) setIndices(idxData.data);
-        if (ordData.success) setRecentOrders(ordData.data.slice(0, 5));
+        if (ordData.success) setRecentOrders(ordData.data.slice(0, 20)); // Get more orders for analysis
       } catch (err) {
         console.error('Dashboard fetch error:', err);
       } finally {
@@ -201,7 +194,7 @@ export function DashboardPage() {
     fetchData();
   }, [token]);
 
-  // Fetch trial status for upgrade button logic
+  // Fetch trial status
   useEffect(() => {
     const fetchTrialStatus = async () => {
       if (!token) return;
@@ -223,7 +216,7 @@ export function DashboardPage() {
     fetchTrialStatus();
   }, [token]);
 
-  // Countdown timer for trial
+  // Trial countdown timer
   useEffect(() => {
     if (!trialEndsAt) return;
     const updateTimer = () => {
@@ -246,19 +239,20 @@ export function DashboardPage() {
     return () => clearInterval(interval);
   }, [trialEndsAt]);
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="h-28 animate-pulse rounded-2xl bg-bg-surface" />
-        <div className="grid gap-3 grid-cols-2">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-28 animate-pulse rounded-2xl bg-bg-surface" />
-          ))}
-        </div>
-      </div>
-    );
-  }
+  // Live clock update every second
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
+  // Upgrade visibility logic
+  const shouldShowUpgrade = useMemo(() => {
+    if (user?.tier === 'PREMIUM') return false;
+    if (trialStatus !== 'active') return true;
+    return timeLeft.days < 2;
+  }, [user?.tier, trialStatus, timeLeft.days]);
+
+  // ─── TODAY'S METRICS CALCULATIONS ────────────────────────
   const totalPnl = portfolio?.totalPnl ?? 0;
   const totalPnlPositive = totalPnl >= 0;
   const winRate = portfolio?.winRate ?? 0;
@@ -266,248 +260,409 @@ export function DashboardPage() {
   const totalTrades = portfolio?.totalTrades ?? 0;
   const losses = Math.max(0, totalTrades - wins);
   const invested = portfolio?.investedAmount ?? 0;
-  const totalPnlPct = invested > 0 ? (totalPnl / invested) * 100 : 0;
+  const realizedPnl = portfolio?.realizedPnl ?? 0;
+  const unrealizedPnl = totalPnl - realizedPnl;
+  
+  // Calculate best and worst trades from recent orders
+  const bestTrade = useMemo(() => {
+    if (!recentOrders.length) return null;
+    const completed = recentOrders.filter(o => o.status === 'FILLED' && o.pnl !== undefined && o.pnl !== null);
+    if (!completed.length) return null;
+    return completed.reduce((best, order) => 
+      (order.pnl ?? 0) > (best?.pnl ?? 0) ? order : best, completed[0]);
+  }, [recentOrders]);
+
+  const worstTrade = useMemo(() => {
+    if (!recentOrders.length) return null;
+    const completed = recentOrders.filter(o => o.status === 'FILLED' && o.pnl !== undefined && o.pnl !== null);
+    if (!completed.length) return null;
+    return completed.reduce((worst, order) => 
+      (order.pnl ?? 0) < (worst?.pnl ?? 0) ? order : worst, completed[0]);
+  }, [recentOrders]);
+
+  const activePositionsCount = positions.filter(p => p.status === 'OPEN').length;
+
+  // Format current time
+  const formattedTime = currentTime.toLocaleTimeString('en-IN', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true 
+  });
+  
+  const formattedDate = currentTime.toLocaleDateString('en-IN', { 
+    weekday: 'short', 
+    day: 'numeric', 
+    month: 'short' 
+  });
+
+  // Check if market is open
+  const marketOpen = (() => {
+    const hour = currentTime.getHours();
+    const minute = currentTime.getMinutes();
+    const currentTimeNum = hour * 100 + minute;
+    return currentTimeNum >= 915 && currentTimeNum <= 1530;
+  })();
+
+  // Loading skeleton
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-48 animate-pulse rounded-lg bg-bg-surface" />
+          <div className="h-6 w-24 animate-pulse rounded-full bg-bg-surface" />
+        </div>
+        {/* P&L hero skeleton */}
+        <div className="h-36 animate-pulse rounded-xl bg-bg-surface" />
+        {/* Metrics grid skeleton */}
+        <div className="grid gap-3 grid-cols-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-28 animate-pulse rounded-xl bg-bg-surface" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-5">
-      {/* Upstox reconnect banner (shown when token is expired) */}
+    <div className="space-y-4">
+      {/* ─── HEADER BAR ─────────────────────────────────── */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-heading text-lg font-bold text-text-primary">Dashboard</h1>
+          <p className="text-xs text-text-secondary mt-0.5">{formattedDate}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Market Status */}
+          <span className={cn(
+            "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold",
+            marketOpen 
+              ? "bg-profit-green/10 text-profit-green" 
+              : "bg-bg-surface-alt text-text-tertiary"
+          )}>
+            <span className={cn(
+              "w-1.5 h-1.5 rounded-full",
+              marketOpen ? "bg-profit-green animate-pulse" : "bg-text-tertiary"
+            )} />
+            {marketOpen ? "Market Open" : "Market Closed"}
+          </span>
+          {/* Live Time */}
+          <span className="font-mono text-sm font-medium text-text-secondary tabular-nums">
+            {formattedTime}
+          </span>
+        </div>
+      </div>
+
+      {/* Upstox reconnect banner */}
       <UpstoxReconnectBanner status={wsStatus} />
 
-      {/* ============== FREE TRIAL WIDGET (HIDDEN when user has PREMIUM or active TRIAL) ============== */}
+      {/* Free Trial Widget (only for non-trial users) */}
       {(user?.tier !== 'PREMIUM' && user?.subscriptionTier !== 'TRIAL') && <FreeTrialWidget variant="card" />}
 
-      {/* ============== HERO CARD ============== */}
-      <div className="card-soft hero-gradient p-5 relative overflow-hidden">
-        {/* Decorative chart graphic (top-right) */}
-        <svg
-          className="absolute -right-2 -top-2 opacity-60 pointer-events-none"
-          width="120"
-          height="80"
-          viewBox="0 0 120 80"
-          fill="none"
-          aria-hidden
-        >
-          <defs>
-            <linearGradient id="heroChartGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#2563EB" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M5 60 L20 50 L35 55 L50 35 L65 40 L80 20 L95 25 L110 10 L110 75 L5 75 Z"
-            fill="url(#heroChartGrad)"
-          />
-          <path
-            d="M5 60 L20 50 L35 55 L50 35 L65 40 L80 20 L95 25 L110 10"
-            stroke="#2563EB"
-            strokeWidth="2"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          {/* Bars */}
-          <rect x="15" y="60" width="6" height="14" rx="1" fill="#2563EB" opacity="0.4" />
-          <rect x="45" y="50" width="6" height="24" rx="1" fill="#2563EB" opacity="0.4" />
-          <rect x="75" y="35" width="6" height="39" rx="1" fill="#2563EB" opacity="0.4" />
-        </svg>
-
-        <div className="relative">
-          <div className="flex items-center gap-2">
-            {/* Plan Badge - Shows Trial Status */}
-            {trialStatus === 'active' ? (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-accent-gold/20 to-brand-primary/20 border border-accent-gold/30 text-[10px] font-bold text-brand-primary">
-                <Sparkles className="h-3 w-3 text-accent-gold" />
-                PREMIUM Trial
-                <span className="flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
-              </span>
-            ) : (
-              <span className="text-xs font-medium text-text-secondary">
-                {user?.tier === 'PREMIUM' ? 'PREMIUM Plan' : 'FREE Plan'}
+      {/* ══════════════════════════════════════════════════ */}
+      {/* TODAY'S P&L HERO CARD                              */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div className={cn(
+        "relative overflow-hidden rounded-xl border p-5",
+        totalPnlPositive 
+          ? "border-profit-green/20 bg-profit-green/[0.03]" 
+          : "border-loss-red/20 bg-loss-red/[0.03]"
+      )}>
+        <div className="relative z-10">
+          {/* Label row */}
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-text-secondary uppercase tracking-wider">
+              Today&apos;s P&L
+            </span>
+            {trialStatus === 'active' && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent-gold/10 text-[10px] font-semibold text-accent-gold">
+                <Sparkles className="h-3 w-3" />
+                Trial Active
               </span>
             )}
-            <span className="text-text-tertiary">·</span>
-            <div className="flex items-center gap-1.5">
-              <span className="live-dot-green" />
-              <span className="text-xs font-medium text-text-secondary">Market Live</span>
-            </div>
           </div>
-          <h2 className="font-heading text-2xl font-bold text-text-primary mt-1">
-            Welcome back, {user?.name?.split(' ')[0] || 'Trader'}
-          </h2>
-          {/* Upgrade Link - ONLY shown when: not premium AND (no trial OR trial ending soon < 2 days) */}
-          {shouldShowUpgrade && (
-            <div className="mt-2 flex items-center gap-1.5">
-              <a
-                href="/subscription"
-                className="text-sm font-semibold text-brand-primary hover:underline inline-flex items-center gap-1"
-              >
-                Upgrade <ArrowRight className="h-3.5 w-3.5" />
-              </a>
-            </div>
-          )}
-          {/* Trial Active Notice - shows time left instead of upgrade */}
-          {trialStatus === 'active' && !shouldShowUpgrade && (
-            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/50 dark:bg-bg-surface/50 backdrop-blur-sm border border-border/30">
-              <Clock className="h-3.5 w-3.5 text-accent-gold" />
-              <span className="text-xs font-medium text-text-secondary">
-                Trial: <span className="font-mono font-bold text-brand-primary">{timeLeft.days}d {String(timeLeft.hours).padStart(2, '0')}:{String(timeLeft.minutes).padStart(2, '0')}:{String(timeLeft.seconds).padStart(2, '0')}</span> left
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* ============== DATE RANGE FILTER ============== */}
-      <div className="card-soft p-3">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-brand-primary" />
-            <span className="text-xs font-semibold text-text-primary">Performance Period</span>
-          </div>
-          <span className="text-[10px] text-text-tertiary capitalize">{DATE_RANGES.find(d => d.key === selectedDateRange)?.label || 'Today'}</span>
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
-          {DATE_RANGES.map((range) => {
-            const Icon = range.icon;
-            const isActive = selectedDateRange === range.key;
-            return (
-              <button
-                key={range.key}
-                onClick={() => {
-                  setSelectedDateRange(range.key);
-                  if (range.key === 'custom') setShowDatePicker(!showDatePicker);
-                  else setShowDatePicker(false);
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all",
-                  isActive
-                    ? "bg-brand-primary text-white shadow-md shadow-brand-primary/25"
-                    : "bg-bg-surface-alt text-text-secondary hover:bg-bg-surface hover:text-text-primary"
-                )}
-              >
-                <Icon className={cn("h-3.5 w-3.5", isActive ? "text-white" : "text-text-tertiary")} />
-                {range.label}
-              </button>
-            );
-          })}
-        </div>
-        {/* Custom Date Picker (shown when 'custom' selected) */}
-        {showDatePicker && (
-          <div className="mt-3 pt-3 border-t border-border/50">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">From</label>
-                <input
-                  type="date"
-                  className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-bg-surface-alt text-xs font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">To</label>
-                <input
-                  type="date"
-                  className="mt-1 w-full h-9 px-3 rounded-lg border border-border bg-bg-surface-alt text-xs font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-                />
-              </div>
-            </div>
-            <button
-              onClick={() => setShowDatePicker(false)}
-              className="mt-3 w-full h-9 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors"
-            >
-              Apply Filter
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ============== METRICS GRID 2x2 ============== */}
-      <div className="grid gap-3 grid-cols-2">
-        {/* Total Balance */}
-        <MetricCard
-          icon={Wallet}
-          iconBg="bg-tint-blue"
-          iconColor="text-brand-primary"
-          label="Total Balance"
-          value={formatINR(portfolio?.totalBalance ?? tierFallback)}
-          subtext="Virtual Capital"
-        />
-        {/* Total P&L */}
-        <MetricCard
-          icon={totalPnlPositive ? TrendingUp : TrendingDown}
-          iconBg={totalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
-          iconColor={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
-          label="Total P&L"
-          value={
-            <span className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
+          {/* Main P&L Value */}
+          <div className="flex items-baseline gap-2 mt-2">
+            <span className={cn(
+              "font-mono text-4xl font-bold tabular-nums leading-none",
+              totalPnlPositive ? "text-profit-green" : "text-loss-red"
+            )}>
               {totalPnlPositive ? '+' : ''}{formatINR(totalPnl)}
             </span>
-          }
-          subtext={`${totalPnlPositive ? '+' : ''}${totalPnlPct.toFixed(2)}% · Realized ${formatINR(portfolio?.realizedPnl ?? 0)}`}
-        />
-        {/* Available Margin */}
+            <span className={cn(
+              "text-sm font-medium",
+              totalPnlPositive ? "text-profit-green" : "text-loss-red"
+            )}>
+              ({totalPnl >= 0 ? '+' : ''}{invested > 0 ? ((totalPnl / invested) * 100).toFixed(2) : '0.00'}%)
+            </span>
+          </div>
+
+          {/* P&L Breakdown */}
+          <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/50">
+            <div>
+              <p className="text-[10px] text-text-tertiary uppercase tracking-wider">Realized</p>
+              <p className={cn("font-mono text-sm font-semibold tabular-nums", realizedPnl >= 0 ? "text-profit-green" : "text-loss-red")}>
+                {realizedPnl >= 0 ? '+' : ''}{formatINR(realizedPnl)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] text-text-tertiary uppercase tracking-wider">Unrealized</p>
+              <p className={cn("font-mono text-sm font-semibold tabular-nums", unrealizedPnl >= 0 ? "text-profit-green" : "text-loss-red")}>
+                {unrealizedPnl >= 0 ? '+' : ''}{formatINR(unrealizedPnl)}
+              </p>
+            </div>
+            <div className="ml-auto">
+              <p className="text-[10px] text-text-tertiary uppercase tracking-wider">Virtual Capital</p>
+              <p className="font-mono text-sm font-semibold text-text-primary tabular-nums">
+                {formatINR(portfolio?.totalBalance ?? tierFallback)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Background decoration - subtle */}
+        <div className={cn(
+          "absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-40 pointer-events-none",
+          totalPnlPositive ? "bg-profit-green" : "bg-loss-red"
+        )} />
+      </div>
+
+      {/* ══════════════════════════════════════════════════ */}
+      {/* PRIMARY METRICS GRID (Today's Stats)               */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Total Trades Today */}
         <MetricCard
+          label="Total Trades"
+          value={<span className="font-mono text-2xl font-bold text-text-primary">{totalTrades}</span>}
+          subtext="Executed today"
           icon={Activity}
-          iconBg="bg-tint-purple"
-          iconColor="text-info-purple"
-          label="Available Margin"
-          value={formatINR(portfolio?.availableMargin ?? tierFallback)}
-          subtext={`Invested: ${formatINR(portfolio?.investedAmount ?? 0)}`}
+          iconColor="text-brand-primary"
         />
+        
+        {/* Winning Trades */}
+        <MetricCard
+          label="Winning Trades"
+          value={<span className="font-mono text-2xl font-bold text-profit-green">{wins}</span>}
+          subtext={`${winRate.toFixed(1)}% win rate`}
+          icon={TrendingUp}
+          iconColor="text-profit-green"
+        />
+        
+        {/* Losing Trades */}
+        <MetricCard
+          label="Losing Trades"
+          value={<span className="font-mono text-2xl font-bold text-loss-red">{losses}</span>}
+          subtext={totalTrades > 0 ? `${((losses / totalTrades) * 100).toFixed(1)}% loss rate` : '-'}
+          icon={TrendingDown}
+          iconColor="text-loss-red"
+        />
+        
         {/* Win Rate */}
         <MetricCard
-          icon={Trophy}
-          iconBg="bg-tint-yellow"
-          iconColor="text-accent-gold"
           label="Win Rate"
           value={
-            <span className="text-brand-primary">{winRate}%</span>
+            <span className={cn(
+              "font-mono text-2xl font-bold",
+              winRate >= 50 ? "text-profit-green" : winRate >= 30 ? "text-accent-gold" : "text-loss-red"
+            )}>
+              {winRate.toFixed(1)}%
+            </span>
           }
-          subtext={`${wins} Wins • ${losses} Losses`}
+          subtext={`${wins}W / ${losses}L`}
+          icon={Trophy}
+          iconColor={winRate >= 50 ? "text-profit-green" : winRate >= 30 ? "text-accent-gold" : "text-loss-red"}
         />
       </div>
 
-      {/* ============== MARKET INDICES ============== */}
+      {/* ══════════════════════════════════════════════════ */}
+      {/* INTRADAY EQUITY CURVE */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div className="rounded-xl border border-border bg-background p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-text-secondary" />
+            <span className="text-sm font-semibold text-text-primary">Intraday P&L</span>
+          </div>
+          <span className="text-[10px] text-text-tertiary font-mono">
+            {MARKET_OPEN} → {formattedTime.split(' ')[0]}
+          </span>
+        </div>
+        
+        {/* Simple equity curve visualization */}
+        <div className="h-32 flex items-end gap-0.5 px-2">
+          {generateEquityCurveData(totalPnl, totalPnlPositive).map((value, i) => (
+            <div
+              key={i}
+              className={cn(
+                "flex-1 rounded-t transition-all duration-300 min-h-[2px]",
+                totalPnlPositive 
+                  ? "bg-profit-green/70 hover:bg-profit-green" 
+                  : "bg-loss-red/70 hover:bg-loss-red"
+              )}
+              style={{ height: `${value}%` }}
+            />
+          ))}
+        </div>
+        
+        {/* X-axis labels */}
+        <div className="flex justify-between mt-2 px-2">
+          <span className="text-[9px] text-text-tertiary font-mono">{MARKET_OPEN}</span>
+          <span className="text-[9px] text-text-tertiary font-mono">Now</span>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════ */}
+      {/* SECONDARY METRICS (Trade Insights)                 */}
+      {/* ══════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-3 gap-3">
+        {/* Best Trade */}
+        <div className="rounded-xl border border-border bg-background p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <ArrowUpRight className="h-3.5 w-3.5 text-profit-green" />
+            <span className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">Best Trade</span>
+          </div>
+          {bestTrade ? (
+            <>
+              <p className="font-mono text-base font-bold text-profit-green tabular-nums">
+                +{formatINR(bestTrade.pnl ?? 0)}
+              </p>
+              <p className="text-[10px] text-text-tertiary truncate mt-1">{bestTrade.symbol}</p>
+            </>
+          ) : (
+            <p className="text-xs text-text-tertiary">No trades yet</p>
+          )}
+        </div>
+
+        {/* Worst Trade */}
+        <div className="rounded-xl border border-border bg-background p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <ArrowDownRight className="h-3.5 w-3.5 text-loss-red" />
+            <span className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">Worst Trade</span>
+          </div>
+          {worstTrade ? (
+            <>
+              <p className="font-mono text-base font-bold text-loss-red tabular-nums">
+                {formatINR(worstTrade.pnl ?? 0)}
+              </p>
+              <p className="text-[10px] text-text-tertiary truncate mt-1">{worstTrade.symbol}</p>
+            </>
+          ) : (
+            <p className="text-xs text-text-tertiary">No trades yet</p>
+          )}
+        </div>
+
+        {/* Active Positions */}
+        <div className="rounded-xl border border-border bg-background p-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Target className="h-3.5 w-3.5 text-brand-primary" />
+            <span className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">Active Positions</span>
+          </div>
+          <p className="font-mono text-base font-bold text-text-primary tabular-nums">
+            {activePositionsCount}
+          </p>
+          <p className="text-[10px] text-text-tertiary mt-1">Open trades</p>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════ */}
+      {/* MARKET INDICES                                     */}
+      {/* ══════════════════════════════════════════════════ */}
       <div>
         <div className="flex items-center justify-between px-1 mb-2">
-          <div className="flex items-center gap-2">
-            <h3 className="font-heading text-base font-semibold text-text-primary">Market Indices</h3>
-            <LiveBadge connected={wsStatus === 'upstox_connected'} />
-          </div>
+          <h3 className="font-heading text-sm font-semibold text-text-primary">Market Indices</h3>
           <a href="/market" className="text-xs font-semibold text-brand-primary hover:underline">
             View All
           </a>
         </div>
-        <div className="card-soft p-2">
-          <div className="space-y-1">
-            {indices.map((idx) => {
-              const upstoxKey = INDEX_TO_UPSTOX_KEY[idx.symbol];
-              const liveTick = upstoxKey ? quotes[upstoxKey] : undefined;
-              const livePrice = liveTick?.ltp ?? idx.lastPrice;
-              const liveChangePct = liveTick?.changePct ?? idx.changePct;
-              const positive = (liveTick?.change ?? idx.change) >= 0;
+        <div className="divide-y divide-border/50 rounded-xl border border-border bg-background overflow-hidden">
+          {indices.slice(0, 4).map((idx) => {
+            const upstoxKey = INDEX_TO_UPSTOX_KEY[idx.symbol];
+            const liveTick = upstoxKey ? quotes[upstoxKey] : undefined;
+            const livePrice = liveTick?.ltp ?? idx.lastPrice;
+            const liveChangePct = liveTick?.changePct ?? idx.changePct;
+            const positive = (liveTick?.change ?? idx.change) >= 0;
+            
+            return (
+              <a
+                key={idx.id}
+                href={`/stock/${idx.symbol}`}
+                className="flex items-center gap-3 p-3 transition-colors hover:bg-bg-surface-alt first:rounded-t-xl last:rounded-b-xl"
+              >
+                <StockLogo symbol={idx.symbol} size="sm" isIndex rounded="md" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-heading text-sm font-semibold text-text-primary">{idx.name}</p>
+                  <p className="text-[11px] text-text-secondary">{idx.exchange}</p>
+                </div>
+                <Sparkline data={getMiniSeries(idx.symbol, positive)} positive={positive} size="sm" />
+                <div className="text-right shrink-0 ml-2">
+                  <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
+                    {formatNumber(livePrice, 2)}
+                  </p>
+                  <p className={cn(
+                    "font-mono text-[11px] tabular-nums",
+                    positive ? "text-profit-green" : "text-loss-red"
+                  )}>
+                    {positive ? '+' : ''}{liveChangePct.toFixed(2)}%
+                  </p>
+                </div>
+              </a>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════ */}
+      {/* OPEN POSITIONS PREVIEW                               */}
+      {/* ══════════════════════════════════════════════════ */}
+      {positions.filter(p => p.status === 'OPEN').length > 0 && (
+        <div>
+          <div className="flex items-center justify-between px-1 mb-2">
+            <h3 className="font-heading text-sm font-semibold text-text-primary">Open Positions</h3>
+            <a href="/positions" className="text-xs font-semibold text-brand-primary hover:underline">
+              View All ({activePositionsCount})
+            </a>
+          </div>
+          <div className="divide-y divide-border/50 rounded-xl border border-border bg-background overflow-hidden max-h-64 overflow-y-auto">
+            {positions.filter(p => p.status === 'OPEN').slice(0, 5).map((pos) => {
+              const liveKey = getLiveKeyForPosition(pos);
+              const tick = liveKey ? quotes[liveKey] : undefined;
+              const liveLtp = tick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
+              const livePnl = (liveLtp - pos.avgPrice) * pos.quantity * (pos.side === 'LONG' ? 1 : -1);
+              const positive = livePnl >= 0;
+              
               return (
                 <a
-                  key={idx.id}
-                  href={`/stock/${idx.symbol}`}
-                  className="group flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-bg-surface-alt"
+                  key={pos.id}
+                  href={`/stock/${pos.symbol}`}
+                  className="flex items-center gap-3 p-3 transition-colors hover:bg-bg-surface-alt"
                 >
-                  <StockLogo symbol={idx.symbol} size="sm" isIndex rounded="md" />
+                  <StockLogo symbol={pos.symbol} size="md" rounded="md" />
                   <div className="min-w-0 flex-1">
-                    <p className="font-heading text-sm font-semibold text-text-primary truncate">{idx.name}</p>
-                    <p className="text-[11px] text-text-secondary">{idx.exchange}</p>
-                  </div>
-                  <Sparkline data={getMiniSeries(idx.symbol, positive)} positive={positive} />
-                  <div className="text-right shrink-0 min-w-[78px]">
-                    <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
-                      {formatNumber(livePrice, 2)}
+                    <div className="flex items-center gap-2">
+                      <p className="font-mono text-sm font-semibold text-text-primary">{pos.symbol}</p>
+                      <span className={cn(
+                        "pill text-[9px]",
+                        pos.side === 'BUY' ? "bg-tint-green text-profit-green" : "bg-tint-red text-loss-red"
+                      )}>
+                        {pos.side}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-text-secondary mt-0.5">
+                      {pos.quantity} qty @ ₹{formatNumber(pos.avgPrice, 2)}
                     </p>
-                    <p
-                      className={cn(
-                        'font-mono text-[11px] tabular-nums',
-                        positive ? 'text-profit-green' : 'text-loss-red'
-                      )}
-                    >
-                      {positive ? '+' : ''}{liveChangePct.toFixed(2)}%
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
+                      ₹{formatNumber(liveLtp * pos.quantity, 0)}
+                    </p>
+                    <p className={cn(
+                      "font-mono text-[11px] tabular-nums",
+                      positive ? "text-profit-green" : "text-loss-red"
+                    )}>
+                      {positive ? '+' : ''}₹{formatNumber(livePnl, 0)}
                     </p>
                   </div>
                 </a>
@@ -515,245 +670,76 @@ export function DashboardPage() {
             })}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ============== OPEN POSITIONS ============== */}
-      <div>
-        <div className="flex items-center justify-between px-1 mb-2">
-          <h3 className="font-heading text-base font-semibold text-text-primary">Open Positions</h3>
-          <a href="/positions" className="text-xs font-semibold text-brand-primary hover:underline">
-            View All
+      {/* Quick Actions when no positions */}
+      {positions.filter(p => p.status === 'OPEN').length === 0 && (
+        <div className="rounded-xl border border-dashed border-border/50 p-6 text-center">
+          <Zap className="h-8 w-8 mx-auto text-text-tertiary mb-2" />
+          <p className="text-sm font-medium text-text-primary">No positions yet today</p>
+          <p className="text-xs text-text-secondary mt-1">Start trading to see your performance here</p>
+          <a href="/trade" className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors">
+            Place Order
           </a>
         </div>
-        <div className="card-soft p-3">
-          {positions.length === 0 ? (
-            <div className="flex flex-col items-center py-6 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-bg-surface-alt mb-2">
-                <Briefcase className="h-6 w-6 text-text-secondary" />
-              </div>
-              <p className="text-sm font-medium text-text-primary">No open positions</p>
-              <a href="/trade" className="mt-2 text-xs font-semibold text-brand-primary hover:underline">
-                Start Trading
-              </a>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {positions.slice(0, 3).map((pos) => {
-                // Live tick lookup — uses resolved option-strike key for OPTIONS positions
-                const liveKey = getLiveKeyForPosition(pos);
-                const tick = liveKey ? quotes[liveKey] : undefined;
-                const liveLtp = tick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
-                const livePnl = (liveLtp - pos.avgPrice) * pos.quantity * (pos.side === 'LONG' ? 1 : -1);
-                const livePnlPct = pos.avgPrice > 0
-                  ? (livePnl / (pos.avgPrice * pos.quantity)) * 100
-                  : 0;
-                const positive = livePnl >= 0;
-                const isLive = !!tick?.timestamp && Date.now() - tick.timestamp < 30000;
-                return (
-                  <a
-                    key={pos.id}
-                    href={`/stock/${pos.symbol}`}
-                    className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-bg-surface-alt"
-                  >
-                    <StockLogo symbol={pos.symbol} size="md" rounded="md" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <p className="font-mono text-sm font-semibold text-text-primary">
-                          {pos.symbol}
-                          {isLive && (
-                            <span className="ml-1 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
-                          )}
-                        </p>
-                        <span className="pill bg-tint-green text-profit-green">BUY</span>
-                      </div>
-                      <p className="text-[11px] text-text-secondary mt-0.5">
-                        NSE · {pos.quantity} Shares · ₹{formatNumber(liveLtp, 2)}
-                      </p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-mono text-sm font-bold tabular-nums text-text-primary">
-                        ₹{formatNumber(liveLtp * pos.quantity, 2)}
-                      </p>
-                      <p className={cn('font-mono text-[11px] tabular-nums', positive ? 'text-profit-green' : 'text-loss-red')}>
-                        {positive ? '+' : ''}₹{formatNumber(livePnl, 2)} ({positive ? '+' : ''}{livePnlPct.toFixed(2)}%)
-                      </p>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
-      {/* ============== TOP MOVERS BANNER ============== */}
-      <a
-        href="/movers"
-        className="block rounded-2xl border border-border bg-gradient-to-br from-tint-green/40 via-bg-surface to-tint-red/40 p-4 hover:shadow-md transition-shadow"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-surface-alt shrink-0">
-              <Flame className="h-6 w-6 text-accent-gold" />
+      {/* Upgrade CTA (only when should show) */}
+      {shouldShowUpgrade && (
+        <a
+          href="/subscription"
+          className="block rounded-xl border border-brand-primary/20 bg-brand-primary/[0.03] p-4 hover:bg-brand-primary/[0.06] transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <Crown className="h-8 w-8 text-brand-primary" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-text-primary">Upgrade to Premium</p>
+              <p className="text-[11px] text-text-secondary">Get ₹10L virtual capital & advanced features</p>
             </div>
-            <div className="min-w-0">
-              <p className="font-heading text-sm font-bold text-text-primary">
-                Top Gainers &amp; Losers
-              </p>
-              <p className="text-[11px] text-text-secondary mt-0.5 truncate">
-                Today's top 20 gainers and 20 losers across 430+ stocks
-              </p>
-            </div>
+            <ArrowUpRight className="h-5 w-5 text-brand-primary" />
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="pill bg-tint-green text-profit-green">+Gainers</span>
-            <span className="pill bg-tint-red text-loss-red">-Losers</span>
-            <ArrowRight className="h-4 w-4 text-text-secondary" />
-          </div>
-        </div>
-      </a>
+        </a>
+      )}
 
-      {/* ============== QUICK ACTIONS ============== */}
-      <div>
-        <h3 className="font-heading text-base font-semibold text-text-primary px-1 mb-2">Quick Actions</h3>
-        <div className="grid grid-cols-4 gap-2">
-          <QuickAction icon={Plus} label="Place Order" href="/trade" tint="bg-tint-blue" color="text-brand-primary" />
-          <QuickAction icon={Briefcase} label="Positions" href="/positions" tint="bg-tint-green" color="text-profit-green" />
-          <QuickAction icon={History} label="Wallet History" href="/history" tint="bg-tint-purple" color="text-info-purple" />
-          <QuickAction icon={Wallet} label="Funds" href="/portfolio" tint="bg-tint-yellow" color="text-accent-gold" />
-        </div>
-      </div>
-
-      {/* ============== RECENT ORDERS ============== */}
-      {recentOrders.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between px-1 mb-2">
-            <h3 className="font-heading text-base font-semibold text-text-primary">Recent Orders</h3>
-            <a href="/trade" className="text-xs font-semibold text-brand-primary hover:underline">
-              View All
-            </a>
+      {/* Trial Active Notice */}
+      {trialStatus === 'active' && !shouldShowUpgrade && (
+        <div className="rounded-xl border border-accent-gold/20 bg-accent-gold/[0.03] p-3 flex items-center gap-3">
+          <Clock className="h-5 w-5 text-accent-gold shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-text-primary">Premium Trial Active</p>
+            <p className="font-mono text-xs text-text-secondary tabular-nums">
+              {String(timeLeft.days).padStart(2, '0')}d : {String(timeLeft.hours).padStart(2, '0')}h : {String(timeLeft.minutes).padStart(2, '0')}m : {String(timeLeft.seconds).padStart(2, '0')}s remaining
+            </p>
           </div>
-          <div className="card-soft p-3">
-            <div className="space-y-2">
-              {recentOrders.map((ord) => (
-                <a
-                  key={ord.id}
-                  href={`/stock/${ord.symbol}`}
-                  className="flex items-center gap-3 rounded-xl p-2 hover:bg-bg-surface-alt transition-colors"
-                >
-                  <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</p>
-                      <span
-                        className={cn(
-                          'pill',
-                          ord.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
-                        )}
-                      >
-                        {ord.side}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-text-secondary mt-0.5">
-                      {ord.orderType} · {ord.quantity} qty
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
-                      ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
-                    </p>
-                    {(() => {
-                      const si = formatOrderStatus(ord.status);
-                      return (
-                        <p className={cn('text-[11px] font-medium', si.color)}>
-                          {si.label}
-                        </p>
-                      );
-                    })()}
-                  </div>
-                </a>
-              ))}
-            </div>
-          </div>
+          <span className="flex h-2 w-2 rounded-full bg-profit-green animate-pulse shrink-0" />
         </div>
       )}
     </div>
   );
 }
 
+// ─── Metric Card Component (Clean, Minimal) ───────────────
 function MetricCard({
-  icon: Icon,
-  iconBg,
-  iconColor,
   label,
   value,
   subtext,
+  icon: Icon,
+  iconColor = "text-text-secondary",
 }: {
-  icon: React.ElementType;
-  iconBg: string;
-  iconColor: string;
   label: string;
   value: React.ReactNode;
   subtext?: string;
+  icon?: React.ElementType;
+  iconColor?: string;
 }) {
   return (
-    <div className="card-soft p-4">
+    <div className="rounded-xl border border-border bg-background p-3">
       <div className="flex items-start justify-between">
-        <p className="text-[12px] font-medium text-text-secondary">{label}</p>
-        <div className={cn('icon-tile', iconBg)}>
-          <Icon className={cn('h-[18px] w-[18px]', iconColor)} />
-        </div>
+        <p className="text-[10px] font-medium text-text-secondary uppercase tracking-wider">{label}</p>
+        {Icon && <Icon className={cn("h-4 w-4", iconColor)} />}
       </div>
-      <p className="mt-2 font-mono text-xl font-bold tabular-nums text-text-primary">{value}</p>
-      {subtext && <p className="mt-0.5 text-[11px] text-text-tertiary">{subtext}</p>}
+      <p className="mt-1">{value}</p>
+      {subtext && <p className="text-[10px] text-text-tertiary mt-0.5">{subtext}</p>}
     </div>
-  );
-}
-
-function QuickAction({
-  icon: Icon,
-  label,
-  href,
-  tint,
-  color,
-}: {
-  icon: React.ElementType;
-  label: string;
-  href: string;
-  tint: string;
-  color: string;
-}) {
-  return (
-    <a
-      href={href}
-      className="card-soft p-3 flex flex-col items-center gap-2 hover:shadow-md transition-shadow"
-    >
-      <div className={cn('icon-tile', tint)}>
-        <Icon className={cn('h-5 w-5', color)} />
-      </div>
-      <span className="text-[11px] font-medium text-text-primary text-center leading-tight">{label}</span>
-    </a>
-  );
-}
-
-// Live data badge — shows green dot when WebSocket is connected to Upstox
-function LiveBadge({ connected }: { connected: boolean }) {
-  return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide',
-        connected
-          ? 'bg-tint-green text-profit-green'
-          : 'bg-bg-surface-alt text-text-tertiary'
-      )}
-    >
-      <span
-        className={cn(
-          'w-1.5 h-1.5 rounded-full',
-          connected ? 'bg-profit-green animate-pulse' : 'bg-text-tertiary'
-        )}
-      />
-      {connected ? 'Live' : 'Off'}
-    </span>
   );
 }

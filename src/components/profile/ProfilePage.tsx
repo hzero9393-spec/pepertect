@@ -330,92 +330,75 @@ export function ProfilePage() {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden rounded-2xl border border-brand-primary/20 bg-gradient-to-br from-brand-primary/5 via-bg-surface to-accent-gold/5 p-4"
+          className="rounded-xl border border-border bg-background overflow-hidden"
         >
-          {/* Background decoration */}
-          <div className="absolute top-0 right-0 w-28 h-28 bg-brand-primary/10 rounded-full blur-2xl" />
-          <div className="absolute bottom-0 left-0 w-20 h-20 bg-accent-gold/10 rounded-full blur-2xl" />
-          
-          <div className="relative">
-            {/* Header */}
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand-primary to-brand-primary-hover">
-                <Sparkles className="h-3.5 w-3.5 text-white" />
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 pb-3 border-b border-border/50">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-gold/10">
+                <Sparkles className="h-4 w-4 text-accent-gold" />
               </div>
-              <div className="flex-1">
-                <h3 className="font-heading text-sm font-bold text-text-primary">30 Days Premium Trial</h3>
-                <p className="text-[10px] text-text-secondary">Your free PREMIUM access expires in</p>
-              </div>
-              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-profit-green/10">
-                <span className="flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
-                <span className="text-[9px] font-semibold text-profit-green uppercase">Active</span>
+              <div>
+                <h3 className="font-heading text-sm font-bold text-text-primary">Premium Trial</h3>
+                <p className="text-[10px] text-text-secondary">Plan expires in</p>
               </div>
             </div>
-
-            {/* Countdown Display - Styled */}
-            <div className="grid grid-cols-4 gap-1.5 mb-3">
-              {[
-                { value: timeLeft.days, label: 'Days' },
-                { value: timeLeft.hours, label: 'Hrs' },
-                { value: timeLeft.minutes, label: 'Min' },
-                { value: timeLeft.seconds, label: 'Sec' },
-              ].map((item, i) => (
-                <motion.div
-                  key={item.label}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: i * 0.08, type: 'spring', stiffness: 300 }}
-                  className="text-center p-2 rounded-xl bg-white/60 dark:bg-bg-surface/80 backdrop-blur-sm border border-border/50"
-                >
-                  <span className={cn(
-                    "font-mono text-xl sm:text-2xl font-bold tabular-nums block leading-none",
-                    item.value <= 1 && (item.label === 'Days' || item.label === 'Hrs') 
-                      ? "text-loss-red" 
-                      : item.label === 'Days'
-                        ? "text-brand-primary"
-                        : "text-text-primary"
-                  )}>
-                    {String(item.value).padStart(2, '0')}
-                  </span>
-                  <span className="text-[8px] text-text-tertiary uppercase tracking-wider mt-1 block">{item.label}</span>
-                </motion.div>
-              ))}
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-profit-green/10 border border-profit-green/20">
+              <span className="w-1.5 h-1.5 rounded-full bg-profit-green animate-pulse" />
+              <span className="text-[10px] font-bold text-profit-green uppercase tracking-wide">Active</span>
             </div>
-
-            {/* Progress bar */}
-            <div className="mb-2">
-              <div className="flex justify-between text-[9px] text-text-secondary mb-1">
-                <span>Trial Usage</span>
-                <span>{30 - timeLeft.days}/30 days used</span>
-              </div>
-              <div className="h-1.5 w-full rounded-full bg-bg-surface-alt overflow-hidden">
-                <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-brand-primary via-accent-gold to-brand-primary-hover"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${Math.max(0, Math.min(100, ((30 - timeLeft.days) / 30) * 100))}%` }}
-                  transition={{ duration: 1.5, ease: 'easeOut' }}
-                />
-              </div>
-            </div>
-
-            {/* CTA - Only show when trial ending soon (< 2 days) */}
-            {shouldShowUpgrade ? (
-              <a
-                href="/subscription"
-                className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white text-xs font-semibold hover:shadow-lg hover:shadow-brand-primary/25 transition-all mt-1"
-              >
-                <Crown className="h-3.5 w-3.5" />
-                Upgrade to Premium — ₹299/mo
-              </a>
-            ) : (
-              /* Trial Active - Show "Enjoying Free" badge instead */
-              <div className="w-full flex items-center justify-center gap-1.5 h-9 rounded-xl bg-gradient-to-r from-profit-green/20 to-accent-gold/20 border border-profit-green/30 mt-1">
-                <Sparkles className="h-3.5 w-3.5 text-accent-gold" />
-                <span className="text-xs font-bold text-profit-green">Enjoying Premium FREE</span>
-                <span className="flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
-              </div>
-            )}
           </div>
+
+          {/* Countdown Display - Professional Format: 25d : 04h : 49m : 23s */}
+          <div className="px-4 py-5 bg-bg-surface-alt/50">
+            <div className="flex items-center justify-center gap-1 sm:gap-2">
+              {/* Days */}
+              <TimeUnit value={timeLeft.days} label="days" isUrgent={timeLeft.days <= 2} />
+              <span className="text-lg font-bold text-text-tertiary select-none">:</span>
+              {/* Hours */}
+              <TimeUnit value={timeLeft.hours} label="hrs" isUrgent={false} />
+              <span className="text-lg font-bold text-text-tertiary select-none">:</span>
+              {/* Minutes */}
+              <TimeUnit value={timeLeft.minutes} label="min" isUrgent={false} />
+              <span className="text-lg font-bold text-text-tertiary select-none">:</span>
+              {/* Seconds */}
+              <TimeUnit value={timeLeft.seconds} label="sec" isUrgent={timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes < 5} pulse={true} />
+            </div>
+          </div>
+
+          {/* Progress bar - Clean minimal style */}
+          <div className="px-4 pb-4">
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-[9px] text-text-secondary uppercase tracking-wider">Trial Progress</span>
+              <span className="text-[9px] font-mono text-text-tertiary">{30 - timeLeft.days}/30 days used</span>
+            </div>
+            <div className="h-1 w-full rounded-full bg-bg-surface-alt overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-brand-primary"
+                initial={{ width: 0 }}
+                animate={{ width: `${Math.max(0, Math.min(100, ((30 - timeLeft.days) / 30) * 100))}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+              />
+            </div>
+          </div>
+
+          {/* CTA - Only show when trial ending soon (< 2 days) */}
+          {shouldShowUpgrade ? (
+            <a
+              href="/subscription"
+              className="mx-4 mb-4 flex items-center justify-center gap-1.5 h-10 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors"
+            >
+              <Crown className="h-4 w-4" />
+              Upgrade to Premium — ₹299/mo
+            </a>
+          ) : (
+            /* Trial Active - Show "Enjoying Free" badge */
+            <div className="mx-4 mb-4 flex items-center justify-center gap-2 h-10 rounded-lg bg-profit-green/5 border border-profit-green/20">
+              <Sparkles className="h-4 w-4 text-accent-gold" />
+              <span className="text-xs font-bold text-profit-green">Enjoying Premium FREE</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-profit-green animate-pulse" />
+            </div>
+          )}
         </motion.div>
       )}
 
@@ -1100,5 +1083,36 @@ function PreferenceRow({
       {value && <span className="ml-auto text-xs text-text-secondary">{value}</span>}
       {!value && <ChevronRight className={cn('ml-auto h-4 w-4', danger ? 'text-loss-red' : 'text-text-tertiary')} />}
     </a>
+  );
+}
+
+// ─── TimeUnit Component for Countdown Timer ───────────────
+function TimeUnit({ 
+  value, 
+  label, 
+  isUrgent = false,
+  pulse = false 
+}: { 
+  value: number; 
+  label: string; 
+  isUrgent?: boolean;
+  pulse?: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center min-w-[52px]">
+      <span className={cn(
+        "font-mono text-xl sm:text-2xl font-bold tabular-nums leading-none",
+        isUrgent ? "text-loss-red" : "text-text-primary",
+        pulse && "animate-pulse"
+      )}>
+        {String(value).padStart(2, '0')}
+      </span>
+      <span className={cn(
+        "text-[9px] text-text-tertiary uppercase tracking-wider mt-0.5",
+        isUrgent && "text-loss-red/70"
+      )}>
+        {label}
+      </span>
+    </div>
   );
 }
