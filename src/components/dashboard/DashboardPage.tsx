@@ -7,7 +7,7 @@ import { getVirtualCapitalForTier } from '@/lib/tier';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import {
   Wallet, TrendingUp, TrendingDown, Activity, Trophy,
-  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame,
+  BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame, History,
   Clock, Sparkles, Crown,
 } from 'lucide-react';
 import type { Portfolio, Position, IndexData, Order } from '@/types';
