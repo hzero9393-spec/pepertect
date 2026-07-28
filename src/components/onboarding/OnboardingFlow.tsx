@@ -565,7 +565,7 @@ export function OnboardingFlow() {
                   </span>
                 </div>
                 <p className="text-[10px] text-blue-200/60 mt-2">Credited instantly • No real money required</p>
-              </div>
+              </motion.div>
 
               {/* Features list */}
               <motion.div
