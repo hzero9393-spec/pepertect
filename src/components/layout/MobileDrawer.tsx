@@ -17,7 +17,6 @@ interface DrawerItem {
   id: string;
   label: string;
   icon: React.ElementType;
-  premium?: boolean;
   href?: string;
   activeMatchers?: string[];
 }
@@ -33,7 +32,7 @@ const PRIMARY_ITEMS: DrawerItem[] = [
 ];
 
 const SECONDARY_ITEMS: DrawerItem[] = [
-  { id: 'learning', label: 'Learning', icon: GraduationCap, premium: true },
+  { id: 'learning', label: 'Learning', icon: GraduationCap },
   { id: 'support', label: 'Support', icon: HelpCircle },
 ];
 
@@ -88,11 +87,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
       >
         <Icon className="h-5 w-5 shrink-0" />
         <span className="flex-1">{item.label}</span>
-        {item.premium && (
-          <span className="rounded bg-accent-gold/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent-gold">
-            PRO
-          </span>
-        )}
+
         {isActive && <ChevronRight className="h-4 w-4" />}
       </a>
     );

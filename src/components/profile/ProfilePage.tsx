@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useTheme } from 'next-themes';
@@ -11,11 +11,10 @@ import {
   Camera, Copy, Check, Monitor, ShieldCheck, BadgeCheck,
   Clock, Store, Grid as GridIcon,
   TrendingUp, Moon, Sun, X, Loader2, AlertTriangle,
-  Trash2, Gift, Sparkles, Timer, Crown, Zap,
+  Trash2, Zap,
   Download, Smartphone,
 } from 'lucide-react';
 import type { Portfolio } from '@/types';
-import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 
 export function ProfilePage() {
   const { user, token, login, logout } = useAuthStore();
@@ -41,11 +40,6 @@ export function ProfilePage() {
   const [logoutAllSubmitting, setLogoutAllSubmitting] = useState(false);
   const [logoutAllResult, setLogoutAllResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Trial Expiry Timer state
-  const [trialEndsAt, setTrialEndsAt] = useState<Date | null>(null);
-  const [trialStatus, setTrialStatus] = useState<'active' | 'expired' | 'none'>('none');
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-
   const mounted = typeof window !== 'undefined';
 
   useEffect(() => {
@@ -70,54 +64,6 @@ export function ProfilePage() {
   useEffect(() => {
     setAvatarUrl(user?.avatar ?? null);
   }, [user?.avatar]);
-
-  // Fetch trial status and setup countdown timer
-  const fetchTrialStatus = useCallback(async () => {
-    if (!token) return;
-    try {
-      const res = await fetch('/api/user/trial-status', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const d = await res.json();
-      if (d.success && d.data) {
-        if (d.data.active && d.data.endsAt) {
-          setTrialStatus('active');
-          setTrialEndsAt(new Date(d.data.endsAt));
-        } else if (d.data.expired) {
-          setTrialStatus('expired');
-        }
-      }
-    } catch { /* silent fail */ }
-  }, [token]);
-
-  // Countdown timer effect
-  useEffect(() => {
-    fetchTrialStatus();
-    
-    const updateTimer = () => {
-      if (!trialEndsAt) return;
-      const now = new Date();
-      const diff = trialEndsAt.getTime() - now.getTime();
-      
-      if (diff <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
-        setTrialStatus('expired');
-        return;
-      }
-      
-      setTimeLeft({
-        days: Math.floor(diff / (1000 * 60 * 60 * 24)),
-        hours: Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-        minutes: Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)),
-        seconds: Math.floor((diff % (1000 * 60)) / 1000),
-      });
-    };
-
-    const interval = setInterval(updateTimer, 1000);
-    updateTimer(); // Initial call
-    
-    return () => clearInterval(interval);
-  }, [trialEndsAt, token, fetchTrialStatus]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -276,121 +222,8 @@ export function ProfilePage() {
     return map[language] || 'English';
   })();
 
-  // Helper: Should we show upgrade options? (hide if trial active with >2 days left)
-  const shouldShowUpgrade = 
-    user?.tier === 'PREMIUM' ? false : // Already premium
-    trialStatus !== 'active' ? true :   // No active trial, show upgrade
-    timeLeft.days < 2;                  // Active trial - only show if < 2 days left
-
   return (
     <div className="space-y-4">
-      {/* ============== FREE TRIAL WIDGET (only show when trial NOT active) ============== */}
-      {(trialStatus !== 'active') && <FreeTrialWidget variant="card" />}
-
-      {/* ============== 30 DAYS PREMIUM TRIAL - COUNTDOWN TIMER (when active) ============== */}
-      {trialStatus === 'active' && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-xl border border-border bg-background overflow-hidden"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between p-4 pb-3 border-b border-border/50">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-gold/10">
-                <Sparkles className="h-4 w-4 text-accent-gold" />
-              </div>
-              <div>
-                <h3 className="font-heading text-sm font-bold text-text-primary">Premium Trial</h3>
-                <p className="text-[10px] text-text-secondary">Plan expires in</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-profit-green/10 border border-profit-green/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-profit-green animate-pulse" />
-              <span className="text-[10px] font-bold text-profit-green uppercase tracking-wide">Active</span>
-            </div>
-          </div>
-
-          {/* Countdown Display - Professional Format: 25d : 04h : 49m : 23s */}
-          <div className="px-4 py-5 bg-bg-surface-alt/50">
-            <div className="flex items-center justify-center gap-1 sm:gap-1.5">
-              {/* Days */}
-              <TimeUnit value={timeLeft.days} label="d" isUrgent={timeLeft.days <= 2} />
-              <span className="text-lg font-bold text-text-tertiary select-none">:</span>
-              {/* Hours */}
-              <TimeUnit value={timeLeft.hours} label="h" isUrgent={false} />
-              <span className="text-lg font-bold text-text-tertiary select-none">:</span>
-              {/* Minutes */}
-              <TimeUnit value={timeLeft.minutes} label="m" isUrgent={false} />
-              <span className="text-lg font-bold text-text-tertiary select-none">:</span>
-              {/* Seconds */}
-              <TimeUnit value={timeLeft.seconds} label="s" isUrgent={timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes < 5} pulse={true} />
-            </div>
-          </div>
-
-          {/* Progress bar - Clean minimal style */}
-          <div className="px-4 pb-4">
-            <div className="flex justify-between items-center mb-1.5">
-              <span className="text-[9px] text-text-secondary uppercase tracking-wider">Trial Progress</span>
-              <span className="text-[9px] font-mono text-text-tertiary">{30 - timeLeft.days}/30 days used</span>
-            </div>
-            <div className="h-1 w-full rounded-full bg-bg-surface-alt overflow-hidden">
-              <motion.div
-                className="h-full rounded-full bg-brand-primary"
-                initial={{ width: 0 }}
-                animate={{ width: `${Math.max(0, Math.min(100, ((30 - timeLeft.days) / 30) * 100))}%` }}
-                transition={{ duration: 1, ease: 'easeOut' }}
-              />
-            </div>
-          </div>
-
-          {/* CTA - Only show when trial ending soon (< 2 days) */}
-          {shouldShowUpgrade ? (
-            <a
-              href="/subscription"
-              className="mx-4 mb-4 flex items-center justify-center gap-1.5 h-10 rounded-lg bg-brand-primary text-white text-xs font-semibold hover:bg-brand-primary-hover transition-colors"
-            >
-              <Crown className="h-4 w-4" />
-              Upgrade to Premium — ₹299/mo
-            </a>
-          ) : (
-            /* Trial Active - Show "Enjoying Free" badge */
-            <div className="mx-4 mb-4 flex items-center justify-center gap-2 h-10 rounded-lg bg-profit-green/5 border border-profit-green/20">
-              <Sparkles className="h-4 w-4 text-accent-gold" />
-              <span className="text-xs font-bold text-profit-green">Enjoying Premium FREE</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-profit-green animate-pulse" />
-            </div>
-          )}
-        </motion.div>
-      )}
-
-      {/* Trial Expired Banner */}
-      {trialStatus === 'expired' && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="rounded-2xl border border-loss-red/30 bg-gradient-to-br from-loss-red/10 via-bg-surface to-tint-red/5 p-4"
-        >
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tint-red">
-              <Crown className="h-5 w-5 text-loss-red" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="font-heading text-sm font-bold text-text-primary">Free Trial Ended</h3>
-              <p className="text-[11px] text-text-secondary mt-0.5">
-                Your 30-day free trial has expired. Upgrade to PREMIUM to continue enjoying all features.
-              </p>
-            </div>
-          </div>
-          <a
-            href="/subscription"
-            className="mt-3 w-full flex items-center justify-center gap-1.5 h-10 rounded-lg bg-loss-red text-white text-xs font-semibold hover:bg-loss-red/90 transition-colors"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            Upgrade to Premium — ₹299/month
-          </a>
-        </motion.div>
-      )}
 
       {/* ============== PROFILE HEADER CARD ============== */}
       <div className="card-soft p-4">
@@ -472,59 +305,9 @@ export function ProfilePage() {
               )}
             </button>
 
-            {/* ============== PLAN BADGE - Shows 30 Days Premium Trial when active ============== */}
+            {/* ============== PLAN BADGE ============== */}
             <div className="mt-3 flex items-center gap-2 flex-wrap">
-              {trialStatus === 'active' ? (
-                /* Active Trial Badge with mini countdown */
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand-primary/10 via-accent-gold/10 to-brand-primary-hover/10 border border-brand-primary/30"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <Sparkles className="h-3.5 w-3.5 text-accent-gold" />
-                    <span className="text-xs font-bold text-brand-primary">30 Days Premium Trial</span>
-                  </div>
-                  {/* Mini countdown inline */}
-                  <div className="flex items-center gap-0.5 pl-2 border-l border-border/50">
-                    <span className="font-mono text-[10px] font-semibold tabular-nums text-text-primary">
-                      {String(timeLeft.days).padStart(2, '0')}d
-                    </span>
-                    <span className="text-text-tertiary text-[10px]">:</span>
-                    <span className="font-mono text-[10px] font-semibold tabular-nums text-text-primary">
-                      {String(timeLeft.hours).padStart(2, '0')}h
-                    </span>
-                    <span className="text-text-tertiary text-[10px]">:</span>
-                    <span className="font-mono text-[10px] font-semibold tabular-nums text-text-primary">
-                      {String(timeLeft.minutes).padStart(2, '0')}m
-                    </span>
-                    <span className="text-text-tertiary text-[10px]">:</span>
-                    <span className={cn(
-                      "font-mono text-[10px] font-semibold tabular-nums",
-                      timeLeft.days === 0 && timeLeft.hours === 0 && timeLeft.minutes < 5 
-                        ? "text-loss-red animate-pulse" 
-                        : "text-text-primary"
-                    )}>
-                      {String(timeLeft.seconds).padStart(2, '0')}s
-                    </span>
-                  </div>
-                  <span className="flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
-                </motion.div>
-              ) : trialStatus === 'expired' ? (
-                /* Expired Trial Badge */
-                <span className="pill bg-tint-red text-loss-red inline-flex items-center gap-1">
-                  <Timer className="h-3 w-3" />
-                  Trial Expired
-                </span>
-              ) : (
-                /* Normal Plan Badge */
-                <span className={cn(
-                  "pill",
-                  user?.tier === 'PREMIUM' ? "bg-tint-blue text-brand-primary" : "bg-tint-yellow text-accent-gold"
-                )}>
-                  {user?.tier === 'PREMIUM' ? 'PREMIUM Plan' : 'FREE Plan'}
-                </span>
-              )}
+              <span className="pill bg-tint-blue text-brand-primary">Free Account</span>
               <span className="pill bg-bg-surface-alt text-text-secondary">{user?.role || 'USER'}</span>
               <span className="pill bg-tint-green text-profit-green inline-flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" />
@@ -590,27 +373,6 @@ export function ProfilePage() {
           </div>
         )}
       </div>
-
-      {/* ============== FREE TRIAL QUICK LINK (HIDDEN when trial is active) ============== */}
-      {trialStatus !== 'active' && (
-      <div>
-        <a
-          href="/free-trial"
-          className="card-soft p-4 flex items-center gap-3 hover:shadow-md transition-shadow bg-gradient-to-br from-accent-gold/10 to-brand-primary/5 border border-accent-gold/30"
-        >
-          <div className="icon-tile bg-tint-yellow">
-            <Gift className="h-5 w-5 text-accent-gold" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-heading text-sm font-bold text-text-primary">30 Days Free PREMIUM Trial</p>
-            <p className="text-[11px] text-text-secondary mt-0.5">
-              View trial status, plan details &amp; start your free trial →
-            </p>
-          </div>
-          <ChevronRight className="h-4 w-4 text-accent-gold shrink-0" />
-        </a>
-      </div>
-      )}
 
       {/* ============== ACCOUNT DETAILS ============== */}
       <div>

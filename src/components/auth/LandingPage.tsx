@@ -511,53 +511,6 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* Pricing teaser */}
-        <section className="border-t border-border-default bg-bg-surface">
-          <div className="w-full px-4 py-12 sm:px-6 sm:py-20 lg:px-12 xl:px-20">
-            <div className="text-center">
-              <h2 className="font-heading text-2xl sm:text-3xl font-bold text-text-primary">Simple Pricing</h2>
-              <p className="mt-2 text-text-secondary">Start free, upgrade when ready</p>
-              <div className="mt-8 sm:mt-10 grid gap-4 sm:gap-6 max-w-lg mx-auto md:grid-cols-2">
-                <div className="rounded-lg border border-border-default bg-bg-base p-5 sm:p-6">
-                  <p className="text-sm font-medium text-text-secondary">Free</p>
-                  <p className="mt-2 font-heading text-3xl sm:text-4xl font-bold text-text-primary">₹0</p>
-                  <p className="mt-1 text-xs text-text-secondary">forever</p>
-                  <ul className="mt-4 space-y-2 text-sm text-text-secondary text-left">
-                    <li>✓ Equity Trading</li>
-                    <li>✓ ₹1L Virtual Capital</li>
-                    <li>✓ 10 Watchlist Items</li>
-                    <li>✗ Futures &amp; Options</li>
-                    <li>✗ Advanced Analytics</li>
-                  </ul>
-                  <a href="/register">
-                    <Button variant="outline" className="mt-6 w-full" size="sm">Get Started</Button>
-                  </a>
-                </div>
-                <div className="rounded-lg border-2 border-brand-primary bg-bg-base p-5 sm:p-6">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium text-brand-primary">Premium</p>
-                    <span className="rounded bg-accent-gold/20 px-1.5 py-0.5 text-[10px] font-bold text-accent-gold">BEST</span>
-                  </div>
-                  <p className="mt-2 font-heading text-3xl sm:text-4xl font-bold text-text-primary">₹299</p>
-                  <p className="mt-1 text-xs text-text-secondary">/month</p>
-                  <ul className="mt-4 space-y-2 text-sm text-text-secondary text-left">
-                    <li>✓ Everything in Free</li>
-                    <li>✓ ₹10L Virtual Capital</li>
-                    <li>✓ Futures &amp; Options</li>
-                    <li>✓ Option Chain &amp; Greeks</li>
-                    <li>✓ All Learning Modules</li>
-                  </ul>
-                  <a href="/subscription">
-                    <Button className="mt-6 w-full bg-brand-primary hover:bg-brand-primary-hover text-white" size="sm">
-                      Upgrade Now
-                    </Button>
-                  </a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
         {/* Footer */}
         <footer className="border-t border-border-default bg-bg-surface py-6 sm:py-8 safe-pb">
           <div className="w-full px-4 sm:px-6 lg:px-12 xl:px-20">

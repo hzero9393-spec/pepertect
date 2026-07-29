@@ -11,7 +11,6 @@ import { getInitials } from '@/lib/utils';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
 import { StockSearch } from '@/components/shared/StockSearch';
 import { NotificationBell } from '@/components/shared/NotificationBell';
-import { TrialTimerBadge } from '@/components/shared/TrialTimerBadge';
 
 export function Header() {
   const { isAuthenticated, user } = useAuthStore();
@@ -37,7 +36,6 @@ export function Header() {
       'wallet-history': 'Wallet History',
       watchlist: 'Watchlist',
       learning: 'Learning',
-      subscription: 'Pricing',
       support: 'Support',
       profile: 'Profile',
       settings: 'Settings',
@@ -149,9 +147,6 @@ export function Header() {
 
         {/* Notifications - Interactive Bell with Dropdown */}
         <NotificationBell />
-
-        {/* Trial Timer Badge - shows for eligible/active trial users */}
-        <TrialTimerBadge />
 
         {/* User avatar (right side) */}
         <a

@@ -18,7 +18,6 @@ interface NavItem {
   id: string;
   label: string;
   icon: React.ElementType;
-  premium?: boolean;
   href?: string; // overrides the default `/${id}` href (e.g. '/position/stock')
   activeMatchers?: string[]; // additional path prefixes that should mark this item active
 }
@@ -32,7 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'trade-history', label: 'Trade History', icon: History, href: '/trade-history' },
   { id: 'history', label: 'Wallet History', icon: Wallet },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
-  { id: 'learning', label: 'Learn', icon: GraduationCap, premium: true },
+  { id: 'learning', label: 'Learn', icon: GraduationCap },
   { id: 'support', label: 'Support', icon: HelpCircle },
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -129,11 +128,7 @@ export function Sidebar() {
               {sidebarOpen && (
                 <span className="truncate">{item.label}</span>
               )}
-              {sidebarOpen && item.premium && (
-                <span className="ml-auto rounded bg-accent-gold/20 px-1.5 py-0.5 text-[10px] font-semibold text-accent-gold">
-                  PRO
-                </span>
-              )}
+
             </a>
           );
         })}
@@ -162,7 +157,7 @@ export function Sidebar() {
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="truncate text-sm font-medium text-text-primary">{user.name || 'User'}</p>
-              <p className="truncate text-xs text-text-secondary">{user.tier} Plan</p>
+              <p className="truncate text-xs text-text-secondary">Free Account</p>
             </div>
             <button
               onClick={logout}

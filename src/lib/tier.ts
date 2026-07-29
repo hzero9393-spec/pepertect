@@ -1,44 +1,40 @@
-// Tier feature gating — used both server and client side
+// Tier feature gating — all features FREE (website is totally free)
 type Tier = 'FREE' | 'PREMIUM';
 
+// All features are available to everyone — website is 100% free
 const FEATURE_MATRIX: Record<string, Tier> = {
   equity_trading: 'FREE',
-  futures_trading: 'PREMIUM',
-  options_trading: 'PREMIUM',
-  realtime_prices: 'PREMIUM',
-  // Option chain is available to everyone — paper trading platform,
-  // and the user explicitly requested it for 4 indices across the app.
+  futures_trading: 'FREE',
+  options_trading: 'FREE',
+  realtime_prices: 'FREE',
   option_chain: 'FREE',
-  auto_exit: 'PREMIUM',
-  advanced_reports: 'PREMIUM',
-  unlimited_watchlist: 'PREMIUM',
-  all_learning_modules: 'PREMIUM',
-  trading_challenges: 'PREMIUM',
-  market_breadth: 'PREMIUM',
-  priority_support: 'PREMIUM',
+  auto_exit: 'FREE',
+  advanced_reports: 'FREE',
+  unlimited_watchlist: 'FREE',
+  all_learning_modules: 'FREE',
+  trading_challenges: 'FREE',
+  market_breadth: 'FREE',
+  priority_support: 'FREE',
 };
 
 export function hasFeature(userTier: Tier, featureKey: string): boolean {
-  const requiredTier = FEATURE_MATRIX[featureKey];
-  if (!requiredTier) return true; // Unknown features default to allowed
-  const tierOrder = { FREE: 0, PREMIUM: 1 };
-  return tierOrder[userTier] >= tierOrder[requiredTier as Tier];
+  // All features are FREE — always return true
+  return true;
 }
 
 export function getFeatureMatrix() {
   return FEATURE_MATRIX;
 }
 
-export const FREE_WATCHLIST_LIMIT = 10;
-export const FREE_VIRTUAL_CAPITAL = 10000;
-export const PREMIUM_VIRTUAL_CAPITAL = 100000;
-export const PREMIUM_PRICE = 299;
+export const FREE_WATCHLIST_LIMIT = 9999; // Unlimited
+export const FREE_VIRTUAL_CAPITAL = 100000; // ₹1 Lakh for all users
+export const PREMIUM_VIRTUAL_CAPITAL = 100000; // Same as FREE (everything is free)
+export const PREMIUM_PRICE = 0; // Free
 
 /**
  * Returns the virtual capital for a given user tier.
- * FREE → ₹10,000 (paper trading starter)
- * PREMIUM → ₹1,00,000 (299 plan)
+ * All tiers get ₹1,00,000 — website is completely free.
  */
 export function getVirtualCapitalForTier(tier: string): number {
-  return tier === 'PREMIUM' ? PREMIUM_VIRTUAL_CAPITAL : FREE_VIRTUAL_CAPITAL;
+  return 100000;
 }

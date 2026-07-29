@@ -3,11 +3,11 @@ import { db } from '@/lib/db';
 import { signToken } from '@/lib/auth';
 import { registerSchema } from '@/lib/validations';
 import { isDisposableEmail } from '@/lib/temp-email-domains';
-import { FREE_VIRTUAL_CAPITAL } from '@/lib/tier';
 import bcrypt from 'bcryptjs';
 
 const SALT_ROUNDS = 12;
 const JWT_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const INITIAL_VIRTUAL_CAPITAL = 100000; // ₹1 Lakh for all new users
 
 export async function POST(req: NextRequest) {
   try {
@@ -42,21 +42,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    /* Device fingerprint check — has this device already used a free trial? */
-    let deviceTrialUsed = false;
-    if (fingerprint) {
-      const deviceKey = `device_trial:${fingerprint}`;
-      const deviceRecord = await db.platformSetting.findUnique({ where: { key: deviceKey } });
-      if (deviceRecord) {
-        const deviceData = JSON.parse(deviceRecord.value);
-        deviceTrialUsed = deviceData.used === true;
-      }
-    }
-
-    // Determine tier based on device trial status
-    const tier = deviceTrialUsed ? 'PREMIUM' : 'FREE';
-    const virtualCapital = deviceTrialUsed ? 0 : FREE_VIRTUAL_CAPITAL;
-
     /* Check if email already exists */
     const existingUser = await db.user.findUnique({ where: { email: email.toLowerCase().trim() } });
     if (existingUser) {
@@ -69,14 +54,16 @@ export async function POST(req: NextRequest) {
     // Hash password
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    // Create user
+    // Create user — all users get PREMIUM tier (website is free) with ₹1 Lakh virtual capital
     const user = await db.user.create({
       data: {
         email: email.toLowerCase().trim(),
         passwordHash,
         role: 'USER',
-        tier,
-        virtualCapital,
+        tier: 'PREMIUM',
+        virtualCapital: INITIAL_VIRTUAL_CAPITAL,
+        onboardingCompleted: true,
+        onboardingCompletedAt: new Date(),
         notifSettings: {
           legalAcceptance: {
             terms: { accepted: true, at: new Date().toISOString() },
@@ -89,35 +76,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Create portfolio
+    // Create portfolio with ₹1 Lakh
     await db.portfolio.create({
       data: {
         userId: user.id,
-        totalBalance: virtualCapital,
-        availableMargin: virtualCapital,
+        totalBalance: INITIAL_VIRTUAL_CAPITAL,
+        availableMargin: INITIAL_VIRTUAL_CAPITAL,
       },
     });
-
-    /* Mark device as trial-used (only if they got FREE tier) */
-    if (fingerprint && !deviceTrialUsed) {
-      await db.platformSetting.upsert({
-        where: { key: `device_trial:${fingerprint}` },
-        create: {
-          key: `device_trial:${fingerprint}`,
-          value: JSON.stringify({ used: true, userId: user.id, date: new Date().toISOString() }),
-        },
-        update: {
-          value: JSON.stringify({ used: true, userId: user.id, date: new Date().toISOString() }),
-        },
-      });
-    }
 
     // Generate JWT
     const token = signToken({
       userId: user.id,
       email: user.email,
       role: 'USER',
-      tier: tier as 'FREE' | 'PREMIUM',
+      tier: 'PREMIUM',
     });
 
     // Create session
@@ -135,7 +108,6 @@ export async function POST(req: NextRequest) {
         success: true,
         user: { ...safeUser, virtualCapital: Number(safeUser.virtualCapital) },
         token,
-        deviceTrialUsed,
       },
       { status: 201 }
     );

@@ -15,8 +15,6 @@ import { BasketPage } from '@/components/trading/BasketPage';
 import { PositionsPage } from '@/components/portfolio/PositionsPage';
 import { WatchlistPage } from '@/components/market/WatchlistPage';
 import { LearningPage } from '@/components/learning/LearningPage';
-import { SubscriptionPage } from '@/components/subscription/SubscriptionPage';
-import { FreeTrialPage } from '@/components/subscription/FreeTrialPage';
 import { PortfolioPage } from '@/components/portfolio/PortfolioPage';
 import { TransactionHistoryPage } from '@/components/portfolio/TransactionHistoryPage';
 import { TradeHistoryPage } from '@/components/portfolio/TradeHistoryPage';
@@ -35,7 +33,6 @@ import { LanguagePage } from '@/components/settings/LanguagePage';
 import { LandingPage } from '@/components/auth/LandingPage';
 import { LoginPage } from '@/components/auth/LoginPage';
 import { RegisterPage } from '@/components/auth/RegisterPage';
-import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow';
 import { StockDetailPage } from '@/components/market/StockDetailPage';
 
 const PAGE_MAP: Record<string, React.ComponentType> = {
@@ -48,8 +45,6 @@ const PAGE_MAP: Record<string, React.ComponentType> = {
   positions: PositionsPage,
   watchlist: WatchlistPage,
   learning: LearningPage,
-  subscription: SubscriptionPage,
-  'free-trial': FreeTrialPage,
   portfolio: PortfolioPage,
   history: TransactionHistoryPage,
   'wallet-history': TransactionHistoryPage,
@@ -61,7 +56,6 @@ const PAGE_MAP: Record<string, React.ComponentType> = {
   landing: LandingPage,
   login: LoginPage,
   register: RegisterPage,
-  onboarding: OnboardingFlow,
 };
 
 // Settings sub-pages — handle /settings/change-password, /settings/2fa, etc.
@@ -222,7 +216,7 @@ export default function HomePage() {
   // render it full-screen without the AppShell sidebar/header wrapper.
   // When authenticated, `/` shows the Dashboard inside AppShell (handled above).
   const isAuthPage =
-    ['landing', 'login', 'register', 'onboarding'].includes(segment) ||
+    ['landing', 'login', 'register'].includes(segment) ||
     (segment === '' && !isAuthenticated);
 
   if (isAuthPage) {

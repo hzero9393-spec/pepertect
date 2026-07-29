@@ -7,7 +7,6 @@ import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
 import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
 import { InstallPrompt } from '@/components/shared/InstallPrompt';
-import { FirstTimeTrialPopup } from '@/components/shared/FirstTimeTrialPopup';
 import { cn } from '@/lib/utils';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -56,8 +55,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Install App Prompt - Shows for first-time users */}
       <InstallPrompt />
       
-      {/* Free Trial Popup - Shows for new eligible users */}
-      <FirstTimeTrialPopup />
+
     </div>
   );
 }
