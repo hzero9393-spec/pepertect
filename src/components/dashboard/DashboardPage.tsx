@@ -265,6 +265,29 @@ export function DashboardPage() {
   const totalPnl = portfolio?.totalPnl ?? 0;
   const totalPnlPositive = totalPnl >= 0;
   
+  /* Show Today's P&L: Use realized P&L which represents today's closed profits
+   * For unrealized (open positions), we calculate from positions array */
+  const todaysRealizedPnl = portfolio?.realizedPnl ?? 0;
+  
+  // Calculate unrealized P&L from open positions (simple version)
+  let todaysUnrealizedPnl = 0;
+  try {
+    for (const p of positions) {
+      if (!p || p.status !== 'OPEN') continue;
+      // Simple check: only count if position exists
+      const key = getLiveKeyForPosition(p);
+      if (key && quotes[key]) {
+        const ltp = quotes[key].ltp ?? 0;
+        const avg = p.avgPrice ?? 0;
+        const qty = p.quantity ?? 0;
+        todaysUnrealizedPnl += (ltp - avg) * qty * (p.side === 'LONG' ? 1 : -1);
+      }
+    }
+  } catch(e) { /* ignore */ }
+  
+  // Today's Total P&L = Realized + Unrealized from open positions
+  const todaysTotalPnl = todaysRealizedPnl + todaysUnrealizedPnl;
+  
   // Use yesterday's stats if available, otherwise fall back to cumulative
   const displayWins = yesterdayStats?.wins ?? portfolio?.winningTrades ?? 0;
   const displayTotalTrades = yesterdayStats?.totalTrades ?? portfolio?.totalTrades ?? 0;
@@ -394,18 +417,18 @@ export function DashboardPage() {
           value={formatINR(portfolio?.totalBalance ?? tierFallback)}
           subtext="Virtual Capital"
         />
-        {/* Total P&L */}
+        {/* Today's P&L — Shows today's profit only */}
         <MetricCard
-          icon={totalPnlPositive ? TrendingUp : TrendingDown}
-          iconBg={totalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
-          iconColor={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
-          label="Total P&L"
+          icon={todaysTotalPnl >= 0 ? TrendingUp : TrendingDown}
+          iconBg={todaysTotalPnl >= 0 ? 'bg-tint-green' : 'bg-tint-red'}
+          iconColor={todaysTotalPnl >= 0 ? 'text-profit-green' : 'text-loss-red'}
+          label="Today's P&L"
           value={
-            <span className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
-              {totalPnlPositive ? '+' : ''}{formatINR(totalPnl)}
+            <span className={todaysTotalPnl >= 0 ? 'text-profit-green' : 'text-loss-red'}>
+              {todaysTotalPnl >= 0 ? '+' : ''}{formatINR(todaysTotalPnl)}
             </span>
           }
-          subtext={`${totalPnlPositive ? '+' : ''}${totalPnlPct.toFixed(2)}% · Realized ${formatINR(portfolio?.realizedPnl ?? 0)}`}
+          subtext={`Realized ${formatINR(todaysRealizedPnl)} · Live positions`}
         />
         {/* Available Margin */}
         <MetricCard
