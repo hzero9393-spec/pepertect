@@ -597,7 +597,7 @@ export function TradePage() {
 
             {/* ============== Stop Loss / Target (collapsible) ============== */}
             {side === 'BUY' && (
-              <div className="space-y-2">
+              <div className="space-y-2" key="sl-target-container">
                 <button
                   type="button"
                   onClick={() => setShowSLTarget(!showSLTarget)}
@@ -615,30 +615,36 @@ export function TradePage() {
                   </span>
                 </button>
                 {showSLTarget && (
-                  <div className="grid grid-cols-2 gap-2 p-2 rounded-lg border border-border bg-bg-surface-alt/50">
+                  <div className="grid grid-cols-2 gap-2 p-2 rounded-lg border border-border bg-bg-surface-alt/50" key="sl-target-inputs">
                     <div>
-                      <label className="text-[10px] font-semibold text-loss-red flex items-center gap-1">
+                      <label className="text-[10px] font-semibold text-loss-red flex items-center gap-1" htmlFor="trade-sl-input">
                         <ArrowDown className="h-2.5 w-2.5" /> Stop Loss (₹)
                       </label>
                       <input
+                        id="trade-sl-input"
+                        key="sl-input-stable"
                         type="number"
                         step="0.05"
                         placeholder="Auto exit if LTP ≤"
-                        value={stopLoss}
+                        value={stopLoss || ''}
                         onChange={(e) => setStopLoss(e.target.value)}
+                        onBlur={(e) => { if (e.target.value) setStopLoss(e.target.value); }}
                         className="w-full mt-1 h-9 px-2 rounded-md border border-loss-red/30 bg-bg-surface text-xs font-mono font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-loss-red/20"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-semibold text-profit-green flex items-center gap-1">
+                      <label className="text-[10px] font-semibold text-profit-green flex items-center gap-1" htmlFor="trade-target-input">
                         <ArrowUp className="h-2.5 w-2.5" /> Target (₹)
                       </label>
                       <input
+                        id="trade-target-input"
+                        key="target-input-stable"
                         type="number"
                         step="0.05"
                         placeholder="Auto exit if LTP ≥"
-                        value={target}
+                        value={target || ''}
                         onChange={(e) => setTarget(e.target.value)}
+                        onBlur={(e) => { if (e.target.value) setTarget(e.target.value); }}
                         className="w-full mt-1 h-9 px-2 rounded-md border border-profit-green/30 bg-bg-surface text-xs font-mono font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-profit-green/20"
                       />
                     </div>
