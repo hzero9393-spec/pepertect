@@ -35,6 +35,10 @@ model User {
   language          String  @default("en")         // en, hi, mr, ta, te, bn, gu, kn
   // Notification preferences (JSON-encoded map of type→bool)
   notifSettings     Json?
+  // Onboarding & Trial tracking (DEDICATED FIELDS - not in JSON!)
+  onboardingCompleted   Boolean   @default(false)  // Has user completed onboarding?
+  onboardingCompletedAt DateTime?                   // When did they complete it?
+  trialActivatedAt      DateTime?                   // When was free trial activated?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

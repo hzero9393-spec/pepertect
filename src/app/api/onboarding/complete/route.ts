@@ -3,48 +3,83 @@ import { db } from '@/lib/db';
 import { verifyToken, extractBearerToken } from '@/lib/auth';
 
 const TRIAL_DURATION_MS = 30 * 24 * 60 * 60 * 1000;
+const INITIAL_CAPITAL = 100000; // ₹1 Lakh - FIXED for all users
 
+/**
+ * POST /api/onboarding/complete
+ * 
+ * CRITICAL: This is the ONLY endpoint that:
+ * 1. Marks onboarding as complete (blocks re-entry)
+ * 2. Activates free trial
+ * 3. Credits ₹1,00,000 virtual capital
+ * 
+ * SECURITY: Can only run ONCE per user lifetime!
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { experience, goal, capital, markets } = body;
 
-    console.log('Onboarding request received:', { experience, goal, capital, markets });
+    console.log('🚀 Onboarding request received:', { experience, goal, capital, markets });
 
+    // ========== AUTHENTICATION ==========
     const authHeader = req.headers.get('authorization');
     const token = authHeader ? extractBearerToken(authHeader) : null;
     const payload = token ? verifyToken(token) : null;
-
-    console.log('Auth payload:', payload ? { userId: payload.userId, email: payload.email } : null);
 
     if (!payload) {
       return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
     }
 
+    // ========== GET USER ==========
     const user = await db.user.findUnique({ where: { id: payload.userId } });
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    console.log('User found:', user.id);
+    console.log('👤 User found:', user.id, 'email:', user.email);
 
-    // ============================================
-    // CHECK: Has this user completed onboarding BEFORE?
-    // ============================================
+    // ========== CHECK 1: Onboarding Already Completed? ==========
+    // Check DEDICATED field first (new schema)
+    if (user.onboardingCompleted === true) {
+      console.log('❌ Onboarding ALREADY COMPLETED (dedicated field) - Blocking!');
+      return NextResponse.json({
+        success: false,
+        error: 'ONBOARDING_ALREADY_COMPLETED',
+        message: 'You have already completed onboarding! Your free trial is active.',
+        alreadyCompleted: true,
+        // Return current trial status so frontend can redirect appropriately
+        trialStatus: await getTrialStatus(payload.userId),
+      }, { status: 400 });
+    }
+
+    // Fallback: Check JSON field (for users before migration)
     const prefs = user.notifSettings as Record<string, unknown> | null;
-    const alreadyCompletedOnboarding = prefs?.onboardingCompleted === true;
-    
-    console.log('Already completed onboarding?', alreadyCompletedOnboarding);
+    if (prefs?.onboardingCompleted === true) {
+      console.log('❌ Onboarding ALREADY COMPLETED (JSON field) - Blocking! Migrating to dedicated field...');
+      
+      // Migrate to dedicated field
+      try {
+        await db.user.update({
+          where: { id: payload.userId },
+          data: { 
+            onboardingCompleted: true,
+            onboardingCompletedAt: new Date(prefs.onboardingCompletedAt as string || Date.now()),
+          },
+        });
+      } catch (e) {
+        console.warn('Migration failed:', e);
+      }
+      
+      return NextResponse.json({
+        success: false,
+        error: 'ONBOARDING_ALREADY_COMPLETED',
+        message: 'You have already completed onboarding!',
+        alreadyCompleted: true,
+      }, { status: 400 });
+    }
 
-    // ============================================
-    // PRE-CHECK: Has this user already used FREE TRIAL?
-    // KEY LOGIC:
-    // - If user NEVER completed onboarding → They are NEW, always allow trial
-    // - If user ALREADY completed onboarding + has expired trial → Block them
-    // - If user has ACTIVE trial → Just update preferences, don't create new one
-    // ============================================
-    console.log('Checking if user already used free trial...');
-    
+    // ========== CHECK 2: Trial Already Used? ==========
     const existingTrial = await db.subscription.findFirst({
       where: { 
         userId: payload.userId,
@@ -54,20 +89,21 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingTrial) {
-      console.log('⚠️ User already has trial record:', existingTrial.id, 'status:', existingTrial.status);
+      console.log('⚠️ Existing trial found:', existingTrial.id);
       
       const now = new Date();
       const trialEndsAt = new Date(existingTrial.startDate.getTime() + TRIAL_DURATION_MS);
       
-      // Case 1: Trial is STILL ACTIVE → Update preferences, return success
+      // Trial is still ACTIVE - just update preferences and return
       if (existingTrial.status === 'ACTIVE' && now < trialEndsAt) {
-        console.log('Trial still active, updating preferences only...');
-        await updateUserPreferences(payload.userId, user, { experience, goal, capital, markets });
-
+        console.log('✅ Trial still active - updating preferences + marking onboarding complete');
+        
+        await markOnboardingComplete(payload.userId, { experience, goal, capital, markets });
+        
         return NextResponse.json({
           success: true,
-          message: 'Preferences updated! Your trial is already active.',
-          trialActivated: false,
+          message: 'Onboarding complete! Your trial is already active.',
+          trialActivated: false, // Not a NEW activation
           trialStatus: {
             active: true,
             endsAt: trialEndsAt.toISOString(),
@@ -76,191 +112,147 @@ export async function POST(req: NextRequest) {
         });
       }
       
-      // Case 2: Trial EXISTS but user NEVER completed onboarding → NEW USER who somehow got a trial
-      // (Maybe via /free-trial page) → DELETE old trial and create FRESH one
-      if (!alreadyCompletedOnboarding) {
-        console.log('🔄 New user (onboarding not complete) with stale trial record. Deleting old trial and creating fresh one...');
-        
-        try {
-          // Delete the existing trial record
-          await db.subscription.delete({
-            where: { id: existingTrial.id }
-          });
-          console.log('Old trial record deleted successfully');
-        } catch (deleteError) {
-          console.error('Failed to delete old trial:', deleteError);
-          // Continue anyway, try to create new one
-        }
-        
-        // DON'T return here, continue to create fresh trial below
-      }
-      else {
-        // Case 3: User COMPLETED onboarding before AND trial is expired/cancelled → GENUINELY USED
-        console.log('❌ Returning user with expired/cancelled trial. Blocking...');
-        return NextResponse.json({
-          success: false,
-          error: 'TRIAL_ALREADY_USED',
-          message: 'You have already used your one-time free trial offer. Upgrade to Premium to continue enjoying all features!',
-          trialStatus: {
-            active: false,
-            used: true,
-            usedAt: existingTrial.startDate.toISOString(),
-            expiredAt: trialEndsAt.toISOString(),
-          }
-        }, { status: 400 });
-      }
-    }
-
-    /* ---- Save preferences ---- */
-    console.log('Updating user preferences...');
-    await updateUserPreferences(payload.userId, user, { experience, goal, capital, markets });
-    console.log('User updated successfully');
-
-    /* ---- Activate free trial (PREMIUM for 30 days) ---- */
-    console.log('Activating new trial subscription...');
-
-    // Double-check no trial exists (race condition protection)
-    const retryCheck = await db.subscription.findFirst({
-      where: { userId: payload.userId, razorpaySubId: 'TRIAL' },
-    });
-
-    if (retryCheck) {
-      // If trial was created by another request, just return success
-      console.log('Trial was created concurrently, returning success');
+      // Trial EXISTS but EXPIRED - don't allow new one
+      console.log('❌ Trial expired/cancelled - cannot reactivate');
       return NextResponse.json({
-        success: true,
-        message: 'Free trial activated successfully',
-        trialActivated: true,
-      });
+        success: false,
+        error: 'TRIAL_ALREADY_USED',
+        message: 'You have already used your free trial offer.',
+        trialStatus: {
+          active: false,
+          used: true,
+          expiredAt: trialEndsAt.toISOString(),
+        }
+      }, { status: 400 });
     }
 
-    // Check if user already has a paid PREMIUM subscription
-    const paidSub = await db.subscription.findFirst({
-      where: { userId: payload.userId, status: 'ACTIVE', plan: 'PREMIUM', NOT: { razorpaySubId: 'TRIAL' } },
+    // ========== ALL CHECKS PASSED - ACTIVATE TRIAL ==========
+    console.log('✅ All checks passed - ACTIVATING FREE TRIAL!');
+    
+    const now = new Date();
+    const endDate = new Date(now.getTime() + TRIAL_DURATION_MS);
+
+    // Step 1: Mark Onboarding Complete (BEFORE anything else)
+    await markOnboardingComplete(payload.userId, { experience, goal, capital, markets });
+
+    // Step 2: Create Trial Subscription
+    console.log('Creating trial subscription...');
+    await db.subscription.create({
+      data: {
+        userId: payload.userId,
+        plan: 'PREMIUM',
+        status: 'ACTIVE',
+        startDate: now,
+        endDate,
+        autoRenew: false,
+        razorpaySubId: 'TRIAL',
+      },
     });
 
-    if (paidSub) {
-      console.log('User already has paid PREMIUM, skipping trial creation');
-    } else {
-      console.log('Creating new trial subscription...');
-      const now = new Date();
-      const endDate = new Date(now.getTime() + TRIAL_DURATION_MS);
+    // Step 3: Update User Tier + Capital + Trial Timestamp
+    console.log('Updating user tier to PREMIUM...');
+    await db.user.update({
+      where: { id: payload.userId },
+      data: { 
+        tier: 'PREMIUM',
+        virtualCapital: INITIAL_CAPITAL,
+        trialActivatedAt: now, // For timer calculation
+      },
+    });
 
-      try {
-        await db.subscription.create({
-          data: {
-            userId: payload.userId,
-            plan: 'PREMIUM',
-            status: 'ACTIVE',
-            startDate: now,
-            endDate,
-            autoRenew: false,
-            razorpaySubId: 'TRIAL',
-          },
-        });
-        console.log('Trial subscription created successfully');
+    // Step 4: Credit Portfolio with ₹1,00,000
+    console.log('Crediting portfolio with ₹', INITIAL_CAPITAL.toLocaleString('en-IN'));
+    await creditPortfolio(payload.userId, INITIAL_CAPITAL);
 
-        // Upgrade tier to PREMIUM
-        console.log('Upgrading user tier to PREMIUM...');
-        await db.user.update({
-          where: { id: payload.userId },
-          data: { tier: 'PREMIUM' },
-        });
-        console.log('User tier upgraded to PREMIUM');
-      } catch (createError: unknown) {
-        const errMsg = createError instanceof Error ? createError.message : '';
-        console.error('Create trial error:', errMsg);
-        
-        if (errMsg.includes('Unique constraint') || errMsg.includes('unique constraint')) {
-          // Trial was created concurrently, that's fine
-          return NextResponse.json({
-            success: true,
-            message: 'Free trial activated successfully',
-            trialActivated: true,
-          });
-        }
-        throw createError;
-      }
-    }
-
-    /* ---- Update portfolio balance ---- */
-    const chosenCapital = capital || 100000;
-    console.log('Updating portfolio with capital:', chosenCapital);
-    
-    await updatePortfolio(payload.userId, chosenCapital);
-
-    /* ---- Add selected markets to watchlist ---- */
+    // Step 5: Add selected markets to watchlist
     if (markets && Array.isArray(markets)) {
-      console.log('Adding markets to watchlist:', markets);
       await addMarketsToWatchlist(payload.userId, markets);
     }
 
-    console.log('Onboarding completed successfully!');
+    console.log('🎉 ONBOARDING COMPLETE - Trial activated successfully!');
+    
     return NextResponse.json({
       success: true,
-      message: 'Free trial activated successfully',
+      message: '🎉 Free trial activated! You received ₹1,00,000 virtual capital.',
       trialActivated: true,
+      virtualCapitalCredited: INITIAL_CAPITAL,
+      trialEndsAt: endDate.toISOString(),
+      trialDurationDays: 30,
     });
+
   } catch (error) {
-    console.error('Onboarding activation error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Error details:', errorMessage);
-    
+    console.error('💥 Onboarding error:', error);
     return NextResponse.json({
       success: false,
       error: 'Failed to activate trial',
-      details: errorMessage,
+      details: error instanceof Error ? error.message : 'Unknown error',
     }, { status: 500 });
   }
 }
 
-/* ========== HELPER FUNCTIONS ========== */
+/* ================================================================
+   HELPER FUNCTIONS
+   ================================================================ */
 
-async function updateUserPreferences(
-  userId: string,
-  user: { notifSettings: unknown },
+/**
+ * Mark onboarding as COMPLETE - sets both dedicated field AND JSON field
+ */
+async function markOnboardingComplete(
+  userId: string, 
   data: { experience: string; goal: string; capital?: number; markets?: string[] }
 ) {
   const { experience, goal, capital, markets } = data;
-  
-  const preferences: Record<string, unknown> = {
+  const now = new Date();
+
+  // Get existing prefs to merge
+  const user = await db.user.findUnique({ where: { id: userId } });
+  const existingPrefs = (user?.notifSettings as Record<string, unknown>) || {};
+
+  const mergedPrefs = {
+    ...existingPrefs,
     experience,
     goal,
     markets,
     onboardingCompleted: true,
-    onboardingCompletedAt: new Date().toISOString(),
+    onboardingCompletedAt: now.toISOString(),
   };
-  
-  const existingPrefs = user.notifSettings as Record<string, unknown> | null;
-  const mergedPrefs = existingPrefs ? { ...existingPrefs, ...preferences } : preferences;
 
+  // Update BOTH dedicated fields AND JSON (for backward compatibility)
   await db.user.update({
     where: { id: userId },
     data: {
-      virtualCapital: capital || 100000,
+      // Dedicated fields (NEW - reliable)
+      onboardingCompleted: true,
+      onboardingCompletedAt: now,
+      virtualCapital: capital || INITIAL_CAPITAL,
+      // JSON field (OLD - for backward compat)
       notifSettings: mergedPrefs,
     },
   });
+
+  console.log('✅ Onboarding marked as complete');
 }
 
-async function updatePortfolio(userId: string, chosenCapital: number) {
-  const portfolio = await db.portfolio.findUnique({ where: { userId }});
-  console.log('Portfolio found:', portfolio ? portfolio.id : 'NOT FOUND');
+/**
+ * Credit portfolio with initial capital
+ */
+async function creditPortfolio(userId: string, amount: number) {
+  let portfolio = await db.portfolio.findUnique({ where: { userId }});
 
   if (portfolio) {
+    // Update existing portfolio
     const prevBalance = Number(portfolio.totalBalance);
-    const uplift = chosenCapital - prevBalance;
-    console.log('Portfolio update - prevBalance:', prevBalance, 'uplift:', uplift);
-
+    const uplift = amount - prevBalance;
+    
     await db.portfolio.update({
       where: { userId },
       data: {
-        totalBalance: chosenCapital,
+        totalBalance: amount,
         availableMargin: { increment: Math.max(0, uplift) },
       },
     });
 
-    // Record transaction only if balance increased
+    // Record transaction if balance increased
     if (uplift > 0) {
       const updated = await db.portfolio.findUnique({ where: { userId }});
       try {
@@ -269,8 +261,8 @@ async function updatePortfolio(userId: string, chosenCapital: number) {
             portfolioId: portfolio.id,
             type: 'CREDIT',
             amount: uplift,
-            balance: Number(updated?.totalBalance ?? chosenCapital),
-            description: `Free trial activated — Virtual capital set to ₹${chosenCapital.toLocaleString('en-IN')}`,
+            balance: Number(updated?.totalBalance ?? amount),
+            description: `Free trial activated — Virtual capital: ₹${amount.toLocaleString('en-IN')}`,
           },
         });
       } catch (txError) {
@@ -278,37 +270,35 @@ async function updatePortfolio(userId: string, chosenCapital: number) {
       }
     }
   } else {
-    console.log('Creating new portfolio...');
+    // Create new portfolio
+    portfolio = await db.portfolio.create({
+      data: {
+        userId,
+        totalBalance: amount,
+        availableMargin: amount,
+      },
+    });
+
+    // Record initial transaction
     try {
-      const newPortfolio = await db.portfolio.create({
+      await db.transaction.create({
         data: {
-          userId,
-          totalBalance: chosenCapital,
-          availableMargin: chosenCapital,
+          portfolioId: portfolio.id,
+          type: 'CREDIT',
+          amount,
+          balance: amount,
+          description: `Free trial activated — Initial virtual capital: ₹${amount.toLocaleString('en-IN')}`,
         },
       });
-      console.log('New portfolio created:', newPortfolio.id);
-      
-      try {
-        await db.transaction.create({
-          data: {
-            portfolioId: newPortfolio.id,
-            type: 'CREDIT',
-            amount: chosenCapital,
-            balance: chosenCapital,
-            description: `Free trial activated — Initial virtual capital ₹${chosenCapital.toLocaleString('en-IN')}`,
-          },
-        });
-      } catch (txError) {
-        console.warn('Initial transaction creation failed (non-critical):', txError);
-      }
-    } catch (portfolioError) {
-      console.error('Failed to create portfolio:', portfolioError);
-      throw portfolioError;
+    } catch (txError) {
+      console.warn('Initial transaction failed (non-critical):', txError);
     }
   }
 }
 
+/**
+ * Add selected markets to watchlist
+ */
 async function addMarketsToWatchlist(userId: string, markets: string[]) {
   const symbolMap: Record<string, string> = {
     stocks: 'NIFTY 50',
@@ -330,8 +320,29 @@ async function addMarketsToWatchlist(userId: string, markets: string[]) {
           });
         }
       }
-    } catch (watchlistError) {
-      console.warn(`Failed to add ${market} to watchlist:`, watchlistError);
+    } catch (e) {
+      console.warn(`Failed to add ${market} to watchlist:`, e);
     }
   }
+}
+
+/**
+ * Get current trial status for a user
+ */
+async function getTrialStatus(userId: string) {
+  const trial = await db.subscription.findFirst({
+    where: { userId, razorpaySubId: 'TRIAL' },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!trial) return null;
+
+  const now = new Date();
+  const endsAt = new Date(trial.startDate.getTime() + TRIAL_DURATION_MS);
+  
+  return {
+    active: trial.status === 'ACTIVE' && now < endsAt,
+    endsAt: endsAt.toISOString(),
+    daysLeft: Math.max(0, Math.floor((endsAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000))),
+  };
 }

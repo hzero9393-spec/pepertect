@@ -260,33 +260,55 @@ export function OnboardingFlow() {
           headers: { Authorization: `Bearer ${token}` },
         });
         const d = await res.json();
+        console.log('[OnboardingFlow] API response:', d);
+        
         if (d.success && d.data) {
           // If trial is ACTIVE - go to dashboard (user already going through or completed)
           if (d.data.active) { 
+            console.log('[OnboardingFlow] Trial already active, redirecting to dashboard');
             window.location.href = '/dashboard'; 
             return; 
           }
+          
+          // If onboarding ALREADY COMPLETED (but no active trial) - go to subscription
+          if (d.data.onboardingCompleted === true) {
+            console.log('[OnboardingFlow] Onboarding already completed, redirecting');
+            if (d.data.trialUsed || d.data.expired) {
+              window.location.href = '/subscription';
+            } else {
+              window.location.href = '/dashboard';
+            }
+            return;
+          }
+          
           // If trial was USED before (expired + trialUsed flag) - go to subscription
           if (d.data.trialUsed || (d.data.expired && d.data.startedAt)) { 
+            console.log('[OnboardingFlow] Trial already used, redirecting to subscription');
             window.location.href = '/subscription'; 
             return; 
           }
+          
           // If eligible (new user) - show onboarding flow
           if (d.data.eligible) {
+            console.log('[OnboardingFlow] User eligible, showing onboarding');
             setChecked(true);
             setTrialCheckDone(true);
             return;
           }
+          
           // For any other case (edge cases), show onboarding
+          console.log('[OnboardingFlow] Edge case, showing onboarding anyway');
           setChecked(true);
           setTrialCheckDone(true);
         } else {
           // API error - show onboarding anyway
+          console.log('[OnboardingFlow] API error, showing onboarding anyway', d);
           setChecked(true);
           setTrialCheckDone(true);
         }
-      } catch { 
+      } catch (err) { 
         // Network error - show onboarding anyway
+        console.error('[OnboardingFlow] Network error:', err);
         setChecked(true);
         setTrialCheckDone(true);
       }
@@ -351,11 +373,17 @@ export function OnboardingFlow() {
         }
       } else {
         // Handle specific error types with user-friendly messages
-        if (result.error === 'TRIAL_ALREADY_USED' || result.message?.includes('already used')) {
-          setActivationError('This free trial offer has already been used on your account. You can upgrade to Premium to continue enjoying all features!');
+        console.log('[OnboardingFlow] Activation failed:', result);
+        
+        if (result.error === 'ONBOARDING_ALREADY_COMPLETED' || result.alreadyCompleted) {
+          setActivationError('You have already completed onboarding! Redirecting to dashboard...');
+          setTimeout(() => window.location.href = '/dashboard', 2000);
+        } else if (result.error === 'TRIAL_ALREADY_USED' || result.message?.includes('already used')) {
+          setActivationError('This free trial offer has already been used on your account. You can upgrade to Premium to continue!');
+          // Redirect to subscription after delay
+          setTimeout(() => window.location.href = '/subscription', 3000);
         } else if (result.error === 'ALREADY_ACTIVE' || result.message?.includes('already active')) {
           setActivationError('You already have an active free trial! Enjoy your Premium features.');
-          // Redirect to dashboard after short delay
           setTimeout(() => window.location.href = '/dashboard', 2000);
         } else {
           setActivationError(result.error || result.message || 'Failed to activate trial. Please try again.');
@@ -395,12 +423,13 @@ export function OnboardingFlow() {
     <div className="relative flex min-h-screen flex-col bg-bg-base">
       {/* ====== HEADER ====== */}
       <header className="flex items-center justify-between px-5 pt-4 pb-2 sm:px-8">
-        <a href="/dashboard" className="flex items-center gap-2 text-text-primary">
+        {/* Logo only - NOT a link (user must complete onboarding first to get ₹1L!) */}
+        <div className="flex items-center gap-2 text-text-primary">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-primary">
             <Zap className="h-4 w-4 text-white" />
           </div>
           <span className="font-heading text-base font-bold">Pepertect</span>
-        </a>
+        </div>
 
         <div className="flex items-center gap-2">
           <button
@@ -410,8 +439,16 @@ export function OnboardingFlow() {
           >
             {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
+          {/* Close button - shows warning before exiting */}
           <button
-            onClick={() => soundRef.current.click() || (window.location.href = '/dashboard')}
+            onClick={() => {
+              soundRef.current.click();
+              // Show confirmation before leaving
+              const confirmLeave = confirm('⚠️ Are you sure? You will NOT receive ₹1,00,000 virtual money if you leave now!\n\nComplete the onboarding to activate your free trial.');
+              if (confirmLeave) {
+                window.location.href = '/dashboard';
+              }
+            }}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-bg-surface border border-border text-text-secondary hover:text-text-primary transition-colors"
             aria-label="Close"
           >

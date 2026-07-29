@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/useAuthStore';
 import {
   X, Gift, Sparkles, Zap, Trophy, TrendingUp, ArrowRight,
-  Clock, Shield, CheckCircle2, Loader2, PartyPopper,
+  Clock, Shield, CheckCircle2, PartyPopper,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -14,7 +14,7 @@ import { motion, AnimatePresence } from 'framer-motion';
    CONSTANTS
    ================================================================ */
 
-// localStorage key to track if user dismissed popup
+// localStorage key to track if user dismissed popup permanently
 const DISMISS_KEY = 'pepertect-trial-popup-dismissed';
 // Session-based key (resets on browser close)
 const SESSION_DISMISS_KEY = 'pepertect-trial-popup-session-dismissed';
@@ -53,68 +53,109 @@ export function FirstTimeTrialPopup() {
   const [checking, setChecking] = useState(true);
   const [dismissed, setDismissed] = useState(false);
   const [animatingOut, setAnimatingOut] = useState(false);
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 3;
 
-  /* ---------- Check eligibility ---------- */
-  const checkEligibility = useCallback(async () => {
+  /* ---------- Check eligibility with retry ---------- */
+  const checkEligibility = useCallback(async (retryNum = 0) => {
     if (!token || !isAuthenticated) {
       setChecking(false);
       return;
     }
 
     // Check if permanently dismissed (user clicked "Don't show again")
-    const permanentlyDismissed = localStorage.getItem(DISMISS_KEY) === 'true';
+    const permanentlyDismissed = typeof window !== 'undefined' && localStorage.getItem(DISMISS_KEY) === 'true';
     if (permanentlyDismissed) {
+      console.log('[FirstTimeTrialPopup] Permanently dismissed');
       setChecking(false);
       return;
     }
 
     // Check session dismissal
-    const sessionDismissed = sessionStorage.getItem(SESSION_DISMISS_KEY) === 'true';
+    const sessionDismissed = typeof window !== 'undefined' && sessionStorage.getItem(SESSION_DISMISS_KEY) === 'true';
     if (sessionDismissed) {
+      console.log('[FirstTimeTrialPopup] Session dismissed');
       setChecking(false);
       return;
     }
 
     try {
+      console.log(`[FirstTimeTrialPopup] Checking eligibility (attempt ${retryNum + 1})...`);
       const res = await fetch('/api/user/trial-status', {
         headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store', // Don't cache - always get fresh data
       });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      
       const data = await res.json();
+      console.log('[FirstTimeTrialPopup] API response:', data);
       
       if (data.success && data.data?.eligible) {
+        console.log('[FirstTimeTrialPopup] User is ELIGIBLE - showing popup');
         setEligible(true);
-        // Small delay before showing for smooth UX
-        setTimeout(() => setShowPopup(true), 800);
+        // Show immediately without delay for better UX
+        setShowPopup(true);
+      } else if (data.success && data.data) {
+        // User has active/used trial - don't show popup
+        console.log('[FirstTimeTrialPopup] Not eligible:', data.data.message || 'reason unknown');
+        setEligible(false);
+      } else {
+        // Unexpected response format
+        console.warn('[FirstTimeTrialPopup] Unexpected response:', data);
       }
     } catch (err) {
-      console.error('[FirstTimeTrialPopup] Eligibility check failed:', err);
+      console.error(`[FirstTimeTrialPopup] Eligibility check failed (attempt ${retryNum + 1}):`, err);
+      
+      // Retry logic for network errors
+      if (retryNum < MAX_RETRIES - 1) {
+        const delay = (retryNum + 1) * 1000; // 1s, 2s, 3s delays
+        console.log(`[FirstTimeTrialPopup] Retrying in ${delay}ms...`);
+        setTimeout(() => checkEligibility(retryNum + 1), delay);
+        return; // Don't set checking=false yet
+      }
     } finally {
-      setChecking(false);
+      if (retryNum >= MAX_RETRIES - 1 || eligible) {
+        setChecking(false);
+      }
     }
-  }, [token, isAuthenticated]);
+  }, [token, isAuthenticated, eligible]);
 
   useEffect(() => {
-    checkEligibility();
+    // Small initial delay to ensure auth store is ready
+    const timer = setTimeout(() => {
+      checkEligibility(0);
+    }, 500);
+    
+    return () => clearTimeout(timer);
   }, [checkEligibility]);
 
   /* ---------- Handlers ---------- */
   
   const handleActivate = () => {
     // Mark as dismissed so it doesn't show again on redirect back
-    localStorage.setItem(DISMISS_KEY, 'true');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(DISMISS_KEY, 'true');
+    }
     setShowPopup(false);
     router.push('/onboarding');
   };
 
   const handleMaybeLater = () => {
     // Only dismiss for this session
-    sessionStorage.setItem(SESSION_DISMISS_KEY, 'true');
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(SESSION_DISMISS_KEY, 'true');
+    }
     handleClose();
   };
 
   const handleDontShowAgain = () => {
     // Permanently dismiss
-    localStorage.setItem(DISMISS_KEY, 'true');
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(DISMISS_KEY, 'true');
+    }
     handleClose();
   };
 
@@ -128,6 +169,7 @@ export function FirstTimeTrialPopup() {
 
   /* ---------- Loading / Hidden states ---------- */
   
+  // Show nothing while checking or not authenticated
   if (!isAuthenticated || isLoading || checking) return null;
   if (!showPopup || dismissed || !eligible) return null;
 
@@ -274,29 +316,25 @@ export function FirstTimeTrialPopup() {
    HOOK: Use trial popup trigger (for manual triggering)
    ================================================================ */
 
-/**
- * Hook to programmatically show/hide the first-time trial popup.
- * Useful for triggering from other components like dashboard banners.
- */
 export function useFirstTimeTrialPopup() {
   const [canShow, setCanShow] = useState(false);
 
   useEffect(() => {
-    const check = async () => {
-      const dismissed = localStorage.getItem(DISMISS_KEY) === 'true';
-      const sessionDismissed = sessionStorage.getItem(SESSION_DISMISS_KEY) === 'true';
-      setCanShow(!dismissed && !sessionDismissed);
-    };
-    check();
+    if (typeof window === 'undefined') return;
+    const dismissed = localStorage.getItem(DISMISS_KEY) === 'true';
+    const sessionDismissed = sessionStorage.getItem(SESSION_DISMISS_KEY) === 'true';
+    setCanShow(!dismissed && !sessionDismissed);
   }, []);
 
   const resetPopup = useCallback(() => {
+    if (typeof window === 'undefined') return;
     localStorage.removeItem(DISMISS_KEY);
     sessionStorage.removeItem(SESSION_DISMISS_KEY);
     setCanShow(true);
   }, []);
 
   const dismissPopup = useCallback(() => {
+    if (typeof window === 'undefined') return;
     localStorage.setItem(DISMISS_KEY, 'true');
     setCanShow(false);
   }, []);
