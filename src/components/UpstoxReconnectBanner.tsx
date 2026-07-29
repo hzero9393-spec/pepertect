@@ -1,20 +1,38 @@
 'use client';
 
 import { ConnectionStatus } from '@/hooks/useLiveQuote';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 /**
- * UpstoxReconnectBanner — shown when the Upstox access token is invalid/expired.
- * The user must click "Reconnect Upstox" to initiate a new OAuth flow.
+ * UpstoxReconnectBanner — shown ONLY to ADMIN when the Upstox access token is invalid/expired.
  *
- * Shown when status === 'token_invalid' (detected by consecutive 401 responses in
- * the polling fallback). Hidden for all other statuses.
+ * IMPORTANT: In shared-token mode (UPSTOX_ADMIN_USER_ID is set), only the ADMIN user
+ * needs to see this banner and reconnect. Regular users should NEVER see this because:
+ *   - They don't have their own Upstox account connected
+ *   - They can't do anything about the admin token expiry
+ *   - Showing this popup confuses them ("Mujhe kyu connect karna hai?")
  *
- * Props:
- *   status — ConnectionStatus from useLiveQuote()
+ * Shown when: status === 'token_invalid' AND user is ADMIN
+ * Hidden for: All other statuses OR non-admin users
  */
 export function UpstoxReconnectBanner({ status }: { status: ConnectionStatus }) {
+  // Hide immediately if status is not token_invalid
   if (status !== 'token_invalid') return null;
 
+  // Get current user info from auth store
+  const { user } = useAuthStore();
+
+  // CRITICAL: Only show reconnect banner to ADMIN users
+  // In shared-token mode, regular users don't have (and don't need) Upstox access
+  const isAdmin = user?.role === 'ADMIN' || user?.email === 'hzero9393@gmail.com' || user?.email === 'test@pepertect.com';
+
+  if (!isAdmin) {
+    // Non-admin user: silently hide, no popup needed
+    // The app will still work via REST polling fallback (every 10s)
+    return null;
+  }
+
+  // Admin user: show the reconnect banner so they can refresh the shared token
   return (
     <div className="fixed top-0 left-0 right-0 z-50 animate-slide-down">
       <div className="bg-gradient-to-r from-red-600 via-red-500 to-orange-500 text-white px-4 py-3 flex items-center justify-between gap-3 shadow-lg shadow-red-500/20">
@@ -26,9 +44,9 @@ export function UpstoxReconnectBanner({ status }: { status: ConnectionStatus }) 
             </svg>
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-sm">Upstox Token Expired — No Live Data</p>
+            <p className="font-semibold text-sm">⚠️ Admin: Upstox Token Expired</p>
             <p className="text-xs text-white/80 hidden sm:block">
-              Real-time market data is paused. Click &quot;Reconnect&quot; to re-authorize your Upstox account.
+              Shared token expired — all users affected! Click "Reconnect" to refresh.
             </p>
           </div>
         </div>

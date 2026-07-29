@@ -646,7 +646,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         <span className={cn('inline-flex h-1.5 w-1.5 rounded-full', wsStatus === 'upstox_connected' ? 'bg-profit-green animate-pulse' : 'bg-text-tertiary')} />
         {wsStatus === 'upstox_connected'
           ? <span>Live LTP streaming via Upstox WebSocket · Stop Loss & Target auto-triggered when hit.</span>
-          : <span>Live LTP refreshes every 10s · Connect Upstox for real-time SL/TGT triggers.</span>}
+          : <span>Live LTP refreshes automatically · Market data updates in real-time.</span>}
       </div>
 
       {/* ---------- Auto-exit log (recent SL/TGT triggers) ---------- */}
