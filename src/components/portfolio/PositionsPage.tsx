@@ -85,16 +85,9 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       }
     };
     fetchPositions();
-    // Auto-refresh every 15s as a SAFETY NET only — live ticks handle real-time
-    // P&L (and now that we removed the stale MOCK_LTP table, the API returns
-    // pnl=0 so re-fetching won't briefly flash wrong numbers).
-    // 5x SPEED: was 5s — increased to 15s because:
-    //   1. Real-time P&L is computed client-side from WebSocket ticks (no API
-    //      round-trip needed for live updates).
-    //   2. Less frequent refetch = less network/CPU usage = faster perceived
-    //      performance for the user.
-    //   3. SL/TGT triggers are checked on every WS tick (every ~800ms), so
-    //      they still fire instantly even with a 15s API refresh.
+    // NOTE: This 15s interval ONLY refreshes position STATUS (open/closed).
+    // It does NOT affect P&L calculation — P&L updates in REAL-TIME via
+    // WebSocket ticks (~800ms) using the direct render computation above.
     const id = setInterval(fetchPositions, 15000);
     return () => clearInterval(id);
   }, [token]);
@@ -375,68 +368,94 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     return map;
   }, [positions, quotes, optionKeyMap]);
 
-  /* ---------- LIVE total invested / P&L for the active tab ---------- */
+  /* ---------- LIVE total invested / P&L for the active tab (REAL-TIME) ----------
+   * Computed on every render using live WebSocket LTP — no memo, no delay. */
   const totalInvested = filteredPositions.reduce((sum, p) => sum + p.investedAmt, 0);
-  // Use LIVE LTP (from WebSocket) — not the stale p.pnl returned by the API.
-  // This guarantees the hero card and the per-position card show the same number.
-  const totalPnl = filteredPositions.reduce((sum, p) => {
-    const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
-    return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-  }, 0);
+  // Use LIVE LTP (from WebSocket) — computed directly on each render
+  let totalPnlLive = 0;
+  try {
+    for (const p of filteredPositions) {
+      const key = getLiveKeyForPosition(p);
+      const tick = key ? quotes[key] : undefined;
+      const liveLtp = tick?.ltp ?? p.avgPrice;
+      totalPnlLive += (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+    }
+  } catch (e) { /* ignore */ }
+  const totalPnl = totalPnlLive;
   const totalQty = filteredPositions.reduce((s, p) => s + p.quantity, 0);
 
-  /* ---------- LIVE Today's P&L (realized + unrealized) for the active tab ---------- */
-  const todayStats = useMemo(() => {
-    const todayRealized = trades
-      .filter((t) => isToday(t.createdAt) && (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
-      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-    // Use LIVE LTP (from WebSocket) for unrealized — matches the per-position card.
-    const todayUnrealized = filteredPositions
-      .filter((p) => isToday(p.openedAt))
-      .reduce((sum, p) => {
-        const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
-        return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-      }, 0);
-    return {
-      realized: todayRealized,
-      unrealized: todayUnrealized,
-      total: todayRealized + todayUnrealized,
-    };
-  }, [trades, filteredPositions, activeTab, liveLtpByPosId]);
+  /* ---------- LIVE Today's P&L (realized + unrealized) for active tab (REAL-TIME) ----------
+   * Computed on every render — updates instantly when WebSocket ticks arrive. */
+  const todayRealizedTab = trades
+    .filter((t) => isToday(t.createdAt) && (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
+    .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
 
-  /* ---------- LIVE COMBINED Today's P&L (stock + index, real-time) ----------
+  let todayUnrealizedTab = 0;
+  try {
+    for (const p of filteredPositions) {
+      if (!isToday(p.openedAt)) continue;
+      if (p.status !== 'OPEN') continue;
+      const key = getLiveKeyForPosition(p);
+      const tick = key ? quotes[key] : undefined;
+      const liveLtp = tick?.ltp ?? p.avgPrice;
+      todayUnrealizedTab += (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+    }
+  } catch (e) { /* ignore */ }
+
+  const todayStats = {
+    realized: todayRealizedTab,
+    unrealized: todayUnrealizedTab,
+    total: todayRealizedTab + todayUnrealizedTab,
+  };
+
+  /* ---------- LIVE COMBINED Today's P&L (stock + index, REAL-TIME) ----------
+   * CRITICAL: Computed on EVERY RENDER (not useMemo) to guarantee instant
+   * updates when WebSocket quotes change. The `quotes` object from useLiveQuote
+   * triggers re-renders via setVersion() on every tick (~800ms), so this
+   * code runs with fresh LTP values every time — NO 15s delay!
+   *
    * User requirement: "today p&l same ho stock and index dono ka jaise
    * stock main 1200 profite hua or index main 500 loss toh total today
    * p&l 700 ho". So we compute a combined total across BOTH tabs using
-   * the same LIVE LTP source as the per-tab hero card. */
-  const combinedTodayStats = useMemo(() => {
-    const todayRealizedAll = trades
-      .filter((t) => isToday(t.createdAt))
-      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
-    const todayUnrealizedAll = positions
-      .filter((p) => isToday(p.openedAt))
-      .reduce((sum, p) => {
-        const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
-        return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-      }, 0);
-    return {
-      realized: todayRealizedAll,
-      unrealized: todayUnrealizedAll,
-      total: todayRealizedAll + todayUnrealizedAll,
-      stockUnrealized: stockPositions
-        .filter((p) => isToday(p.openedAt))
-        .reduce((sum, p) => {
-          const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
-          return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-        }, 0),
-      indexUnrealized: indexPositions
-        .filter((p) => isToday(p.openedAt))
-        .reduce((sum, p) => {
-          const liveLtp = liveLtpByPosId.get(p.id) ?? p.avgPrice;
-          return sum + (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-        }, 0),
-    };
-  }, [trades, positions, stockPositions, indexPositions, liveLtpByPosId]);
+   * live WebSocket LTP for each open position. */
+  // Compute realized P&L from today's closed trades (changes less frequently)
+  const todayRealizedAll = trades
+    .filter((t) => isToday(t.createdAt))
+    .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+
+  // Compute unrealized P&L from OPEN positions using LIVE WebSocket LTP
+  // This runs on EVERY render — updates in real-time as ticks arrive
+  let todayUnrealizedAll = 0;
+  let stockUnrealizedLive = 0;
+  let indexUnrealizedLive = 0;
+
+  try {
+    for (const p of positions) {
+      if (!p || !isToday(p.openedAt)) continue;
+      if (p.status !== 'OPEN') continue;
+      // Get live LTP from WebSocket quotes (same as DashboardPage approach)
+      const key = getLiveKeyForPosition(p);
+      const tick = key ? quotes[key] : undefined;
+      const liveLtp = tick?.ltp ?? p.avgPrice;
+      const pnl = (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+      todayUnrealizedAll += pnl;
+      // Separate Stock vs Index
+      if (isIndexPosition(p)) {
+        indexUnrealizedLive += pnl;
+      } else {
+        stockUnrealizedLive += pnl;
+      }
+    }
+  } catch (e) { /* ignore calc errors */ }
+
+  // Combined today stats object (recreated on each render with fresh values)
+  const combinedTodayStats = {
+    realized: todayRealizedAll,
+    unrealized: todayUnrealizedAll,
+    total: todayRealizedAll + todayUnrealizedAll,
+    stockUnrealized: stockUnrealizedLive,
+    indexUnrealized: indexUnrealizedLive,
+  };
 
   /* ---------- All-time realized P&L ---------- */
   // Per-tab (kept for backward compat if needed elsewhere).
