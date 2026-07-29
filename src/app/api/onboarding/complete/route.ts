@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    console.log('✅ Check 2 passed - no existing trial found');
+    console.log('✅ Check 2 passed - no existing ACTIVE trial found');
 
     // ========== ALL CHECKS PASSED - ACTIVATE TRIAL ==========
     console.log('\n🎉 ALL CHECKS PASSED - ACTIVATING FREE TRIAL!');
@@ -163,20 +163,45 @@ export async function POST(req: NextRequest) {
     await markOnboardingComplete(payload.userId, { experience, goal, capital, markets });
     console.log('✅ Step 1 done');
 
-    // Step 2: Create Trial Subscription
-    console.log('Step 2: Creating trial subscription...');
-    const subscription = await db.subscription.create({
-      data: {
-        userId: payload.userId,
-        plan: 'PREMIUM',
-        status: 'ACTIVE',
-        startDate: now,
-        endDate,
-        autoRenew: false,
-        razorpaySubId: 'TRIAL',
-      },
-    });
-    console.log('✅ Step 2 done - Subscription created:', subscription.id);
+    // Step 2: Create OR Update Trial Subscription (handle existing TRIAL entries)
+    console.log('Step 2: Creating/Updating trial subscription...');
+    let subscription;
+    try {
+      // Try to create first
+      subscription = await db.subscription.create({
+        data: {
+          userId: payload.userId,
+          plan: 'PREMIUM',
+          status: 'ACTIVE',
+          startDate: now,
+          endDate,
+          autoRenew: false,
+          razorpaySubId: 'TRIAL',
+        },
+      });
+      console.log('✅ Step 2a - New subscription created:', subscription.id);
+    } catch (createError: any) {
+      // If unique constraint error (TRIAL already exists), UPDATE it instead
+      if (createError?.code === 'P2002' || createError?.message?.includes('Unique constraint')) {
+        console.log('⚠️ Step 2b - Trial subscription exists, updating instead...');
+        subscription = await db.subscription.updateMany({
+          where: { 
+            userId: payload.userId,
+            razorpaySubId: 'TRIAL'
+          },
+          data: {
+            plan: 'PREMIUM',
+            status: 'ACTIVE',
+            startDate: now,
+            endDate,
+            autoRenew: false,
+          },
+        });
+        console.log('✅ Step 2b - Existing subscription updated');
+      } else {
+        throw createError; // Re-throw if it's a different error
+      }
+    }
 
     // Step 3: Update User Tier + Capital + Trial Timestamp
     console.log('Step 3: Updating user tier to PREMIUM, virtualCapital to ₹', INITIAL_CAPITAL.toLocaleString('en-IN'));
