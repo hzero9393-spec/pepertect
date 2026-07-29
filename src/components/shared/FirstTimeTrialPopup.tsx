@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/useAuthStore';
 import {
   X, Gift, Sparkles, Zap, Trophy, TrendingUp, ArrowRight,
-  Clock, Shield, CheckCircle2, PartyPopper,
+  Clock, Shield, CheckCircle2, PartyPopper, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -58,7 +58,14 @@ export function FirstTimeTrialPopup() {
 
   /* ---------- Check eligibility with retry ---------- */
   const checkEligibility = useCallback(async (retryNum = 0) => {
+    // CRITICAL: Wait for auth to be ready
     if (!token || !isAuthenticated) {
+      console.log('[FirstTimeTrialPopup] No auth yet, waiting...', { token: !!token, isAuthenticated });
+      // If auth not ready and we haven't retried too much, wait and retry
+      if (retryNum < 5) {
+        setTimeout(() => checkEligibility(0), 800);
+        return;
+      }
       setChecking(false);
       return;
     }
@@ -66,7 +73,7 @@ export function FirstTimeTrialPopup() {
     // Check if permanently dismissed (user clicked "Don't show again")
     const permanentlyDismissed = typeof window !== 'undefined' && localStorage.getItem(DISMISS_KEY) === 'true';
     if (permanentlyDismissed) {
-      console.log('[FirstTimeTrialPopup] Permanently dismissed');
+      console.log('[FirstTimeTrialPopup] Permanently dismissed - skipping');
       setChecking(false);
       return;
     }
@@ -74,63 +81,97 @@ export function FirstTimeTrialPopup() {
     // Check session dismissal
     const sessionDismissed = typeof window !== 'undefined' && sessionStorage.getItem(SESSION_DISMISS_KEY) === 'true';
     if (sessionDismissed) {
-      console.log('[FirstTimeTrialPopup] Session dismissed');
+      console.log('[FirstTimeTrialPopup] Session dismissed - skipping');
       setChecking(false);
       return;
     }
 
     try {
-      console.log(`[FirstTimeTrialPopup] Checking eligibility (attempt ${retryNum + 1})...`);
+      console.log(`[FirstTimeTrialPopup] ✅ Checking eligibility (attempt ${retryNum + 1}/${MAX_RETRIES})...`, { token: token.substring(0, 20) + '...' });
+      
       const res = await fetch('/api/user/trial-status', {
         headers: { Authorization: `Bearer ${token}` },
-        cache: 'no-store', // Don't cache - always get fresh data
+        cache: 'no-store',
       });
       
       if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
       }
       
       const data = await res.json();
-      console.log('[FirstTimeTrialPopup] API response:', data);
+      console.log('[FirstTimeTrialPopup] 📦 API response:', JSON.stringify(data).substring(0, 500));
       
       if (data.success && data.data?.eligible) {
-        console.log('[FirstTimeTrialPopup] User is ELIGIBLE - showing popup');
+        // USER IS ELIGIBLE - SHOW POPUP!
+        console.log('[FirstTimeTrialPopup] 🎉 User is ELIGIBLE - showing popup NOW!');
         setEligible(true);
-        // Show immediately without delay for better UX
         setShowPopup(true);
+        setChecking(false);
+        return; // Success - exit early
       } else if (data.success && data.data) {
-        // User has active/used trial - don't show popup
-        console.log('[FirstTimeTrialPopup] Not eligible:', data.data.message || 'reason unknown');
+        // User has active/used trial or onboarding completed
+        console.log('[FirstTimeTrialPopup] ❌ Not eligible:', data.data.message || data.data.onboardingCompleted ? 'onboarding done' : 'unknown');
         setEligible(false);
+        
+        // If onboarding not completed but also not eligible, something is wrong
+        // Show popup anyway for new users as fallback
+        if (!data.data.onboardingCompleted && !data.data.trialUsed && !data.data.active && !data.data.expired) {
+          console.log('[FirstTimeTrialPopup] ⚠️ Edge case - showing popup as fallback');
+          setEligible(true);
+          setShowPopup(true);
+        }
       } else {
-        // Unexpected response format
-        console.warn('[FirstTimeTrialPopup] Unexpected response:', data);
+        // API error response - log and maybe show popup for new users
+        console.warn('[FirstTimeTrialPopup] ⚠️ Unexpected API response:', data);
+        // On API error, show popup for new users (better UX than silent fail)
+        if (retryNum >= MAX_RETRIES - 1) {
+          console.log('[FirstTimeTrialPopup] Showing popup after failed attempts (fallback)');
+          setEligible(true);
+          setShowPopup(true);
+        }
       }
     } catch (err) {
-      console.error(`[FirstTimeTrialPopup] Eligibility check failed (attempt ${retryNum + 1}):`, err);
+      console.error(`[FirstTimeTrialPopup] 💥 Error (attempt ${retryNum + 1}):`, err);
       
       // Retry logic for network errors
       if (retryNum < MAX_RETRIES - 1) {
         const delay = (retryNum + 1) * 1000; // 1s, 2s, 3s delays
-        console.log(`[FirstTimeTrialPopup] Retrying in ${delay}ms...`);
+        console.log(`[FirstTimeTrialPopup] 🔄 Retrying in ${delay}ms...`);
         setTimeout(() => checkEligibility(retryNum + 1), delay);
         return; // Don't set checking=false yet
       }
+      
+      // After all retries failed, still show popup for new users (optimistic)
+      console.log('[FirstTimeTrialPopup] All retries failed, showing popup optimistically');
+      setEligible(true);
+      setShowPopup(true);
     } finally {
-      if (retryNum >= MAX_RETRIES - 1 || eligible) {
+      if (retryNum >= MAX_RETRIES - 1 || (eligible && showPopup)) {
         setChecking(false);
       }
     }
-  }, [token, isAuthenticated, eligible]);
+  }, [token, isAuthenticated, eligible, showPopup]);
 
   useEffect(() => {
-    // Small initial delay to ensure auth store is ready
-    const timer = setTimeout(() => {
-      checkEligibility(0);
-    }, 500);
+    // Start checking after a short delay for auth store to initialize
+    // Also re-check when auth state changes
+    let timeoutId: NodeJS.Timeout;
     
-    return () => clearTimeout(timer);
-  }, [checkEligibility]);
+    const startCheck = () => {
+      // Delay based on whether we have token or not
+      const delay = token ? 300 : 1000;
+      timeoutId = setTimeout(() => {
+        console.log('[FirstTimeTrialPopup] Starting eligibility check...', { token: !!token, isAuthenticated });
+        checkEligibility(0);
+      }, delay);
+    };
+    
+    startCheck();
+    
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [token, isAuthenticated, checkEligibility]);
 
   /* ---------- Handlers ---------- */
   
@@ -317,14 +358,13 @@ export function FirstTimeTrialPopup() {
    ================================================================ */
 
 export function useFirstTimeTrialPopup() {
-  const [canShow, setCanShow] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  // Lazy initialize from localStorage (only runs once on mount)
+  const [canShow, setCanShow] = useState(() => {
+    if (typeof window === 'undefined') return false;
     const dismissed = localStorage.getItem(DISMISS_KEY) === 'true';
     const sessionDismissed = sessionStorage.getItem(SESSION_DISMISS_KEY) === 'true';
-    setCanShow(!dismissed && !sessionDismissed);
-  }, []);
+    return !dismissed && !sessionDismissed;
+  });
 
   const resetPopup = useCallback(() => {
     if (typeof window === 'undefined') return;

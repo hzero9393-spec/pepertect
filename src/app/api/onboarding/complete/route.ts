@@ -16,6 +16,8 @@ const INITIAL_CAPITAL = 100000; // ₹1 Lakh - FIXED for all users
  * SECURITY: Can only run ONCE per user lifetime!
  */
 export async function POST(req: NextRequest) {
+  console.log('\n========== ONBOARDING COMPLETE API CALLED ==========');
+  
   try {
     const body = await req.json();
     const { experience, goal, capital, markets } = body;
@@ -28,16 +30,27 @@ export async function POST(req: NextRequest) {
     const payload = token ? verifyToken(token) : null;
 
     if (!payload) {
+      console.log('❌ Authentication failed - no/invalid token');
       return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
     }
+
+    console.log('✅ Authenticated user:', payload.userId);
 
     // ========== GET USER ==========
     const user = await db.user.findUnique({ where: { id: payload.userId } });
     if (!user) {
+      console.log('❌ User not found:', payload.userId);
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    console.log('👤 User found:', user.id, 'email:', user.email);
+    console.log('👤 User found:', {
+      id: user.id,
+      email: user.email,
+      tier: user.tier,
+      currentVirtualCapital: Number(user.virtualCapital),
+      onboardingCompleted: user.onboardingCompleted,
+      trialActivatedAt: user.trialActivatedAt?.toISOString() || null,
+    });
 
     // ========== CHECK 1: Onboarding Already Completed? ==========
     // Check DEDICATED field first (new schema)
@@ -52,6 +65,8 @@ export async function POST(req: NextRequest) {
         trialStatus: await getTrialStatus(payload.userId),
       }, { status: 400 });
     }
+
+    console.log('✅ Check 1 passed - onboarding not completed yet');
 
     // Fallback: Check JSON field (for users before migration)
     const prefs = user.notifSettings as Record<string, unknown> | null;
@@ -79,7 +94,10 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    console.log('✅ Check 1b passed - JSON field also clear');
+
     // ========== CHECK 2: Trial Already Used? ==========
+    console.log('🔍 Checking for existing trial subscription...');
     const existingTrial = await db.subscription.findFirst({
       where: { 
         userId: payload.userId,
@@ -89,7 +107,12 @@ export async function POST(req: NextRequest) {
     });
 
     if (existingTrial) {
-      console.log('⚠️ Existing trial found:', existingTrial.id);
+      console.log('⚠️ Existing trial found:', {
+        id: existingTrial.id,
+        status: existingTrial.status,
+        startDate: existingTrial.startDate,
+        plan: existingTrial.plan,
+      });
       
       const now = new Date();
       const trialEndsAt = new Date(existingTrial.startDate.getTime() + TRIAL_DURATION_MS);
@@ -126,18 +149,23 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    console.log('✅ Check 2 passed - no existing trial found');
+
     // ========== ALL CHECKS PASSED - ACTIVATE TRIAL ==========
-    console.log('✅ All checks passed - ACTIVATING FREE TRIAL!');
+    console.log('\n🎉 ALL CHECKS PASSED - ACTIVATING FREE TRIAL!');
+    console.log('--- CREDITING ₹1,00,000 VIRTUAL CAPITAL ---');
     
     const now = new Date();
     const endDate = new Date(now.getTime() + TRIAL_DURATION_MS);
 
     // Step 1: Mark Onboarding Complete (BEFORE anything else)
+    console.log('Step 1: Marking onboarding complete...');
     await markOnboardingComplete(payload.userId, { experience, goal, capital, markets });
+    console.log('✅ Step 1 done');
 
     // Step 2: Create Trial Subscription
-    console.log('Creating trial subscription...');
-    await db.subscription.create({
+    console.log('Step 2: Creating trial subscription...');
+    const subscription = await db.subscription.create({
       data: {
         userId: payload.userId,
         plan: 'PREMIUM',
@@ -148,10 +176,11 @@ export async function POST(req: NextRequest) {
         razorpaySubId: 'TRIAL',
       },
     });
+    console.log('✅ Step 2 done - Subscription created:', subscription.id);
 
     // Step 3: Update User Tier + Capital + Trial Timestamp
-    console.log('Updating user tier to PREMIUM...');
-    await db.user.update({
+    console.log('Step 3: Updating user tier to PREMIUM, virtualCapital to ₹', INITIAL_CAPITAL.toLocaleString('en-IN'));
+    const updatedUser = await db.user.update({
       where: { id: payload.userId },
       data: { 
         tier: 'PREMIUM',
@@ -159,17 +188,28 @@ export async function POST(req: NextRequest) {
         trialActivatedAt: now, // For timer calculation
       },
     });
+    console.log('✅ Step 3 done - User updated. New virtualCapital:', Number(updatedUser.virtualCapital));
 
     // Step 4: Credit Portfolio with ₹1,00,000
-    console.log('Crediting portfolio with ₹', INITIAL_CAPITAL.toLocaleString('en-IN'));
+    console.log('Step 4: Crediting portfolio with ₹', INITIAL_CAPITAL.toLocaleString('en-IN'));
     await creditPortfolio(payload.userId, INITIAL_CAPITAL);
+    console.log('✅ Step 4 done - Portfolio credited');
 
     // Step 5: Add selected markets to watchlist
     if (markets && Array.isArray(markets)) {
+      console.log('Step 5: Adding markets to watchlist:', markets);
       await addMarketsToWatchlist(payload.userId, markets);
+      console.log('✅ Step 5 done');
     }
 
-    console.log('🎉 ONBOARDING COMPLETE - Trial activated successfully!');
+    console.log('\n🎉🎉🎉 ONBOARDING COMPLETE - Trial activated successfully! 🎉🎉🎉');
+    console.log('Summary:', {
+      userId: payload.userId,
+      virtualCapitalCredited: INITIAL_CAPITAL,
+      trialEndsAt: endDate.toISOString(),
+      trialDurationDays: 30,
+    });
+    console.log('========== END ONBOARDING ==========\n');
     
     return NextResponse.json({
       success: true,

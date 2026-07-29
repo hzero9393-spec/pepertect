@@ -251,64 +251,88 @@ export function OnboardingFlow() {
   const [trialCheckDone, setTrialCheckDone] = useState(false);
   const [trialCheckError, setTrialCheckError] = useState<string | null>(null);
 
+  // localStorage key to track onboarding completion (client-side backup)
+  const ONBOARDING_DONE_KEY = 'pepertect-onboarding-completed';
+
   useEffect(() => {
     setMounted(true);
     if (!token) { window.location.href = '/login'; return; }
+
+    // CRITICAL: Check client-side storage FIRST (fastest block)
+    if (typeof window !== 'undefined') {
+      const clientSideDone = localStorage.getItem(ONBOARDING_DONE_KEY) === 'true';
+      if (clientSideDone) {
+        console.log('[OnboardingFlow] 🚫 BLOCKED by client-side storage - onboarding already done');
+        setTrialCheckError('You have already completed onboarding!');
+        setTimeout(() => window.location.href = '/dashboard', 1500);
+        return;
+      }
+    }
+
     (async () => {
       try {
+        console.log('[OnboardingFlow] 🔍 Checking trial status with server...');
         const res = await fetch('/api/user/trial-status', {
           headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store', // Always fresh data!
         });
         const d = await res.json();
-        console.log('[OnboardingFlow] API response:', d);
+        console.log('[OnboardingFlow] 📦 Server response:', JSON.stringify(d).substring(0, 600));
         
         if (d.success && d.data) {
           // If trial is ACTIVE - go to dashboard (user already going through or completed)
           if (d.data.active) { 
-            console.log('[OnboardingFlow] Trial already active, redirecting to dashboard');
+            console.log('[OnboardingFlow] ✅ Trial already active → Dashboard');
+            // Also mark client-side
+            if (typeof window !== 'undefined') localStorage.setItem(ONBOARDING_DONE_KEY, 'true');
             window.location.href = '/dashboard'; 
             return; 
           }
           
           // If onboarding ALREADY COMPLETED (but no active trial) - go to subscription
           if (d.data.onboardingCompleted === true) {
-            console.log('[OnboardingFlow] Onboarding already completed, redirecting');
+            console.log('[OnboardingFlow] 🚫 Onboarding already completed!');
+            // Mark client-side too
+            if (typeof window !== 'undefined') localStorage.setItem(ONBOARDING_DONE_KEY, 'true');
+            setTrialCheckError('You have already completed onboarding!');
             if (d.data.trialUsed || d.data.expired) {
-              window.location.href = '/subscription';
+              setTimeout(() => window.location.href = '/subscription', 2000);
             } else {
-              window.location.href = '/dashboard';
+              setTimeout(() => window.location.href = '/dashboard', 2000);
             }
             return;
           }
           
           // If trial was USED before (expired + trialUsed flag) - go to subscription
           if (d.data.trialUsed || (d.data.expired && d.data.startedAt)) { 
-            console.log('[OnboardingFlow] Trial already used, redirecting to subscription');
-            window.location.href = '/subscription'; 
+            console.log('[OnboardingFlow] 🚫 Trial already used → Subscription');
+            if (typeof window !== 'undefined') localStorage.setItem(ONBOARDING_DONE_KEY, 'true');
+            setTrialCheckError('Free trial already used!');
+            setTimeout(() => window.location.href = '/subscription', 2000); 
             return; 
           }
           
           // If eligible (new user) - show onboarding flow
           if (d.data.eligible) {
-            console.log('[OnboardingFlow] User eligible, showing onboarding');
+            console.log('[OnboardingFlow] 🎉 User ELIGIBLE - showing onboarding flow');
             setChecked(true);
             setTrialCheckDone(true);
             return;
           }
           
-          // For any other case (edge cases), show onboarding
-          console.log('[OnboardingFlow] Edge case, showing onboarding anyway');
+          // For any other case (edge cases), show onboarding but log warning
+          console.log('[OnboardingFlow] ⚠️ Edge case - showing onboarding anyway', d.data);
           setChecked(true);
           setTrialCheckDone(true);
         } else {
-          // API error - show onboarding anyway
-          console.log('[OnboardingFlow] API error, showing onboarding anyway', d);
+          // API error - show onboarding anyway (optimistic)
+          console.log('[OnboardingFlow] ⚠️ API error, showing onboarding anyway', d);
           setChecked(true);
           setTrialCheckDone(true);
         }
       } catch (err) { 
         // Network error - show onboarding anyway
-        console.error('[OnboardingFlow] Network error:', err);
+        console.error('[OnboardingFlow] 💥 Network error:', err);
         setChecked(true);
         setTrialCheckDone(true);
       }
@@ -341,6 +365,14 @@ export function OnboardingFlow() {
     if (!token) return;
     setActivationError(null);
     setActivating(true);
+    
+    console.log('[OnboardingFlow] 🚀 Activating free trial...', {
+      experience: data.experience,
+      goal: data.goal,
+      capital: data.capital,
+      markets: data.markets,
+    });
+    
     try {
       // Call the onboarding complete API
       const res = await fetch('/api/onboarding/complete', {
@@ -355,7 +387,15 @@ export function OnboardingFlow() {
       });
       const result = await res.json();
       
+      console.log('[OnboardingFlow] 📦 Activation response:', JSON.stringify(result).substring(0, 500));
+      
       if (result.success) {
+        // ✅ SUCCESS - Mark onboarding as done in localStorage (client-side backup)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(ONBOARDING_DONE_KEY, 'true');
+          console.log('[OnboardingFlow] ✅ Set client-side onboarding flag');
+        }
+        
         /* Update local state */
         if (user) {
           login(
@@ -363,26 +403,34 @@ export function OnboardingFlow() {
             token,
           );
         }
+        
+        console.log('[OnboardingFlow] 🎉 Trial activated! Virtual capital:', result.virtualCapitalCredited);
+        
         // Show reward for new activation OR redirect if already active
         if (result.trialActivated === false) {
           // Trial was already active, just go to dashboard
+          console.log('[OnboardingFlow] Trial was already active → Dashboard');
           window.location.href = '/dashboard';
         } else {
+          console.log('[OnboardingFlow] Showing reward animation...');
           setShowReward(true);
           setTimeout(() => soundRef.current.success(), 400);
         }
       } else {
         // Handle specific error types with user-friendly messages
-        console.log('[OnboardingFlow] Activation failed:', result);
+        console.log('[OnboardingFlow] ❌ Activation failed:', result.error, result.message);
         
         if (result.error === 'ONBOARDING_ALREADY_COMPLETED' || result.alreadyCompleted) {
+          // Mark client-side too since server says it's done
+          if (typeof window !== 'undefined') localStorage.setItem(ONBOARDING_DONE_KEY, 'true');
           setActivationError('You have already completed onboarding! Redirecting to dashboard...');
           setTimeout(() => window.location.href = '/dashboard', 2000);
         } else if (result.error === 'TRIAL_ALREADY_USED' || result.message?.includes('already used')) {
+          if (typeof window !== 'undefined') localStorage.setItem(ONBOARDING_DONE_KEY, 'true');
           setActivationError('This free trial offer has already been used on your account. You can upgrade to Premium to continue!');
-          // Redirect to subscription after delay
           setTimeout(() => window.location.href = '/subscription', 3000);
         } else if (result.error === 'ALREADY_ACTIVE' || result.message?.includes('already active')) {
+          if (typeof window !== 'undefined') localStorage.setItem(ONBOARDING_DONE_KEY, 'true');
           setActivationError('You already have an active free trial! Enjoy your Premium features.');
           setTimeout(() => window.location.href = '/dashboard', 2000);
         } else {
@@ -390,7 +438,7 @@ export function OnboardingFlow() {
         }
       }
     } catch (err) {
-      console.error('Activation error:', err);
+      console.error('[OnboardingFlow] 💥 Activation error:', err);
       setActivationError('Network error. Please check your connection and try again.');
     } finally {
       setActivating(false);
