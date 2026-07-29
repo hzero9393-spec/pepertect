@@ -78,7 +78,8 @@ export function SLTargetModal({ isOpen, onClose, position, onUpdate }: SLTargetM
     ? (potentialProfit / potentialLoss).toFixed(2) 
     : null;
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError(null);
 
     // Validate both fields
@@ -196,6 +197,7 @@ export function SLTargetModal({ isOpen, onClose, position, onUpdate }: SLTargetM
                       type="number"
                       value={stopLoss}
                       onChange={(e) => setStopLoss(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
                       placeholder={`Below ${position.side === 'LONG' ? '' : 'above'} ₹${position.avgPrice.toFixed(2)}`}
                       step="0.05"
                       className={cn(
@@ -233,6 +235,7 @@ export function SLTargetModal({ isOpen, onClose, position, onUpdate }: SLTargetM
                       type="number"
                       value={target}
                       onChange={(e) => setTarget(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleSubmit(); } }}
                       placeholder={`Above ${position.side === 'LONG' ? '' : 'below'} ₹${position.avgPrice.toFixed(2)}`}
                       step="0.05"
                       className={cn(
@@ -302,6 +305,7 @@ export function SLTargetModal({ isOpen, onClose, position, onUpdate }: SLTargetM
                 {/* Actions */}
                 <div className="flex gap-2 pt-2">
                   <button
+                    type="button"
                     onClick={() => {
                       setStopLoss('');
                       setTarget('');
@@ -311,6 +315,7 @@ export function SLTargetModal({ isOpen, onClose, position, onUpdate }: SLTargetM
                     Clear Both
                   </button>
                   <button
+                    type="button"
                     onClick={handleSubmit}
                     disabled={loading}
                     className={cn(

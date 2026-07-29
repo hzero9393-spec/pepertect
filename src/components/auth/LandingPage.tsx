@@ -44,7 +44,10 @@ export function LandingPage() {
         skipTargetRef.current?.scrollIntoView({ behavior: 'smooth' });
         setCurrentSlide(TOUR_SLIDE_COUNT);
       } else {
-        slideRefs.current[next]?.scrollIntoView({ behavior: 'smooth' });
+        const target = slideRefs.current[next];
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         setCurrentSlide(next);
       }
     }, SLIDE_INTERVAL_MS);
@@ -53,23 +56,28 @@ export function LandingPage() {
 
   /* ---------- Track which slide is in view ---------- */
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (!entry.isIntersecting) return;
-          const idxAttr = entry.target.getAttribute('data-slide-index');
-          if (idxAttr == null) return;
-          const idx = parseInt(idxAttr, 10);
-          if (!Number.isNaN(idx)) {
-            setCurrentSlide((prev) => (prev === idx ? prev : idx));
-          }
-        });
-      },
-      { threshold: 0.55 }
-    );
-    slideRefs.current.forEach((el) => el && observer.observe(el));
-    if (ctaRef.current) observer.observe(ctaRef.current);
-    return () => observer.disconnect();
+    // Small delay to ensure refs are populated after lazy load
+    const initTimer = setTimeout(() => {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const idxAttr = entry.target.getAttribute('data-slide-index');
+            if (idxAttr == null) return;
+            const idx = parseInt(idxAttr, 10);
+            if (!Number.isNaN(idx)) {
+              setCurrentSlide((prev) => (prev === idx ? prev : idx));
+            }
+          });
+        },
+        { threshold: 0.3 }
+      );
+      slideRefs.current.forEach((el) => el && observer.observe(el));
+      if (ctaRef.current) observer.observe(ctaRef.current);
+      // Store observer for cleanup
+      return () => observer.disconnect();
+    }, 100);
+    return () => clearTimeout(initTimer);
   }, []);
 
   /* ---------- Pause on user interaction ---------- */

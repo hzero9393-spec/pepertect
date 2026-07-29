@@ -56,6 +56,7 @@ model User {
   activityLogs   ActivityLog[]
   trades         Trade[]
   upstoxToken    UpstoxToken?
+  gamification   UserGamification?
 
   @@map("users")
 }
@@ -386,17 +387,20 @@ model Watchlist {
 }
 
 // ============================================
-// 7. LEARNING PATH
+// 7. LEARNING PATH & GAMIFICATION
 // ============================================
 
 model LearningPath {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  level       String                         // BEGINNER, INTERMEDIATE, ADVANCED
-  order       Int      @default(0)
-  isPremium   Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  title         String
+  description   String?
+  level         String                         // BEGINNER, INTERMEDIATE, ADVANCED
+  category      String                         // e.g. "Stock Market Basics", "Technical Analysis", "Options Trading"
+  icon          String?                        // emoji or icon name
+  order         Int      @default(0)
+  isPremium     Boolean  @default(false)
+  totalXP       Int      @default(0)           // XP awarded on completing all modules
+  createdAt     DateTime @default(now())
 
   modules Module[]
 
@@ -409,8 +413,11 @@ model Module {
   title          String
   description    String?
   content        String?                        // Markdown content
+  videoUrl       String?                        // YouTube embed URL
+  videoChapters  String?                        // JSON array of {time, title} for video chapters
   order          Int      @default(0)
   duration       Int?                           // estimated minutes
+  xpReward       Int      @default(10)           // XP earned on completing this module
   createdAt      DateTime @default(now())
 
   learningPath LearningPath @relation(fields: [learningPathId], references: [id], onDelete: Cascade)
@@ -421,35 +428,152 @@ model Module {
 }
 
 model Challenge {
-  id        String   @id @default(cuid())
-  moduleId  String
-  title     String
-  type      String                          // QUIZ, TRADE_SIMULATION, STRATEGY
-  questions String?                         // JSON array of questions
-  passingScore Int?
-  reward    String?                         // virtual reward description
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  moduleId     String
+  title        String
+  type         String                          // QUIZ, TRADE_SIMULATION, STRATEGY, PATTERN_RECOGNITION
+  questions    String?                         // JSON array of question objects
+  passingScore Int      @default(70)           // percentage to pass
+  xpReward     Int      @default(15)           // XP for passing the quiz
+  coinReward   Int      @default(10)           // coins for perfect score
+  createdAt    DateTime @default(now())
 
   module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  quizAttempts QuizAttempt[]
 
   @@map("challenges")
 }
 
 model UserProgress {
-  id           String   @id @default(cuid())
-  userId       String
-  moduleId     String
-  status       String   @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED
-  score        Float?
-  completedAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String    @id @default(cuid())
+  userId          String
+  moduleId        String
+  status          String    @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED
+  score           Float?
+  videoProgress   Int       @default(0)             // video watch progress (0-100%)
+  videoTimestamp  Int       @default(0)             // last watched video position in seconds
+  notes           String?                             // user's saved notes (JSON)
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
 
   @@unique([userId, moduleId])
   @@map("user_progress")
+}
+
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  userId      String
+  challengeId String
+  score       Int                              // percentage score
+  correct     Int                              // number of correct answers
+  total       Int                              // total questions
+  xpEarned    Int      @default(0)
+  coinsEarned Int      @default(0)
+  completedAt DateTime @default(now())
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([userId, challengeId])
+  @@map("quiz_attempts")
+}
+
+// ---- Gamification: XP, Levels, Streaks, Badges, Coins ----
+
+model UserGamification {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  xp            Int      @default(0)
+  level         Int      @default(1)
+  coins         Int      @default(0)
+  streak        Int      @default(0)           // current daily streak
+  longestStreak Int      @default(0)           // all-time longest streak
+  lastActivity  DateTime?                       // last day user did any learning activity
+  streakFreeze  Int      @default(1)           // available streak freezes (1 free)
+  lessonsCompleted  Int   @default(0)
+  quizzesPassed     Int   @default(0)
+  perfectQuizzes    Int   @default(0)           // 100% score quizzes
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badgesEarned UserBadge[]
+
+  @@map("user_gamification")
+}
+
+model Badge {
+  id          String   @id @default(cuid())
+  name        String                          // e.g. "First Lesson"
+  description String?
+  icon        String                          // emoji
+  category    String                          // LESSON, STREAK, QUIZ, ACHIEVEMENT, SPECIAL
+  xpReward    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  earnedBy    UserBadge[]
+
+  @@map("badges")
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeId   String
+  earnedAt  DateTime @default(now())
+
+  gamification UserGamification @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge        Badge           @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@map("user_badges")
+}
+
+// ---- Daily Challenge & Word of the Day ----
+
+model DailyChallenge {
+  id        String   @id @default(cuid())
+  date      String   @unique                   // YYYY-MM-DD
+  questions String?                         // JSON array of 5 MCQ questions
+  topic     String?                         // e.g. "Market Basics", "Technical Analysis"
+  createdAt DateTime @default(now())
+
+  attempts  DailyChallengeAttempt[]
+
+  @@map("daily_challenges")
+}
+
+model DailyChallengeAttempt {
+  id          String   @id @default(cuid())
+  userId      String
+  challengeId String
+  score       Int
+  correct     Int
+  total       Int
+  xpEarned    Int      @default(0)
+  coinsEarned Int      @default(0)
+  timeTaken   Int?                            // seconds taken
+  completedAt DateTime @default(now())
+
+  challenge DailyChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, challengeId])
+  @@map("daily_challenge_attempts")
+}
+
+model WordOfDay {
+  id        String   @id @default(cuid())
+  word      String
+  meaning   String
+  example   String?                         // usage in context
+  category  String?                         // e.g. "Greeks", "Order Types", "Technical"
+  date      String   @unique                 // YYYY-MM-DD
+  createdAt DateTime @default(now())
+
+  @@map("word_of_day")
 }
 
 // ============================================
