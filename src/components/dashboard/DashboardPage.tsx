@@ -262,13 +262,67 @@ export function DashboardPage() {
     );
   }
 
-  const totalPnl = portfolio?.totalPnl ?? 0;
+  /* ---------- LIVE Today's P&L (real-time from positions) ----------
+   * User requirement: Show ONLY today's profit in Total P&L card
+   * Calculate live P&L from open positions using WebSocket LTP
+   * This matches PositionsPage's combinedTodayStats exactly */
+  
+  // Helper: was this position opened today?
+  const isPositionToday = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    return (
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear()
+    );
+  };
+  
+  // Calculate LIVE today's P&L from positions (same as PositionsPage)
+  const liveTodayPnl = useMemo(() => {
+    let stockPnl = 0;
+    let indexPnl = 0;
+    let realizedPnl = 0;
+    
+    for (const p of positions) {
+      if (p.status !== 'OPEN') continue;
+      // Get live LTP for this position
+      const liveKey = getLiveKeyForPosition(p);
+      const tick = liveKey ? quotes[liveKey] : undefined;
+      const liveLtp = tick?.ltp ?? p.currentPrice ?? p.avgPrice;
+      const pnl = (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+      
+      // Classify as index or stock position
+      const isIndex = ['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'].includes(p.symbol.toUpperCase()) || p.segment !== 'EQUITY';
+      
+      if (isPositionToday(p.openedAt)) {
+        if (isIndex) {
+          indexPnl += pnl;
+        } else {
+          stockPnl += pnl;
+        }
+      }
+    }
+    
+    // Add realized P&L from today's trades (from yesterdayStats if available)
+    realizedPnl = 0; // Will be fetched separately if needed
+    
+    return {
+      total: stockPnl + indexPnl,
+      stockUnrealized: stockPnl,
+      indexUnrealized: indexPnl,
+      realized: realizedPnl
+    };
+  }, [positions, quotes, optionKeyMap]);
+  
+  // USE live today's P&L for the Total P&L card (NOT cumulative!)
+  const totalPnl = liveTodayPnl.total;
   const totalPnlPositive = totalPnl >= 0;
   
-  // Use yesterday's stats if available, otherwise fall back to cumulative
+  // Keep yesterday's stats for Win Rate card only
   const displayWins = yesterdayStats?.wins ?? portfolio?.winningTrades ?? 0;
   const displayTotalTrades = yesterdayStats?.totalTrades ?? portfolio?.totalTrades ?? 0;
-  const displayPnl = yesterdayStats?.pnl ?? totalPnl;
+  const displayPnl = yesterdayStats?.pnl ?? 0; // Yesterday's P&L for win rate context
   const displayPnlPositive = displayPnl >= 0;
   const winRate = displayTotalTrades > 0 ? Math.round((displayWins / displayTotalTrades) * 100) : 0;
   const losses = Math.max(0, displayTotalTrades - displayWins);
@@ -394,18 +448,18 @@ export function DashboardPage() {
           value={formatINR(portfolio?.totalBalance ?? tierFallback)}
           subtext="Virtual Capital"
         />
-        {/* Total P&L */}
+        {/* Total P&L — Shows ONLY Today's profit (real-time from positions) */}
         <MetricCard
           icon={totalPnlPositive ? TrendingUp : TrendingDown}
           iconBg={totalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
           iconColor={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
-          label="Total P&L"
+          label="Today's P&L"
           value={
             <span className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
               {totalPnlPositive ? '+' : ''}{formatINR(totalPnl)}
             </span>
           }
-          subtext={`${totalPnlPositive ? '+' : ''}${totalPnlPct.toFixed(2)}% · Realized ${formatINR(portfolio?.realizedPnl ?? 0)}`}
+          subtext={`Stock: ${liveTodayPnl.stockUnrealized >= 0 ? '+' : ''}${formatINR(liveTodayPnl.stockUnrealized)} · Index: ${liveTodayPnl.indexUnrealized >= 0 ? '+' : ''}${formatINR(liveTodayPnl.indexUnrealized)}`}
         />
         {/* Available Margin */}
         <MetricCard
