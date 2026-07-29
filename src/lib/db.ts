@@ -7,7 +7,8 @@ const globalForPrisma = globalThis as unknown as {
 export const db =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: ['query'],
+    // Query logging removed for production performance
+    // log: ['query'],
   })
 
 // Backwards-compat alias — many files import { prisma }

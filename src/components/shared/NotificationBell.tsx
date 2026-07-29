@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, X, Check, CheckCheck, Settings, Trash2, TrendingUp, AlertTriangle, Target, Gift, Star, Info } from 'lucide-react';
+import { Bell, X, Check, CheckCheck, Settings, Trash2, TrendingUp, AlertTriangle, Gift, Star, Info } from 'lucide-react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { cn } from '@/lib/utils';
+import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead, useDeleteAllNotifications } from '@/hooks/useApi';
 
 // Types
 interface Notification {
@@ -77,38 +78,21 @@ const getNotificationBg = (type: string, isRead: boolean) => {
 // Get navigation URL based on notification type and data
 function getNotificationUrl(notif: Notification): string | null {
   try {
-    // Parse data if available
     const data = notif.data ? JSON.parse(notif.data) : null;
     
     switch (notif.type) {
       case 'TRADE':
-        // Trade notifications - go to positions or stock detail
-        if (data?.symbol) {
-          return `/stock/${data.symbol}`;
-        }
+        if (data?.symbol) return `/stock/${data.symbol}`;
         return '/positions';
-        
       case 'SUBSCRIPTION':
-        // Subscription related - go to subscription or pricing
-        if (data?.trialDays || notif.title.includes('Trial')) {
-          return '/subscription';
-        }
-        return '/subscription';
-        
+        return null;
       case 'MILESTONE':
-        // Achievements - go to positions to see portfolio
         return '/positions';
-        
       case 'PRICE_ALERT':
-        // Price alerts - go to watchlist or stock
-        if (data?.symbol) {
-          return `/stock/${data.symbol}`;
-        }
+        if (data?.symbol) return `/stock/${data.symbol}`;
         return '/watchlist';
-        
       case 'SYSTEM':
       default:
-        // System/other - stay on current page or go to dashboard
         return null;
     }
   } catch {
@@ -117,51 +101,18 @@ function getNotificationUrl(notif: Notification): string | null {
 }
 
 export function NotificationBell() {
-  const { token } = useAuthStore();
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const hasPlayedSound = useRef(false);
 
-  // Fetch notifications
-  const fetchNotifications = useCallback(async () => {
-    if (!token) return;
-    
-    try {
-      const res = await fetch('/api/notifications', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        setNotifications(data.data || []);
-        setUnreadCount(data.unreadCount || 0);
-        
-        // Play sound only when NEW unread notifications arrive (not on initial load)
-        if ((data.unreadCount || 0) > 0 && !hasPlayedSound.current && !loading) {
-          playNotificationSound();
-          hasPlayedSound.current = true;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [token, loading]);
+  // Use React Query — auto-polls every 30s, deduplicates with shared cache
+  const { data, isLoading } = useNotifications();
+  const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllNotificationsRead();
+  const deleteAll = useDeleteAllNotifications();
 
-  // Initial fetch + polling every 15 seconds for real-time updates
-  useEffect(() => {
-    fetchNotifications();
-    
-    const interval = setInterval(fetchNotifications, 15000); // 15 second polling for faster updates
-    
-    return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  const notifications = data?.notifications || [];
+  const unreadCount = data?.unreadCount || 0;
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -170,82 +121,22 @@ export function NotificationBell() {
         setIsOpen(false);
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Mark single notification as read
-  const markAsRead = async (notificationId: string) => {
-    try {
-      await fetch(`/api/notifications/${notificationId}/read`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
-      );
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    } catch (error) {
-      console.error('Failed to mark as read:', error);
-    }
-  };
-
-  // Mark all as read
-  const markAllAsRead = async () => {
-    try {
-      await fetch('/api/notifications/read-all', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-      setUnreadCount(0);
-    } catch (error) {
-      console.error('Failed to mark all as read:', error);
-    }
-  };
-
-  // Delete ALL notifications
-  const deleteAllNotifications = async () => {
-    if (!confirm('Delete all notifications? This cannot be undone.')) return;
-    
-    setDeleting(true);
-    try {
-      const res = await fetch('/api/notifications/delete-all', {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      
-      if (res.ok) {
-        setNotifications([]);
-        setUnreadCount(0);
-      }
-    } catch (error) {
-      console.error('Failed to delete notifications:', error);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  // Handle notification click - mark as read & navigate
+  // Handle notification click
   const handleNotificationClick = async (notif: Notification) => {
-    // Mark as read if unread
     if (!notif.isRead) {
-      await markAsRead(notif.id);
+      markRead.mutate(notif.id);
     }
-    
-    // Close dropdown
     setIsOpen(false);
-    
-    // Navigate based on notification type
     const url = getNotificationUrl(notif);
     if (url) {
       router.push(url);
     }
   };
-  
+
   const formatTimeAgo = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -267,7 +158,7 @@ export function NotificationBell() {
       <button
         onClick={() => {
           setIsOpen(!isOpen);
-          if (!isOpen) playNotificationSound(); // Play sound on open
+          if (!isOpen) playNotificationSound();
         }}
         className={cn(
           "relative p-2 rounded-xl transition-all duration-200",
@@ -306,10 +197,9 @@ export function NotificationBell() {
             transition={{ duration: 0.15 }}
             className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-2xl border border-border bg-background shadow-xl z-50 overflow-hidden"
           >
-            {/* Header with Logo & Title */}
+            {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-brand-primary/5 to-accent-gold/5">
               <div className="flex items-center gap-2.5">
-                {/* Website Logo */}
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary">
                   <span className="text-xs font-bold text-white">P</span>
                 </div>
@@ -323,7 +213,7 @@ export function NotificationBell() {
               <div className="flex items-center gap-1">
                 {unreadCount > 0 && (
                   <button
-                    onClick={markAllAsRead}
+                    onClick={() => markAllRead.mutate()}
                     className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-brand-primary hover:bg-brand-primary/10 transition-colors"
                   >
                     <CheckCheck className="h-3.5 w-3.5" />
@@ -341,7 +231,7 @@ export function NotificationBell() {
 
             {/* Notifications List */}
             <div className="max-h-80 overflow-y-auto">
-              {loading ? (
+              {isLoading ? (
                 <div className="p-8 text-center">
                   <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand-primary" />
                   <p className="mt-2 text-xs text-text-tertiary">Loading...</p>
@@ -352,7 +242,7 @@ export function NotificationBell() {
                     <Bell className="h-6 w-6 text-text-tertiary" />
                   </div>
                   <p className="text-sm font-medium text-text-secondary">No notifications yet</p>
-                  <p className="text-[11px] text-text-tertiary mt-1">We'll notify you when something happens!</p>
+                  <p className="text-[11px] text-text-tertiary mt-1">We&apos;ll notify you when something happens!</p>
                 </div>
               ) : (
                 <div className="divide-y divide-border/50">
@@ -367,15 +257,12 @@ export function NotificationBell() {
                       )}
                     >
                       <div className="flex gap-3">
-                        {/* Icon */}
                         <div className={cn(
                           "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
                           notif.isRead ? "bg-bg-surface" : "bg-white shadow-sm"
                         )}>
                           {getNotificationIcon(notif.type)}
                         </div>
-
-                        {/* Content */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-start justify-between gap-2">
                             <p className={cn(
@@ -402,20 +289,24 @@ export function NotificationBell() {
               )}
             </div>
 
-            {/* Footer with Delete All & Settings */}
+            {/* Footer */}
             <div className="p-3 border-t border-border bg-bg-surface/30 flex items-center justify-between">
               <button
-                onClick={deleteAllNotifications}
-                disabled={deleting || notifications.length === 0}
+                onClick={() => {
+                  if (confirm('Delete all notifications? This cannot be undone.')) {
+                    deleteAll.mutate();
+                  }
+                }}
+                disabled={deleteAll.isPending || notifications.length === 0}
                 className={cn(
                   "flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium transition-colors",
-                  deleting || notifications.length === 0
+                  deleteAll.isPending || notifications.length === 0
                     ? "text-text-tertiary cursor-not-allowed"
                     : "text-loss-red hover:bg-loss-red/10"
                 )}
               >
                 <Trash2 className="h-4 w-4" />
-                {deleting ? 'Deleting...' : 'Clear All'}
+                {deleteAll.isPending ? 'Deleting...' : 'Clear All'}
               </button>
               
               <a

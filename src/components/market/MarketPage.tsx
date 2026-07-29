@@ -10,6 +10,7 @@ import { Search, TrendingUp, TrendingDown, ChevronDown, Loader2 } from 'lucide-r
 import { StockLogo } from '@/components/shared/StockLogo';
 import type { Stock, IndexData } from '@/types';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { useStocks, useIndices } from '@/hooks/useApi';
 import { getUpstoxKey, INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 
 /* Pagination config:
@@ -21,37 +22,18 @@ const PAGE_INCREMENT = 20;
 
 export function MarketPage() {
   const { token } = useAuthStore();
-  const [stocks, setStocks] = useState<Stock[]>([]);
-  const [indices, setIndices] = useState<IndexData[]>([]);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
   const [visibleCount, setVisibleCount] = useState(INITIAL_PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  // ─── React Query hooks (cached, deduplicated) ───
+  const { data: stocks = [], isLoading: loading } = useStocks();
+  const { data: indices = [] } = useIndices();
 
   const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
   const subscribedRef = useRef<Set<string>>(new Set());
 
-  useEffect(() => {
-    const fetchMarket = async () => {
-      if (!token) return;
-      try {
-        const headers = { Authorization: `Bearer ${token}` };
-        const [sRes, iRes] = await Promise.all([
-          fetch('/api/market/stocks', { headers }),
-          fetch('/api/market/indices', { headers }),
-        ]);
-        const sData = await sRes.json();
-        const iData = await iRes.json();
-        if (sData.success) setStocks(sData.data);
-        if (iData.success) setIndices(iData.data);
-      } catch (err) {
-        console.error('Market fetch error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchMarket();
-  }, [token]);
+  // ─── Data fetched via React Query hooks above ───
 
   /* Filter by search — when searching, ignore pagination and show all matches */
   const filtered = useMemo(() => {

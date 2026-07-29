@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/stores/useAppStore';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { usePathname } from 'next/navigation';
+import { usePortfolio } from '@/hooks/useApi';
 import {
   LayoutDashboard, TrendingUp, BarChart3, Briefcase, Eye,
   GraduationCap, HelpCircle, Settings, User,
@@ -18,8 +18,8 @@ interface NavItem {
   id: string;
   label: string;
   icon: React.ElementType;
-  href?: string; // overrides the default `/${id}` href (e.g. '/position/stock')
-  activeMatchers?: string[]; // additional path prefixes that should mark this item active
+  href?: string;
+  activeMatchers?: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -39,33 +39,13 @@ const NAV_ITEMS: NavItem[] = [
 
 export function Sidebar() {
   const { sidebarOpen, setSidebarOpen } = useAppStore();
-  const { user, logout, isAuthenticated, token } = useAuthStore();
+  const { user, logout, isAuthenticated } = useAuthStore();
   const pathname = usePathname();
-  const [availableMargin, setAvailableMargin] = useState<number | null>(null);
 
-  // Fetch user's available margin for display
-  useEffect(() => {
-    if (!token || !isAuthenticated) return;
-    
-    const fetchBalance = async () => {
-      try {
-        const res = await fetch('/api/portfolio', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (data.success && data.data) {
-          setAvailableMargin(Number(data.data.availableMargin) || null);
-        }
-      } catch {
-        // Silent fail
-      }
-    };
-
-    fetchBalance();
-    // Refresh balance every 30 seconds
-    const interval = setInterval(fetchBalance, 30000);
-    return () => clearInterval(interval);
-  }, [token, isAuthenticated]);
+  // Use shared React Query hook — reads from the same cache as Dashboard
+  // No separate fetch, no 30s interval. The data is kept fresh by the
+  // hook's own refetchInterval or by invalidation from other pages.
+  const { data: portfolio } = usePortfolio();
 
   if (!isAuthenticated) return null;
 
@@ -105,9 +85,6 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
         {NAV_ITEMS.map((item) => {
-          // Active if: (a) first URL segment matches item.id, OR (b) pathname
-          // starts with any of item.activeMatchers (e.g. /position/stock and
-          // /position/index both highlight the "Positions" nav item).
           const itemHref = item.href ?? `/${item.id}`;
           const isActive = activePath === item.id ||
             (item.activeMatchers?.some((m) => pathname.startsWith(m)) ?? false);
@@ -144,7 +121,7 @@ export function Sidebar() {
               <span className="text-[11px] font-medium text-text-secondary">Available Margin</span>
             </div>
             <p className="font-heading text-lg font-bold text-text-primary tabular-nums">
-              {availableMargin !== null ? formatINR(availableMargin) : '₹--'}
+              {portfolio?.availableMargin != null ? formatINR(Number(portfolio.availableMargin)) : '₹--'}
             </p>
           </div>
           

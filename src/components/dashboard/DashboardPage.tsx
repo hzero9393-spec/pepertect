@@ -1,16 +1,16 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatINR, formatNumber, cn, getInitials, formatOrderStatus } from '@/lib/utils';
-import { getVirtualCapitalForTier } from '@/lib/tier';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { usePortfolio, usePositions, useIndices, useOrders, useTrades } from '@/hooks/useApi';
 import {
   Wallet, TrendingUp, TrendingDown, Activity, Trophy,
   BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame, History,
   Clock, Sparkles,
 } from 'lucide-react';
-import type { Portfolio, Position, IndexData, Order } from '@/types';
+import type { Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { Sparkline } from '@/components/shared/Sparkline';
 
@@ -49,23 +49,31 @@ const getTodayStart = () => {
 };
 
 export function DashboardPage() {
-  const { user, token } = useAuthStore();
-  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [indices, setIndices] = useState<IndexData[]>([]);
-  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useAuthStore();
 
-  // Yesterday's stats (for showing previous day's performance)
-  const [yesterdayStats, setYesterdayStats] = useState<{ wins: number; totalTrades: number; pnl: number } | null>(null);
+  // ─── React Query hooks (cached, deduplicated, auto-refresh) ───
+  const { data: portfolio } = usePortfolio();
+  const { data: positions = [] } = usePositions({ refetchInterval: 30000 });
+  const { data: indices = [] } = useIndices();
+  const { data: allOrders = [] } = useOrders(5); // only fetch 5 orders
+  const { data: yesterdayTrades } = useTrades(true);
 
-  const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
+  const recentOrders = useMemo(() => allOrders.slice(0, 5), [allOrders]);
+
+  // Calculate yesterday's stats from cached trades
+  const yesterdayStats = useMemo(() => {
+    if (!yesterdayTrades || !Array.isArray(yesterdayTrades)) return null;
+    const trades = yesterdayTrades;
+    const wins = trades.filter((t: { pnl: number }) => t.pnl > 0).length;
+    const totalPnl = trades.reduce((sum: number, t: { pnl: number }) => sum + t.pnl, 0);
+    return { wins, totalTrades: trades.length, pnl: totalPnl };
+  }, [yesterdayTrades]);
+
+  // Combined loading state from all queries
+  const loading = !portfolio && !positions && !indices;
 
   // Tier-based fallback capital
   const tierFallback = 100000;
-
-  // No upgrade options — website is free
-  const shouldShowUpgrade = false;
 
   // Live quotes via WebSocket (Cloudflare Worker → Upstox)
   const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
@@ -157,44 +165,8 @@ export function DashboardPage() {
     };
   }, [unsubscribe]);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!token) return;
-      try {
-        const headers = { Authorization: `Bearer ${token}` };
-        const [pRes, posRes, idxRes, ordRes, ytdRes] = await Promise.all([
-          fetch('/api/portfolio', { headers }),
-          fetch('/api/positions', { headers }),
-          fetch('/api/market/indices', { headers }),
-          fetch('/api/orders', { headers }),
-          fetch('/api/trades?yesterday=true', { headers }), // Get yesterday's trades
-        ]);
-        const pData = await pRes.json();
-        const posData = await posRes.json();
-        const idxData = await idxRes.json();
-        const ordData = await ordRes.json();
-        const ytdData = await ytdRes.json();
-
-        if (pData.success) setPortfolio(pData.data);
-        if (posData.success) setPositions(posData.data);
-        if (idxData.success) setIndices(idxData.data);
-        if (ordData.success) setRecentOrders(ordData.data.slice(0, 5));
-        
-        // Calculate yesterday's stats from trades
-        if (ytdData.success && Array.isArray(ytdData.data)) {
-          const trades = ytdData.data;
-          const wins = trades.filter((t: { pnl: number }) => t.pnl > 0).length;
-          const totalPnl = trades.reduce((sum: number, t: { pnl: number }) => sum + t.pnl, 0);
-          setYesterdayStats({ wins, totalTrades: trades.length, pnl: totalPnl });
-        }
-      } catch (err) {
-        console.error('Dashboard fetch error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [token]);
+  // ─── Data is now fetched via React Query hooks above ───
+  // No manual useEffect + fetch needed — React Query handles caching,
 
 
 
