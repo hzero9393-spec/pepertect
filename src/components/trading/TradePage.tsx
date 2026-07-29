@@ -597,7 +597,7 @@ export function TradePage() {
 
             {/* ============== Stop Loss / Target (collapsible) ============== */}
             {side === 'BUY' && (
-              <div className="space-y-2" key="sl-target-container">
+              <div className="space-y-2">
                 <button
                   type="button"
                   onClick={() => setShowSLTarget(!showSLTarget)}
@@ -615,44 +615,30 @@ export function TradePage() {
                   </span>
                 </button>
                 {showSLTarget && (
-                  <div className="grid grid-cols-2 gap-2 p-2 rounded-lg border border-border bg-bg-surface-alt/50" key="sl-target-inputs">
+                  <div className="grid grid-cols-2 gap-2 p-2 rounded-lg border border-border bg-bg-surface-alt/50">
                     <div>
-                      <label className="text-[10px] font-semibold text-loss-red flex items-center gap-1" htmlFor="sl-input">
+                      <label className="text-[10px] font-semibold text-loss-red flex items-center gap-1">
                         <ArrowDown className="h-2.5 w-2.5" /> Stop Loss (₹)
                       </label>
                       <input
-                        id="sl-input"
-                        key="stop-loss-input"
                         type="number"
                         step="0.05"
                         placeholder="Auto exit if LTP ≤"
                         value={stopLoss}
                         onChange={(e) => setStopLoss(e.target.value)}
-                        onBlur={(e) => {
-                          // Ensure value is preserved even after blur
-                          const val = e.target.value;
-                          if (val) setStopLoss(val);
-                        }}
                         className="w-full mt-1 h-9 px-2 rounded-md border border-loss-red/30 bg-bg-surface text-xs font-mono font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-loss-red/20"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-semibold text-profit-green flex items-center gap-1" htmlFor="target-input">
+                      <label className="text-[10px] font-semibold text-profit-green flex items-center gap-1">
                         <ArrowUp className="h-2.5 w-2.5" /> Target (₹)
                       </label>
                       <input
-                        id="target-input"
-                        key="target-input"
                         type="number"
                         step="0.05"
                         placeholder="Auto exit if LTP ≥"
                         value={target}
                         onChange={(e) => setTarget(e.target.value)}
-                        onBlur={(e) => {
-                          // Ensure value is preserved even after blur
-                          const val = e.target.value;
-                          if (val) setTarget(val);
-                        }}
                         className="w-full mt-1 h-9 px-2 rounded-md border border-profit-green/30 bg-bg-surface text-xs font-mono font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-profit-green/20"
                       />
                     </div>

@@ -262,72 +262,13 @@ export function DashboardPage() {
     );
   }
 
-  /* ---------- LIVE Today's P&L (real-time from positions) ----------
-   * User requirement: Show ONLY today's profit in Total P&L card
-   * Calculate live P&L from open positions using WebSocket LTP
-   * This matches PositionsPage's combinedTodayStats exactly */
-  
-  // Helper: was this position opened today?
-  const isPositionToday = (iso: string | Date | undefined | null) => {
-    if (!iso) return false;
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return false; // Invalid date
-    const now = new Date();
-    return (
-      d.getDate() === now.getDate() &&
-      d.getMonth() === now.getMonth() &&
-      d.getFullYear() === now.getFullYear()
-    );
-  };
-  
-  // Calculate LIVE today's P&L from positions (same as PositionsPage)
-  const liveTodayPnl = useMemo(() => {
-    let stockPnl = 0;
-    let indexPnl = 0;
-    let realizedPnl = 0;
-    
-    try {
-      for (const p of positions) {
-        if (!p || p.status !== 'OPEN') continue;
-        // Get live LTP for this position
-        const liveKey = getLiveKeyForPosition(p);
-        const tick = liveKey ? quotes[liveKey] : undefined;
-        const liveLtp = tick?.ltp ?? p.currentPrice ?? p.avgPrice ?? 0;
-        const avgPrice = p.avgPrice ?? 0;
-        const qty = p.quantity ?? 0;
-        const pnl = (liveLtp - avgPrice) * qty * (p.side === 'LONG' ? 1 : -1);
-        
-        // Classify as index or stock position
-        const isIndex = ['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'].includes((p.symbol || '').toUpperCase()) || p.segment !== 'EQUITY';
-        
-        if (isPositionToday(p.openedAt)) {
-          if (isIndex) {
-            indexPnl += pnl;
-          } else {
-            stockPnl += pnl;
-          }
-        }
-      }
-    } catch (err) {
-      console.error('Error calculating live P&L:', err);
-    }
-    
-    return {
-      total: stockPnl + indexPnl,
-      stockUnrealized: stockPnl,
-      indexUnrealized: indexPnl,
-      realized: realizedPnl
-    };
-  }, [positions, quotes, optionKeyMap]);
-  
-  // USE live today's P&L for the Total P&L card (NOT cumulative!)
-  const totalPnl = liveTodayPnl.total;
+  const totalPnl = portfolio?.totalPnl ?? 0;
   const totalPnlPositive = totalPnl >= 0;
   
-  // Keep yesterday's stats for Win Rate card only
+  // Use yesterday's stats if available, otherwise fall back to cumulative
   const displayWins = yesterdayStats?.wins ?? portfolio?.winningTrades ?? 0;
   const displayTotalTrades = yesterdayStats?.totalTrades ?? portfolio?.totalTrades ?? 0;
-  const displayPnl = yesterdayStats?.pnl ?? 0; // Yesterday's P&L for win rate context
+  const displayPnl = yesterdayStats?.pnl ?? totalPnl;
   const displayPnlPositive = displayPnl >= 0;
   const winRate = displayTotalTrades > 0 ? Math.round((displayWins / displayTotalTrades) * 100) : 0;
   const losses = Math.max(0, displayTotalTrades - displayWins);
@@ -453,18 +394,18 @@ export function DashboardPage() {
           value={formatINR(portfolio?.totalBalance ?? tierFallback)}
           subtext="Virtual Capital"
         />
-        {/* Total P&L — Shows ONLY Today's profit (real-time from positions) */}
+        {/* Total P&L */}
         <MetricCard
           icon={totalPnlPositive ? TrendingUp : TrendingDown}
           iconBg={totalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
           iconColor={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
-          label="Today's P&L"
+          label="Total P&L"
           value={
             <span className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
               {totalPnlPositive ? '+' : ''}{formatINR(totalPnl)}
             </span>
           }
-          subtext={`Stock: ${liveTodayPnl.stockUnrealized >= 0 ? '+' : ''}${formatINR(liveTodayPnl.stockUnrealized)} · Index: ${liveTodayPnl.indexUnrealized >= 0 ? '+' : ''}${formatINR(liveTodayPnl.indexUnrealized)}`}
+          subtext={`${totalPnlPositive ? '+' : ''}${totalPnlPct.toFixed(2)}% · Realized ${formatINR(portfolio?.realizedPnl ?? 0)}`}
         />
         {/* Available Margin */}
         <MetricCard
