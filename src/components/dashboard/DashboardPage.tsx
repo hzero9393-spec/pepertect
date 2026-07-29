@@ -265,41 +265,6 @@ export function DashboardPage() {
   const totalPnl = portfolio?.totalPnl ?? 0;
   const totalPnlPositive = totalPnl >= 0;
   
-  /* ---------- TODAY'S P&L FROM POSITIONS (real-time) ----------
-   * User wants ONLY today's profit shown in Total P&L card
-   * Calculate from open positions using live WebSocket quotes */
-  const todaysPnlFromPositions = useMemo(() => {
-    try {
-      let pnl = 0;
-      for (const p of positions) {
-        if (!p || p.status !== 'OPEN') continue;
-        // Check if position was opened today
-        if (!p.openedAt) continue;
-        const openedDate = new Date(p.openedAt);
-        if (isNaN(openedDate.getTime())) continue;
-        const now = new Date();
-        const isToday = openedDate.getDate() === now.getDate() &&
-                         openedDate.getMonth() === now.getMonth() &&
-                         openedDate.getFullYear() === now.getFullYear();
-        if (!isToday) continue;
-        // Get live LTP
-        const key = getLiveKeyForPosition(p);
-        const tick = key ? quotes[key] : undefined;
-        const ltp = tick?.ltp ?? p.currentPrice ?? p.avgPrice ?? 0;
-        const avg = p.avgPrice ?? 0;
-        const qty = p.quantity ?? 0;
-        pnl += (ltp - avg) * qty * (p.side === 'LONG' ? 1 : -1);
-      }
-      return pnl;
-    } catch (e) {
-      return 0; // Fallback to portfolio P&L on error
-    }
-  }, [positions, quotes, optionKeyMap]);
-  
-  // Use today's P&L from positions for display (NOT cumulative)
-  const displayTotalPnl = todaysPnlFromPositions; // This shows only today's profit
-  const displayTotalPnlPositive = displayTotalPnl >= 0;
-  
   // Use yesterday's stats if available, otherwise fall back to cumulative
   const displayWins = yesterdayStats?.wins ?? portfolio?.winningTrades ?? 0;
   const displayTotalTrades = yesterdayStats?.totalTrades ?? portfolio?.totalTrades ?? 0;
@@ -429,18 +394,18 @@ export function DashboardPage() {
           value={formatINR(portfolio?.totalBalance ?? tierFallback)}
           subtext="Virtual Capital"
         />
-        {/* Today's P&L — Shows only today's profit from positions */}
+        {/* Total P&L */}
         <MetricCard
-          icon={displayTotalPnlPositive ? TrendingUp : TrendingDown}
-          iconBg={displayTotalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
-          iconColor={displayTotalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
-          label="Today's P&L"
+          icon={totalPnlPositive ? TrendingUp : TrendingDown}
+          iconBg={totalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
+          iconColor={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
+          label="Total P&L"
           value={
-            <span className={displayTotalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
-              {displayTotalPnlPositive ? '+' : ''}{formatINR(displayTotalPnl)}
+            <span className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
+              {totalPnlPositive ? '+' : ''}{formatINR(totalPnl)}
             </span>
           }
-          subtext={`Real-time from positions · Updates with live prices`}
+          subtext={`${totalPnlPositive ? '+' : ''}${totalPnlPct.toFixed(2)}% · Realized ${formatINR(portfolio?.realizedPnl ?? 0)}`}
         />
         {/* Available Margin */}
         <MetricCard
