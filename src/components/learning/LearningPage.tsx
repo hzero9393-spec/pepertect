@@ -3,15 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { PremiumBadge, EmptyState } from '@/components/shared/common';
-import { formatNumber, getPnlColor } from '@/lib/utils';
-import { GraduationCap, BookOpen, Lock, CheckCircle, Play } from 'lucide-react';
+import { EmptyState } from '@/components/shared/common';
+import { GraduationCap, BookOpen, CheckCircle, Play } from 'lucide-react';
 import type { LearningPath, Module } from '@/types';
 
 export function LearningPage() {
-  const { user, token } = useAuthStore();
+  const { token } = useAuthStore();
   const [paths, setPaths] = useState<LearningPath[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,33 +43,25 @@ export function LearningPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-heading text-2xl font-bold text-text-primary">Learning Paths</h2>
-          <p className="text-sm text-text-secondary mt-1">Structured courses from beginner to advanced</p>
+          <p className="text-sm text-text-secondary mt-1">Structured courses from beginner to advanced — all free</p>
         </div>
       </div>
 
       {loading ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-48 animate-pulse rounded-lg bg-bg-surface" />)}</div>
+      ) : paths.length === 0 ? (
+        <EmptyState
+          icon={<GraduationCap className="h-10 w-10 text-text-tertiary" />}
+          title="No learning paths yet"
+          description="Content is coming soon!"
+        />
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {paths.map((path) => {
-            const isLocked = path.isPremium && user?.tier !== 'PREMIUM';
             const completedModules = path.modules.filter((m) => m.status === 'COMPLETED').length;
 
             return (
-              <Card key={path.id} className={`relative overflow-hidden ${isLocked ? 'opacity-75' : ''}`}>
-                {isLocked && (
-                  <div className="absolute inset-0 z-10 glass-paywall flex items-center justify-center">
-                    <div className="text-center">
-                      <Lock className="mx-auto h-8 w-8 text-white/80 mb-2" />
-                      <p className="text-sm font-medium text-white">Premium Content</p>
-                      <a href="/subscription">
-                        <Button size="sm" className="mt-2 bg-accent-gold hover:bg-accent-gold/90 text-white text-xs">
-                          Upgrade Now
-                        </Button>
-                      </a>
-                    </div>
-                  </div>
-                )}
+              <Card key={path.id} className="relative overflow-hidden">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary/10">

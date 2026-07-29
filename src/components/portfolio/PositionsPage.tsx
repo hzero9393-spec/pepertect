@@ -13,6 +13,7 @@ import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 import { SLTargetModal } from '@/components/positions/SLTargetModal';
+import { toast } from '@/hooks/use-toast';
 
 /* Index symbols — used to classify positions as Index vs Stock */
 const INDEX_SYMBOLS = new Set(['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY']);
@@ -225,27 +226,38 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
 
   /* ---------- Auto-trigger SL / Target ---------- */
   // For each open position, check if live LTP has hit SL or Target.
-  // If yes, call /api/positions/[id] to square off and log the auto-exit.
-  // CRITICAL: We send { exitPrice: ltp } in the POST body so the server uses
-  // the LIVE LTP at square-off time — NOT MOCK_LTP[symbol] (which was stale
-  // and missing for NIFTY, causing sell price = 0 → huge fake loss).
+  // If yes, call /api/positions/[id]/sl-target (POST) which:
+  //  1. Sets proper exitReason (SL_HIT / TARGET_HIT)
+  //  2. Creates Trade record
+  //  3. Updates portfolio balance + P&L
+  //  4. Sends notification (SL hit or Target achieved)
+  // We pass currentPrice so the server executes at the SL/Target price.
   const handleAutoSquareOff = async (pos: Position, reason: 'SL' | 'TARGET', ltp: number) => {
     if (exitedRef.current.has(pos.id)) return;
     exitedRef.current.add(pos.id);
     try {
-      const res = await fetch(`/api/positions/${pos.id}`, {
+      // Use the dedicated SL/Target check endpoint — it handles everything:
+      // auto square-off, portfolio update, trade record, and notification
+      const res = await fetch(`/api/positions/${pos.id}/sl-target`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exitPrice: ltp }),
+        body: JSON.stringify({ currentPrice: ltp }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.triggered) {
+        // Show toast notification for SL/Target hit
+        toast({
+          title: data.reason === 'SL_HIT' ? '⚠️ Stop Loss Triggered!' : '🎯 Target Achieved!',
+          description: `${pos.symbol}: ${data.reason === 'SL_HIT' ? 'SL' : 'Target'} hit at ₹${(data.exitPrice ?? ltp).toFixed(2)} · P&L ${data.pnl >= 0 ? '+' : ''}₹${(data.pnl ?? 0).toFixed(2)}`,
+          variant: data.reason === 'SL_HIT' ? 'destructive' : 'default',
+          duration: 5000,
+        });
         setAutoExitLog((prev) =>
           [{ symbol: pos.symbol, reason, ltp, level: reason === 'SL' ? (pos.stopLoss ?? 0) : (pos.target ?? 0), ts: Date.now() }, ...prev].slice(0, 10)
         );
         setPositions((prev) => prev.filter((p) => p.id !== pos.id));
       } else {
-        exitedRef.current.delete(pos.id); // allow retry
+        exitedRef.current.delete(pos.id); // allow retry if no trigger
       }
     } catch {
       exitedRef.current.delete(pos.id);

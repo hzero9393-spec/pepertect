@@ -197,7 +197,7 @@ export async function notifySLTargetUpdated(
 ) {
   const changes = [];
   if (stopLoss) changes.push(`SL: ₹${stopLoss.toFixed(2)}`);
-  if (target) changes.push(`Target: ₹{target.toFixed(2)}`);
+  if (target) changes.push(`Target: ₹${target.toFixed(2)}`);
 
   return createNotification({
     userId,
