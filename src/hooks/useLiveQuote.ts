@@ -81,6 +81,13 @@ const AUTH_ERROR_BACKOFF = 30000; // 30s poll interval when token is invalid
 let lastWsTickTime = 0;
 let wsHealthCheckTimer: ReturnType<typeof setInterval> | null = null;
 
+// Server-side reconnection: if client-side reconnect fails N times, call server API
+// to push fresh token to worker and trigger reconnection from server side.
+let consecutiveReconnectFailures = 0;
+const MAX_CLIENT_RECONNECT_FAILURES = 3; // After 3 failures, try server-side reconnect
+let serverReconnecting = false;
+let serverReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
 function setStatus(s: ConnectionStatus) {
   lastStatus = s;
   statusListeners.forEach((cb) => cb(s));
@@ -325,6 +332,12 @@ function ensureWs() {
     }
   });
 
+  wsSingleton.addEventListener('open', () => {
+    // Reset failure counters on successful connection
+    consecutiveReconnectFailures = 0;
+    reconnectAttempts = 0;
+  });
+
   wsSingleton.addEventListener('error', () => {
     setStatus('error');
     // The close handler will schedule reconnect + start polling
@@ -335,10 +348,67 @@ function scheduleReconnect() {
   if (reconnectTimer) return;
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
   reconnectAttempts++;
+  
+  // Track consecutive failures for server-side reconnect trigger
+  if (reconnectAttempts > 2) {
+    consecutiveReconnectFailures++;
+    
+    // If too many client-side failures, trigger server-side reconnect
+    if (consecutiveReconnectFailures >= MAX_CLIENT_RECONNECT_FAILURES && !serverReconnecting) {
+      console.warn('[useLiveQuote] Too many reconnect failures, triggering server-side reconnect');
+      triggerServerReconnect();
+      return;
+    }
+  }
+  
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     ensureWs();
   }, delay);
+}
+
+// Server-side reconnection: calls API to push new token to worker
+async function triggerServerReconnect() {
+  if (serverReconnecting) return;
+  serverReconnecting = true;
+  console.log('[useLiveQuote] Triggering server-side worker reconnect...');
+  
+  try {
+    const res = await fetch('/api/upstox/worker-reconnect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const data = await res.json();
+    console.log('[useLiveQuote] Server reconnect result:', data);
+    
+    if (data.success) {
+      // Reset counters on success
+      consecutiveReconnectFailures = 0;
+      reconnectAttempts = 0;
+      
+      // Try connecting again after a short delay
+      serverReconnectTimer = setTimeout(() => {
+        serverReconnecting = false;
+        // Close existing WS if any to force fresh connection
+        if (wsSingleton) {
+          try { wsSingleton.close(); } catch {}
+          wsSingleton = null;
+        }
+        ensureWs();
+      }, 2000);
+    } else {
+      console.error('[useLiveQuote] Server reconnect failed:', data.error);
+      // Reset flag so we can try again later
+      serverReconnectTimer = setTimeout(() => {
+        serverReconnecting = false;
+      }, 30000); // Wait 30s before next server attempt
+    }
+  } catch (e) {
+    console.error('[useLiveQuote] Server reconnect error:', e);
+    serverReconnectTimer = setTimeout(() => {
+      serverReconnecting = false;
+    }, 30000);
+  }
 }
 
 function subscribeKeys(keys: string[], cb: (tick: LiveTick) => void) {
