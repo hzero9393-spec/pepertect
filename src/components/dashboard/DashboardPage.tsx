@@ -268,8 +268,10 @@ export function DashboardPage() {
    * This matches PositionsPage's combinedTodayStats exactly */
   
   // Helper: was this position opened today?
-  const isPositionToday = (iso: string) => {
+  const isPositionToday = (iso: string | Date | undefined | null) => {
+    if (!iso) return false;
     const d = new Date(iso);
+    if (isNaN(d.getTime())) return false; // Invalid date
     const now = new Date();
     return (
       d.getDate() === now.getDate() &&
@@ -284,28 +286,31 @@ export function DashboardPage() {
     let indexPnl = 0;
     let realizedPnl = 0;
     
-    for (const p of positions) {
-      if (p.status !== 'OPEN') continue;
-      // Get live LTP for this position
-      const liveKey = getLiveKeyForPosition(p);
-      const tick = liveKey ? quotes[liveKey] : undefined;
-      const liveLtp = tick?.ltp ?? p.currentPrice ?? p.avgPrice;
-      const pnl = (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-      
-      // Classify as index or stock position
-      const isIndex = ['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'].includes(p.symbol.toUpperCase()) || p.segment !== 'EQUITY';
-      
-      if (isPositionToday(p.openedAt)) {
-        if (isIndex) {
-          indexPnl += pnl;
-        } else {
-          stockPnl += pnl;
+    try {
+      for (const p of positions) {
+        if (!p || p.status !== 'OPEN') continue;
+        // Get live LTP for this position
+        const liveKey = getLiveKeyForPosition(p);
+        const tick = liveKey ? quotes[liveKey] : undefined;
+        const liveLtp = tick?.ltp ?? p.currentPrice ?? p.avgPrice ?? 0;
+        const avgPrice = p.avgPrice ?? 0;
+        const qty = p.quantity ?? 0;
+        const pnl = (liveLtp - avgPrice) * qty * (p.side === 'LONG' ? 1 : -1);
+        
+        // Classify as index or stock position
+        const isIndex = ['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'].includes((p.symbol || '').toUpperCase()) || p.segment !== 'EQUITY';
+        
+        if (isPositionToday(p.openedAt)) {
+          if (isIndex) {
+            indexPnl += pnl;
+          } else {
+            stockPnl += pnl;
+          }
         }
       }
+    } catch (err) {
+      console.error('Error calculating live P&L:', err);
     }
-    
-    // Add realized P&L from today's trades (from yesterdayStats if available)
-    realizedPnl = 0; // Will be fetched separately if needed
     
     return {
       total: stockPnl + indexPnl,
