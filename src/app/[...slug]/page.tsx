@@ -3,6 +3,7 @@
 import { useEffect, useState, useSyncExternalStore, lazy, Suspense, type ComponentType, type ReactNode } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { AppShell } from '@/components/layout/AppShell';
+import { PageErrorBoundary } from '@/components/shared/PageErrorBoundary';
 
 // ────────────────────────────────────────────────────────────────────────
 // Code-splitting: every page is lazy-loaded so the initial bundle only
@@ -240,7 +241,9 @@ export default function HomePage() {
   return (
     <AppShell>
       <Suspense fallback={<PageSkeleton />}>
-        <Page />
+        <PageErrorBoundary>
+          <Page />
+        </PageErrorBoundary>
       </Suspense>
     </AppShell>
   );

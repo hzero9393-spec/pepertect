@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -170,22 +170,42 @@ export function LearningPage() {
   // Gamification profile
   const [badges, setBadges] = useState<BadgeInfo[]>([]);
 
+  const [error, setError] = useState<string | null>(null);
+  const loadingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Fetch all data
   const fetchAll = useCallback(async () => {
     if (!token) return;
+    setError(null);
     try {
       const res = await fetch('/api/learning', { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (data.success) {
-        setPaths(data.data.paths);
-        setGam(data.data.gamification);
+        setPaths(data.data.paths || []);
+        setGam(data.data.gamification || null);
+      } else {
+        setError(data.error || 'Failed to load learning data');
       }
     } catch (err) {
       console.error('Learning fetch error:', err);
+      setError('Network error. Please check your connection.');
     } finally {
       setLoading(false);
     }
   }, [token]);
+
+  // Auto-timeout loading state after 8 seconds
+  useEffect(() => {
+    if (loading) {
+      loadingTimerRef.current = setTimeout(() => {
+        setLoading(false);
+        setError('Loading took too long. Tap Retry to try again.');
+      }, 8000);
+    }
+    return () => {
+      if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    };
+  }, [loading]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -332,15 +352,32 @@ export function LearningPage() {
   };
 
   // ── Helpers ──
-  const getLevelInfo = (level: number) => LEVEL_LABELS[Math.min(level, 6)] || LEVEL_LABELS[1];
-  const isModuleUnlocked = (path: LearningPathInfo, mod: ModuleInfo) => {
-    const idx = path.modules.indexOf(mod);
-    if (idx === 0) return true;
-    return path.modules[idx - 1].status === 'COMPLETED';
+  const getLevelInfo = (level: number) => LEVEL_LABELS[Math.min(Math.max(level, 1), 6)] || LEVEL_LABELS[1];
+  const isModuleUnlocked = (path: LearningPathInfo, _mod: ModuleInfo, modIdx: number) => {
+    if (modIdx === 0) return true;
+    const prevMod = path.modules[modIdx - 1];
+    return prevMod ? prevMod.status === 'COMPLETED' : false;
   };
 
-  // ── Loading state ──
-  if (loading) {
+  // ── Error state (show error if no data loaded) ──
+  if (error && paths.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 space-y-4">
+        <div className="text-5xl">😕</div>
+        <h3 className="font-heading text-lg font-bold text-text-primary">Something went wrong</h3>
+        <p className="text-sm text-text-secondary text-center max-w-sm">{error}</p>
+        <button
+          onClick={() => { setLoading(true); setError(null); fetchAll(); }}
+          className="px-6 py-2.5 rounded-xl bg-brand-primary text-white font-semibold text-sm hover:bg-brand-primary-hover transition-colors"
+        >
+          🔄 Retry
+        </button>
+      </div>
+    );
+  }
+
+  // ── Loading state (with timeout protection) ──
+  if (loading && !error) {
     return (
       <div className="space-y-6 animate-pulse">
         <div className="h-8 w-48 rounded-lg bg-bg-surface-alt" />
@@ -371,8 +408,22 @@ export function LearningPage() {
     );
   }
 
+  const XP_THRESHOLDS = [0, 500, 1500, 3500, 7000, 12000];
+  const safeLevel = gam ? Math.max(Math.min(gam.level, 6), 1) : 1;
+  const currentThreshold = XP_THRESHOLDS[safeLevel - 1] || 0;
+  const nextThreshold = XP_THRESHOLDS[safeLevel] || 99999;
+  const xpProgress = gam ? Math.min(Math.max(((gam.xp - currentThreshold) / (nextThreshold - currentThreshold)) * 100, 0), 100) : 0;
+
   return (
     <div className="space-y-6">
+      {/* ── Error banner (non-blocking, shown when data partially loaded) ── */}
+      {error && paths.length > 0 && (
+        <div className="flex items-center justify-between rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
+          <p className="text-xs text-amber-700 dark:text-amber-300">⚠️ {error}</p>
+          <button onClick={() => { setError(null); fetchAll(); }} className="text-xs font-semibold text-brand-primary hover:underline">Retry</button>
+        </div>
+      )}
+
       {/* ── Header with gamification stats ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -413,9 +464,9 @@ export function LearningPage() {
               <span className="text-lg">{getLevelInfo(gam.level).icon}</span>
               <span className={cn('font-bold text-sm', getLevelInfo(gam.level).color)}>{getLevelInfo(gam.level).name}</span>
             </div>
-            <span className="text-xs text-text-secondary">{formatNumber(gam.xp)} / {gam.level < 6 ? ['500', '1500', '3500', '7000', '12000', '∞'][gam.level - 1] : '∞'} XP</span>
+            <span className="text-xs text-text-secondary">{formatNumber(gam.xp)} / {safeLevel < 6 ? nextThreshold.toLocaleString() : '∞'} XP</span>
           </div>
-          <Progress value={Math.min(((gam.xp % (gam.level === 6 ? 12000 : [500, 1500, 3500, 7000, 12000][gam.level - 1])) / ([500, 1500, 3500, 7000, 12000, 99999][gam.level - 1])) * 100, 100)} className="h-2" />
+          <Progress value={Math.min(Math.max(xpProgress, 0), 100)} className="h-2" />
           <div className="flex items-center justify-between mt-2 text-[10px] text-text-tertiary">
             <span>{gam.lessonsCompleted} lessons done</span>
             <span>{gam.quizzesPassed} quizzes passed</span>
@@ -452,9 +503,18 @@ export function LearningPage() {
       <AnimatePresence mode="wait">
         {activeTab === 'paths' && (
           <motion.div key="paths" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
-            {paths.map((path) => (
-              <PathCard key={path.id} path={path} isExpanded={expandedPath === path.id} onToggle={() => setExpandedPath(expandedPath === path.id ? null : path.id)} onStart={startLesson} />
-            ))}
+            {paths.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 space-y-3">
+                <div className="text-5xl">📚</div>
+                <h3 className="font-heading text-lg font-bold text-text-primary">No learning paths yet</h3>
+                <p className="text-sm text-text-secondary text-center max-w-sm">Learning content is being prepared. Check back soon!</p>
+                <button onClick={fetchAll} className="px-4 py-2 rounded-xl bg-brand-primary text-white text-sm font-medium hover:bg-brand-primary-hover transition-colors">Refresh</button>
+              </div>
+            ) : (
+              paths.map((path) => (
+                <PathCard key={path.id} path={path} isExpanded={expandedPath === path.id} onToggle={() => setExpandedPath(expandedPath === path.id ? null : path.id)} onStart={startLesson} />
+              ))
+            )}
           </motion.div>
         )}
 
@@ -536,7 +596,7 @@ function PathCard({ path, isExpanded, onToggle, onStart }: {
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
             <div className="border-t border-border px-4 py-3 space-y-2">
               {path.modules.map((mod, idx) => {
-                const unlocked = isModuleUnlocked(path, mod);
+                const unlocked = isModuleUnlocked(path, mod, idx);
                 const isCompleted = mod.status === 'COMPLETED';
                 return (
                   <button
