@@ -22,6 +22,8 @@ import {
 } from '@/lib/expiry-calendar';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
+import { LimitOrderModal } from '@/components/trading/LimitOrderModal';
+import { Zap, ShoppingCart } from 'lucide-react';
 
 /**
  * Look up the human-readable label (e.g. "Jan W1", "Mar Monthly") for an
@@ -171,8 +173,22 @@ function parseStrikeQuery(input: string, activeSymbol: string): ParsedStrikeQuer
 
 // ---- Component -----------------------------------------------------------
 
+/* Data passed to order choice popup */
+interface OrderChoiceData {
+  strikePrice: number;
+  optionType: 'CE' | 'PE';
+  lastPrice: number;
+  instrumentKey?: string | null;
+}
+
 export function OptionChainPage() {
   const { token } = useAuthStore();
+  /* Order choice popup + limit order modal state */
+  const [choiceAnchor, setChoiceAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [choiceData, setChoiceData] = useState<OrderChoiceData | null>(null);
+  const [limitModalOpen, setLimitModalOpen] = useState(false);
+  const [limitModalSide, setLimitModalSide] = useState<'BUY' | 'SELL'>('BUY');
+  const [limitModalPrice, setLimitModalPrice] = useState(0);
 
   // Read ?symbol= from URL once on mount.
   const [initialSymbol] = useState(() => {
@@ -359,6 +375,41 @@ export function OptionChainPage() {
     [data]
   );
   const pcr = totalPutOi > 0 ? totalCallOi / totalPutOi : 0;
+
+  /* ---------- Click handler: show Market/Limit order choice ---------- */
+  const handlePriceClick = useCallback(
+    (e: React.MouseEvent, strikePrice: number, optionType: 'CE' | 'PE', lastPrice: number, instrumentKey?: string | null) => {
+      setChoiceData({ strikePrice, optionType, lastPrice, instrumentKey: instrumentKey ?? null });
+      setChoiceAnchor({ x: e.clientX, y: e.clientY });
+    },
+    []
+  );
+
+  /* Close choice popup on outside click */
+  useEffect(() => {
+    if (!choiceAnchor) return;
+    const close = () => { setChoiceAnchor(null); setChoiceData(null); };
+    const timer = setTimeout(() => {
+      document.addEventListener('click', close, { once: true });
+    }, 50);
+    return () => { clearTimeout(timer); document.removeEventListener('click', close); };
+  }, [choiceAnchor]);
+
+  /* Open limit order modal from choice popup */
+  const openLimitOrder = (side: 'BUY' | 'SELL') => {
+    if (!choiceData || !data) return;
+    setLimitModalSide(side);
+    setLimitModalPrice(choiceData.lastPrice);
+    setChoiceAnchor(null);
+    setLimitModalOpen(true);
+  };
+
+  /* Navigate to trade page for market order */
+  const goToMarketOrder = () => {
+    if (!choiceData || !data) return;
+    window.location.href = `/trade?symbol=${encodeURIComponent(data.symbol)}&segment=OPTIONS&optionType=${choiceData.optionType}&strikePrice=${choiceData.strikePrice}&expiry=${encodeURIComponent(data.expiry)}&instrumentKey=${encodeURIComponent(choiceData.instrumentKey || '')}`;
+    setChoiceAnchor(null);
+  };
 
   return (
     <div className="space-y-4">
@@ -619,7 +670,76 @@ export function OptionChainPage() {
             <p className="text-sm text-text-secondary">No data available</p>
           </div>
         ) : (
-          <OptionChainTable data={data} quotes={quotes} liveSpot={liveSpot} />
+          <>
+          <OptionChainTable data={data} quotes={quotes} liveSpot={liveSpot} onPriceClick={handlePriceClick} />
+
+          {/* Order choice popup */}
+          {choiceAnchor && choiceData && (
+            <div
+              className="fixed z-[60] rounded-xl border border-border bg-bg-surface shadow-xl p-2 space-y-1 w-48"
+              style={{
+                left: Math.min(choiceAnchor.x, window.innerWidth - 200),
+                top: Math.min(choiceAnchor.y + 8, window.innerHeight - 160),
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={goToMarketOrder}
+                className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-blue">
+                  <ShoppingCart className="h-3.5 w-3.5 text-brand-primary" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-text-primary">Market Order</p>
+                  <p className="text-[10px] text-text-tertiary">Execute at current price</p>
+                </div>
+              </button>
+              <button
+                onClick={() => openLimitOrder('BUY')}
+                className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-green">
+                  <Zap className="h-3.5 w-3.5 text-profit-green" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-profit-green">Buy Limit</p>
+                  <p className="text-[10px] text-text-tertiary">When price drops to ₹{formatNumber(choiceData.lastPrice, 2)}</p>
+                </div>
+              </button>
+              <button
+                onClick={() => openLimitOrder('SELL')}
+                className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
+              >
+                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-red">
+                  <Zap className="h-3.5 w-3.5 text-loss-red" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-loss-red">Sell Limit</p>
+                  <p className="text-[10px] text-text-tertiary">When price rises to ₹{formatNumber(choiceData.lastPrice, 2)}</p>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Limit Order Modal */}
+          {data && choiceData && (
+            <LimitOrderModal
+              open={limitModalOpen}
+              onClose={() => setLimitModalOpen(false)}
+              symbol={data.symbol}
+              side={limitModalSide}
+              segment="OPTIONS"
+              marketPrice={limitModalPrice}
+              optionType={choiceData.optionType}
+              strikePrice={choiceData.strikePrice}
+              expiry={data.expiry}
+              instrumentKey={choiceData.instrumentKey}
+              lotSize={data.lotSize}
+              onSuccess={() => { /* Optionally refresh chain */ }}
+            />
+          )}
+          </>
         )}
       </div>
     </div>
@@ -663,10 +783,12 @@ function OptionChainTable({
   data,
   quotes,
   liveSpot,
+  onPriceClick,
 }: {
   data: ChainResponse;
   quotes: Record<string, any>;
   liveSpot?: number;
+  onPriceClick: (e: React.MouseEvent, strikePrice: number, optionType: 'CE' | 'PE', lastPrice: number, instrumentKey?: string | null) => void;
 }) {
   const { strikes, atm, symbol, expiry } = data;
   const atmRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -829,18 +951,24 @@ function OptionChainTable({
                       )}>
                         {row.ce.iv.toFixed(1)}
                       </td>
-                      {/* LTP */}
+                      {/* LTP — clickable */}
                       <td className={cn(
                         'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold border-r border-border',
                         isCeItm ? 'text-profit-green bg-profit-green/[0.06]' : 'text-text-primary'
                       )}>
-                        <span className={cn(ceUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] mr-1')}>
-                          {ceUp ? '▲' : '▼'}
-                        </span>
-                        {formatNumber(ceLtp, 2)}
-                        {ceLive && (
-                          <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
-                        )}
+                        <button
+                          onClick={(e) => onPriceClick(e, row.strikePrice, 'CE', ceLtp, row.ce.instrumentKey)}
+                          className="inline-flex items-center hover:opacity-80 transition-opacity rounded px-1 py-0.5 -mx-1 cursor-pointer"
+                          title="Tap to place order"
+                        >
+                          <span className={cn(ceUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] mr-1')}>
+                            {ceUp ? '▲' : '▼'}
+                          </span>
+                          {formatNumber(ceLtp, 2)}
+                          {ceLive && (
+                            <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                          )}
+                        </button>
                       </td>
                     </>
                   ) : (
@@ -885,18 +1013,24 @@ function OptionChainTable({
                   {/* PUT side — columns change based on viewMode */}
                   {viewMode === 'LTP' ? (
                     <>
-                      {/* LTP */}
+                      {/* LTP — clickable */}
                       <td className={cn(
                         'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold',
                         isPeItm ? 'text-loss-red bg-loss-red/[0.06]' : 'text-text-primary'
                       )}>
-                        {formatNumber(peLtp, 2)}
-                        <span className={cn(peUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] ml-1')}>
-                          {peUp ? '▲' : '▼'}
-                        </span>
-                        {peLive && (
-                          <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
-                        )}
+                        <button
+                          onClick={(e) => onPriceClick(e, row.strikePrice, 'PE', peLtp, row.pe.instrumentKey)}
+                          className="inline-flex items-center hover:opacity-80 transition-opacity rounded px-1 py-0.5 -mx-1 cursor-pointer"
+                          title="Tap to place order"
+                        >
+                          {formatNumber(peLtp, 2)}
+                          <span className={cn(peUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] ml-1')}>
+                            {peUp ? '▲' : '▼'}
+                          </span>
+                          {peLive && (
+                            <span className="ml-0.5 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
+                          )}
+                        </button>
                       </td>
                       {/* IV */}
                       <td className={cn(

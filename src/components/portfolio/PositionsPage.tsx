@@ -15,13 +15,16 @@ import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 import { SLTargetModal } from '@/components/positions/SLTargetModal';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import { AnimatedTabContent } from '@/components/shared/AnimatedTabContent';
+import { useLimitOrderMonitor } from '@/hooks/useLimitOrderMonitor';
+import { useOrders } from '@/hooks/useApi';
 import { toast } from '@/hooks/use-toast';
+import type { Position, Trade, Order } from '@/types';
 
 /* Index symbols — used to classify positions as Index vs Stock */
 const INDEX_SYMBOLS = new Set(['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY']);
 
 /* Helper: classify a position as Index or Stock */
-function isIndexPosition(p: Position | Trade): boolean {
+function isIndexPosition(p: Position | Trade | Order): boolean {
   return INDEX_SYMBOLS.has(p.symbol.toUpperCase()) || p.segment !== 'EQUITY';
 }
 
@@ -38,6 +41,10 @@ function isToday(iso: string): boolean {
 
 export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' | 'index' }) {
   const { token } = useAuthStore();
+  /* Active monitor for auto-executing pending limit orders */
+  useLimitOrderMonitor();
+  /* Fetch orders for pending limit orders section */
+  const { data: ordersData } = useOrders();
   const [positions, setPositions] = useState<Position[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
@@ -721,6 +728,11 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         </div>
       </a>
 
+      {/* ============== PENDING LIMIT ORDERS (Pending Positions) ============== */}
+      {ordersData && ordersData.filter((o) => o.status === 'PENDING' && o.orderType === 'LIMIT').length > 0 && (
+        <PendingLimitPositions orders={ordersData} quotes={quotes} token={token} />
+      )}
+
       {/* ============== POSITIONS ============== */}
       <div className="card-soft p-3 sm:p-4">
         <div className="flex items-center justify-between mb-3">
@@ -917,6 +929,196 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       )}
       </AnimatedTabContent>
       </div>{/* end swipable content */}
+    </div>
+  );
+}
+
+/* ============================================================
+   PendingLimitPositions — shows pending limit orders as "Pending Positions"
+   ============================================================ */
+function PendingLimitPositions({
+  orders,
+  quotes,
+  token,
+}: {
+  orders: Order[];
+  quotes: Record<string, any>;
+  token: string | null;
+}) {
+  const pendingLimits = orders.filter(
+    (o) => o.status === 'PENDING' && o.orderType === 'LIMIT'
+  );
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState('');
+
+  const handleEditSave = async (orderId: string) => {
+    const newPrice = parseFloat(editPrice);
+    if (!newPrice || newPrice <= 0 || !token) return;
+    try {
+      await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ price: newPrice }),
+      });
+      setEditingId(null);
+      setEditPrice('');
+      toast({ title: 'Limit price updated', description: `New target: ₹${formatNumber(newPrice, 2)}` });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const handleCancel = async (orderId: string) => {
+    if (!token) return;
+    try {
+      await fetch(`/api/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      toast({ title: 'Limit order cancelled' });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className="card-soft p-3 sm:p-4 mb-4 border-2 border-accent-gold/30">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-accent-gold/20">
+          <Zap className="h-3.5 w-3.5 text-accent-gold" />
+        </div>
+        <h3 className="font-heading text-sm font-semibold text-text-primary">
+          Pending Positions
+        </h3>
+        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-gold/20 px-1 text-[10px] font-bold text-accent-gold">
+          {pendingLimits.length}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {pendingLimits.map((ord) => {
+          const label =
+            ord.segment === 'OPTIONS' && ord.strikePrice && ord.optionType
+              ? `${ord.symbol} ${ord.strikePrice} ${ord.optionType}`
+              : ord.symbol;
+          const limitPrice = ord.price ?? 0;
+
+          // Try to get live LTP
+          const upstoxKey = getUpstoxKey(ord.symbol);
+          const liveTick = upstoxKey ? quotes[upstoxKey] : undefined;
+          const liveLtp = liveTick?.ltp ?? 0;
+
+          let progressPct = 0;
+          if (liveLtp > 0 && limitPrice > 0) {
+            if (ord.side === 'BUY') {
+              progressPct = Math.min(100, Math.max(0, ((liveLtp - limitPrice) / liveLtp) * 100));
+            } else {
+              progressPct = Math.min(100, Math.max(0, ((limitPrice - liveLtp) / limitPrice) * 100));
+            }
+          }
+
+          return (
+            <div
+              key={ord.id}
+              className="rounded-lg border border-accent-gold/20 bg-accent-gold/5 p-3 transition-colors"
+            >
+              <div className="flex items-center gap-2 mb-1.5">
+                <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="font-mono text-sm font-semibold text-text-primary">{label}</p>
+                    <span className={cn(
+                      'pill text-[9px]',
+                      ord.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
+                    )}>
+                      {ord.side}
+                    </span>
+                    <span className="pill text-[9px] bg-accent-gold/20 text-accent-gold">PENDING</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 mb-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-text-tertiary">Target:</span>
+                  <span className="font-mono text-xs font-bold text-accent-gold">₹{formatNumber(limitPrice, 2)}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] text-text-tertiary">LTP:</span>
+                  <span className={cn(
+                    'font-mono text-xs font-semibold',
+                    liveLtp > 0 ? 'text-text-primary' : 'text-text-tertiary'
+                  )}>
+                    {liveLtp > 0 ? `₹${formatNumber(liveLtp, 2)}` : '—'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="mb-2">
+                <div className="h-1 rounded-full bg-bg-surface-alt overflow-hidden">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-500',
+                      progressPct > 80 ? 'bg-profit-green' : 'bg-accent-gold/60'
+                    )}
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              {editingId === ord.id ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-text-secondary">New limit:</span>
+                  <input
+                    type="number"
+                    step="0.05"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="h-7 w-24 px-2 rounded-md border border-border bg-bg-surface text-xs font-mono text-text-primary focus:border-brand-primary focus:outline-none"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => handleEditSave(ord.id)}
+                    className="h-7 px-3 rounded-md bg-brand-primary text-white text-[10px] font-bold hover:bg-brand-primary/90"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditingId(null)}
+                    className="h-7 px-2 rounded-md border border-border text-[10px] font-medium text-text-secondary hover:bg-bg-surface-alt"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      setEditingId(ord.id);
+                      setEditPrice(String(limitPrice));
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold text-brand-primary hover:bg-tint-blue transition-colors"
+                  >
+                    <Edit3 className="h-3 w-3" />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleCancel(ord.id)}
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold text-loss-red hover:bg-tint-red transition-colors"
+                  >
+                    <XCircle className="h-3 w-3" />
+                    Cancel
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

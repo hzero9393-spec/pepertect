@@ -100,6 +100,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Insufficient margin' }, { status: 400 });
     }
 
+    // Build option label for descriptions
+    const optionLabel = segment === 'OPTIONS' && optionType && strikePrice
+      ? ` ${symbol} ${Math.round(Number(strikePrice))} ${optionType}`
+      : ` ${symbol}`;
+
     // Create order
     const status = orderType === 'MARKET' ? 'FILLED' : 'PENDING';
     const order = await db.order.create({
@@ -120,6 +125,29 @@ export async function POST(req: NextRequest) {
         expiry: expiry ? new Date(expiry) : null,
       },
     });
+
+    // For LIMIT/SL orders: block margin (deduct from availableMargin only)
+    if (orderType !== 'MARKET') {
+      const marginToBlock = Number(fillPrice) * quantity;
+      await db.portfolio.update({
+        where: { userId: auth.userId },
+        data: { availableMargin: { decrement: marginToBlock } },
+      });
+      // Record margin-blocked transaction
+      if (portfolio) {
+        const newAvail = Number(portfolio.availableMargin) - marginToBlock;
+        await db.transaction.create({
+          data: {
+            portfolioId: portfolio.id,
+            type: 'DEBIT',
+            amount: marginToBlock,
+            balance: newAvail,
+            description: `Margin blocked: LIMIT ${side}${optionLabel} @ ₹${Number(fillPrice).toFixed(2)}`,
+            reference: order.id,
+          },
+        });
+      }
+    }
 
     // For market orders: create/update position and trade
     if (orderType === 'MARKET') {
@@ -311,7 +339,14 @@ export async function POST(req: NextRequest) {
       await notifyTradeExecuted(auth.userId, symbol, side, quantity, fillPrice, order.id);
     }
 
-    return NextResponse.json({ success: true, data: order });
+    const mappedOrder = {
+      ...order,
+      price: Number(order.price ?? 0),
+      triggerPrice: Number(order.triggerPrice ?? 0),
+      filledPrice: Number(order.filledPrice ?? 0),
+      strikePrice: Number(order.strikePrice ?? 0),
+    };
+    return NextResponse.json({ success: true, data: mappedOrder });
   } catch (error) {
     console.error('Create order error:', error);
     return NextResponse.json({ success: false, error: 'Failed to create order' }, { status: 500 });

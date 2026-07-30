@@ -752,3 +752,22 @@ Stage Summary:
 - 5 files changed, 137 insertions, 18 deletions
 - New component: src/components/shared/AnimatedTabContent.tsx
 - Live: https://pepertect.vercel.app
+
+---
+Task ID: 5
+Agent: Main
+Task: Dashboard redesign with movers, option strikes, 8 quick actions
+
+Work Log:
+- Rewrote DashboardPage.tsx completely
+- Quick Actions: moved to bottom, expanded to 8 buttons (4x2 grid)
+  Place Order, Positions, Watchlist, Option Chain, Top Movers, Funds, Wallet History, Learning
+- Open Positions: click → /positions, shows LONG/SHORT, option format (NIFTY 23400 CE)
+- Top Gainers & Losers: inline 4+4 grid with real live prices via WebSocket
+- Recent Orders: click → /trade?symbol=, shows option strike labels
+- Added formatPositionLabel helper for option display names
+- Build passed, deployed to Vercel in 36s
+
+Stage Summary:
+- 2 files changed, 242 insertions, 108 deletions
+- Live: https://pepertect.vercel.app
