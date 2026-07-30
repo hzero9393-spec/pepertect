@@ -96,7 +96,7 @@ const SEED_PATHS = [
           questions: JSON.stringify([
             q('Market order mein kya hota hai?', ['Fixed price pe execute', 'Current market price pe execute', 'Next day execute', 'Auction mein execute'], 1, 'Market order current available price pe immediately execute ho jata hai.'),
             q('Limit order ka advantage kya hai?', ['Instant execution', 'Price control — aapka desired price', 'No brokerage', 'Guaranteed execution'], 1, 'Limit order mein aap apni desired price set karte ho — order tabhi execute hoga jab price us level pe aayega.'),
-            q('Stop Loss order kya hai?', ['Profit book karne ke liye', 'Loss limit karne ke liye', 'Both A and B', 'None of the above'], 2, 'Stop Loss order loss limit karne ke liye use hota hai, lekin trailing SL se profit bhi protect hota hai.'],
+            q('Stop Loss order kya hai?', ['Profit book karne ke liye', 'Loss limit karne ke liye', 'Both A and B', 'None of the above'], 2, 'Stop Loss order loss limit karne ke liye use hota hai, lekin trailing SL se profit bhi protect hota hai.'),
           ]),
         },
       },
@@ -268,7 +268,7 @@ const SEED_PATHS = [
           questions: JSON.stringify([
             q('TradingView mein kaunsa indicator sabse commonly use hota hai?', ['Only custom indicators', 'RSI aur Moving Averages', 'No indicators', 'Only paid indicators'], 1, 'RSI aur Moving Averages sabse commonly used indicators hain TradingView pe.'),
             q('Chart pe trendline kaise draw karte hain?', ['Random points connect', 'Minimum 2 swing high/low points connect', 'Only horizontal lines', 'Vertical lines'], 1, 'Trendline minimum 2 swing points ko connect karti hai — jyada points touch honge, utni strong line.'),
-            q('Screen time kyun zaroori hai chart reading ke liye?', ['Timepass ke liye', ['Pattern recognition develop hota hai', 'It\'s not important', 'Only for pros'], 1, 'Zyada screen time = zyada pattern recognition. Charts ka "language" samajhne mein time lagta hai.'),
+            q('Screen time kyun zaroori hai chart reading ke liye?', ['Timepass ke liye', 'Pattern recognition develop hota hai', 'It\'s not important', 'Only for pros'], 1, 'Zyada screen time = zyada pattern recognition. Charts ka "language" samajhne mein time lagta hai.'),
           ]),
         },
       },
@@ -452,7 +452,7 @@ const SEED_PATHS = [
           questions: JSON.stringify([
             q('1% rule kya kehta hai?', ['1% profit minimum', 'Per trade max 1% capital risk', '1% daily return', '1% investment only'], 1, '1% rule = har trade pe maximum 1% of total capital risk. Agar ₹1L capital, toh max ₹1000 loss per trade.'),
             q('₹1,00,000 capital hai toh 2% rule mein max loss per trade kitna hoga?', ['₹2000', '₹1000', '₹5000', '₹200'], 0, '2% of ₹1,00,000 = ₹2,000. Ye maximum loss hai jo aap ek trade pe afford kar sakte ho.'),
-            q('Risk management follow na karne ka biggest drawback kya hai?', ['Nothing', ['Account wipe out ho sakta hai', 'More profit', 'No effect'], 1, 'Bina risk management ke, ek badi losing streak account ko zero kar sakti hai.'),
+            q('Risk management follow na karne ka biggest drawback kya hai?', ['Nothing', 'Account wipe out ho sakta hai', 'More profit', 'No effect'], 1, 'Bina risk management ke, ek badi losing streak account ko zero kar sakti hai.'),
           ]),
         },
       },
@@ -472,7 +472,7 @@ const SEED_PATHS = [
           questions: JSON.stringify([
             q('Position sizing ka formula kya hai? (simplified)', ['Capital × 100', 'Risk Amount ÷ (Entry Price - Stop Loss)', 'Random quantity', 'Capital ÷ Stock Price'], 1, 'Shares = Risk Amount ÷ (Entry - SL). Example: ₹1000 risk, ₹10 SL per share = 100 shares.'),
             q('₹500 capital risk hai, SL ₹5 per share hai — kitne shares buy kar sakte hain?', ['50', '100', '500', '25'], 1, '500 ÷ 5 = 100 shares. Simple division — risk ko per share risk se divide karo.'),
-            q('Position sizing kyun zaroori hai?', ['Optional hai', 'Consistent risk management ke liye', ['Only for big accounts', 'No reason'], 1, 'Position sizing ensure karta hai ki har trade pe consistent risk ho — emotional decisions kam ho.'),
+            q('Position sizing kyun zaroori hai?', ['Optional hai', 'Consistent risk management ke liye', 'Only for big accounts', 'No reason'], 1, 'Position sizing ensure karta hai ki har trade pe consistent risk ho — emotional decisions kam ho.'),
           ]),
         },
       },
@@ -584,7 +584,7 @@ const SEED_PATHS = [
           questions: JSON.stringify([
             q('Nifty IT index kaunsa sector track karta hai?', ['Banking', 'Information Technology', 'Infrastructure', 'Insurance'], 1, 'Nifty IT IT/Technology sector ke stocks track karta hai — TCS, Infosys, Wipro, etc.'),
             q('Sector rotation kya hai?', ['Sectors change names', 'Money flows from one sector to another', 'Only one sector trades', 'No concept'], 1, 'Sector rotation = market cycle mein different sectors pe turn aata hai — money shift hota hai.'),
-            q('Sectoral index dekhne se kya fayda hota hai?', ['No benefit', ['Sector ka overall trend pata chalta hai', 'Individual stock prediction', 'Tax benefit'], 1, 'Sectoral index se sector ka overall health pata chalta hai — helps in stock selection.'),
+            q('Sectoral index dekhne se kya fayda hota hai?', ['No benefit', 'Sector ka overall trend pata chalta hai', 'Individual stock prediction', 'Tax benefit'], 1, 'Sectoral index se sector ka overall health pata chalta hai — helps in stock selection.'),
           ]),
         },
       },
@@ -676,7 +676,7 @@ const SEED_PATHS = [
           questions: JSON.stringify([
             q('Hammer pattern kahan banta hai?', ['Uptrend ke baad', 'Downtrend ke baad (bottom pe)', 'Sideways mein', 'Anytime'], 1, 'Hammer downtrend ke baad bottom pe banta hai — bullish reversal signal deta hai.'),
             q('Hammer aur Hanging Man mein kya same hota hai?', ['Context', 'Appearance — both have small body, long lower shadow', 'Signal', 'Volume'], 1, 'Dono ka appearance same hai — chhoti body, long lower shadow. Bas context alag hai.'),
-            q('Hanging Man kahan banta hai?', ['Bottom pe', 'Uptrend ke baad (top pe)', ['Sideways', 'Opening pe'], 1, 'Hanging Man uptrend ke baad top pe banta hai — bearish reversal signal.'),
+            q('Hanging Man kahan banta hai?', ['Bottom pe', 'Uptrend ke baad (top pe)', 'Sideways', 'Opening pe'], 1, 'Hanging Man uptrend ke baad top pe banta hai — bearish reversal signal.'),
           ]),
         },
       },
@@ -735,7 +735,7 @@ const SEED_PATHS = [
           coinReward: 10,
           questions: JSON.stringify([
             q('Three White Soldiers mein teen candles kaunsi hoti hain?', ['Red-Red-Red', 'Green-Green-Green with long bodies', 'Red-Green-Red', 'Mixed colors'], 1, 'Three White Soldiers = 3 consecutive long-bodied bullish (green) candles.'),
-            q('Ye pattern kahan sabse effective hota hai?', ['Uptrend mein', 'Downtrend ke baad (at bottom)', ['Sideways', 'High volume pe always'], 1, 'Downtrend ke baad bottom pe ye pattern strong bullish reversal signal deta hai.'),
+            q('Ye pattern kahan sabse effective hota hai?', ['Uptrend mein', 'Downtrend ke baad (at bottom)', 'Sideways', 'High volume pe always'], 1, 'Downtrend ke baad bottom pe ye pattern strong bullish reversal signal deta hai.'),
             q('Agar second candle pe gap up nahi hua toh?', ['Pattern invalid', 'Still valid but weaker signal', 'Stronger signal', 'No change'], 1, 'Gap up ideal hai par bina gap ke bhi pattern valid hota hai — bas thoda weaker signal.'),
           ]),
         },
@@ -867,7 +867,7 @@ const SEED_PATHS = [
           coinReward: 10,
           questions: JSON.stringify([
             q('Multi-MA strategy mein "ribbon" kya hota hai?', ['Single MA', 'Multiple MAs ek saath plotted — ribbon jaisa dikhta hai', 'Volume indicator', 'Chart pattern'], 1, 'MA Ribbon = multiple MAs (like 10,20,30,50,100) ek saath plotted — expanding = trending.'),
-            q('Price sabhi MAs ke upar hai toh kya signal hai?', ['Sell', 'Strong bullish trend', ['Neutral', 'Bearish'], 1, 'Price all MAs ke upar = very strong bullish trend — MAs support ban rahe hain.'),
+            q('Price sabhi MAs ke upar hai toh kya signal hai?', ['Sell', 'Strong bullish trend', 'Neutral', 'Bearish'], 1, 'Price all MAs ke upar = very strong bullish trend — MAs support ban rahe hain.'),
             q('MA Ribbon expanding hona kya dikhata hai?', ['Sideways market', 'Strong trend (expansion = momentum)', 'Reversal', 'Nothing'], 1, 'MA ribbon expand = trend gaining momentum. Contract = trend weakening, potential reversal.'),
           ]),
         },
@@ -1071,7 +1071,7 @@ const SEED_PATHS = [
           coinReward: 10,
           questions: JSON.stringify([
             q('Pullback entry ka kya advantage hai?', ['No advantage', 'Better entry price, better risk-reward, less false breakout risk', 'More risk', 'Slow entry'], 1, 'Pullback pe entry = better price, tight SL (old resistance becomes support), better R:R ratio.'),
-            q('Breakout ke baad typical pullback kahan aata hai?', ['Random level', 'Previous resistance (now support) pe', ['Anytime', 'Never'], 1, 'Price generally purani resistance pe pullback deti hai — jo ab support ban chuki hai.'),
+            q('Breakout ke baad typical pullback kahan aata hai?', ['Random level', 'Previous resistance (now support) pe', 'Anytime', 'Never'], 1, 'Price generally purani resistance pe pullback deti hai — jo ab support ban chuki hai.'),
             q('Pullback trade mein SL kahan rakhein?', ['Random', 'Just below the support (previous resistance)', 'Very far', 'No SL'], 1, 'SL just below support — agar price support toot de toh trade invalid. Small SL = better R:R.'),
           ]),
         },
