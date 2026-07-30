@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { useAuthStore } from '@/stores/useAuthStore';
+import { useState, useMemo } from 'react';
+import { useTrades } from '@/hooks/useApi';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
-import { History, TrendingUp, TrendingDown, BarChart3, ChevronDown, ChevronRight, Filter, CalendarDays, ArrowUpDown, Clock, Tag, Receipt, Percent, Loader2, Search, Zap } from 'lucide-react';
+import { History, TrendingUp, TrendingDown, BarChart3, ChevronDown, CalendarDays, ArrowUpDown, Clock, Tag, Receipt, Percent, Search, Zap } from 'lucide-react';
 import type { Trade } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 
@@ -28,29 +28,12 @@ function formatDateTime(iso: string): string {
 }
 
 export function TradeHistoryPage() {
-  const { token } = useAuthStore();
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [loading, setLoading] = useState(true);
+  // React Query — cached, deduplicated, instant on revisit
+  const { data: trades = [], isLoading } = useTrades();
   const [activeTab, setActiveTab] = useState<'all' | 'stock' | 'index'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'pnl' | 'value'>('date');
-
-  useEffect(() => {
-    const fetchTrades = async () => {
-      if (!token) return;
-      try {
-        const res = await fetch('/api/trades', { headers: { Authorization: `Bearer ${token}` } });
-        const data = await res.json();
-        if (data.success) setTrades(data.data || []);
-      } catch (err) {
-        console.error('Trade history fetch error:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTrades();
-  }, [token]);
 
   /* Filter by tab */
   const filteredTrades = useMemo(() => {
@@ -72,13 +55,18 @@ export function TradeHistoryPage() {
     return result;
   }, [trades, activeTab, searchQuery, sortBy]);
 
-  /* Summary stats */
-  const totalPnl = useMemo(() => filteredTrades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0), [filteredTrades]);
-  const totalInvested = useMemo(() => filteredTrades.reduce((sum, t) => sum + (Number(t.price) || 0) * (Number(t.quantity) || 0), 0), [filteredTrades]);
-  const totalCharges = useMemo(() => filteredTrades.reduce((sum, t) => sum + (Number(t.brokerage) || 0), 0), [filteredTrades]);
-  const winCount = useMemo(() => filteredTrades.filter(t => (Number(t.pnl) || 0) > 0).length, [filteredTrades]);
-  const lossCount = useMemo(() => filteredTrades.filter(t => (Number(t.pnl) || 0) < 0).length, [filteredTrades]);
-  const winRate = filteredTrades.length > 0 ? (winCount / filteredTrades.length) * 100 : 0;
+  /* Summary stats — single useMemo instead of 5 separate ones */
+  const stats = useMemo(() => {
+    let totalPnl = 0, totalInvested = 0, totalCharges = 0, wins = 0, losses = 0;
+    for (const t of filteredTrades) {
+      totalPnl += Number(t.pnl) || 0;
+      totalInvested += (Number(t.price) || 0) * (Number(t.quantity) || 0);
+      totalCharges += Number(t.brokerage) || 0;
+      if ((Number(t.pnl) || 0) > 0) wins++;
+      else if ((Number(t.pnl) || 0) < 0) losses++;
+    }
+    return { totalPnl, totalInvested, totalCharges, wins, losses, winRate: filteredTrades.length > 0 ? (wins / filteredTrades.length) * 100 : 0 };
+  }, [filteredTrades]);
 
   /* Group trades by date */
   const groupedTrades = useMemo(() => {
@@ -91,16 +79,8 @@ export function TradeHistoryPage() {
     return groups;
   }, [filteredTrades]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <Loader2 className="h-6 w-6 animate-spin text-brand-primary" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4 pb-4 animate-in fade-in duration-300">
+    <div className="space-y-3 pb-4 animate-in fade-in duration-300">
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -109,7 +89,7 @@ export function TradeHistoryPage() {
           </div>
           <div>
             <h1 className="font-heading text-lg font-bold text-text-primary">Trade History</h1>
-            <p className="text-[11px] text-text-secondary">{filteredTrades.length} trades</p>
+            <p className="text-[11px] text-text-secondary">{isLoading ? '…' : `${filteredTrades.length} trades`}</p>
           </div>
         </div>
         <a href="/trade" className="flex items-center gap-1.5 rounded-lg bg-brand-primary px-3 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover transition-colors active:scale-[0.97]">
@@ -118,143 +98,190 @@ export function TradeHistoryPage() {
         </a>
       </div>
 
-      {/* ── Summary Cards ── */}
-      {filteredTrades.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="rounded-xl border border-border bg-bg-surface p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <TrendingUp className={cn('h-3 w-3', totalPnl >= 0 ? 'text-profit-green' : 'text-loss-red')} />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">Total P&L</span>
+      {/* ── Skeleton while loading ── */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {/* Summary skeleton */}
+          <div className="grid grid-cols-2 gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="rounded-xl border border-border bg-bg-surface p-3 animate-pulse space-y-2">
+                <div className="h-3 w-16 rounded bg-bg-surface-alt" />
+                <div className="h-5 w-24 rounded bg-bg-surface-alt" />
+              </div>
+            ))}
+          </div>
+          {/* Tabs skeleton */}
+          <div className="flex gap-1 rounded-lg bg-bg-surface p-1 border border-border">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex-1 h-7 rounded-md bg-bg-surface-alt animate-pulse" />
+            ))}
+          </div>
+          {/* Search skeleton */}
+          <div className="h-9 rounded-lg bg-bg-surface-alt animate-pulse" />
+          {/* Trade card skeletons */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="h-3 w-16 rounded bg-bg-surface-alt animate-pulse" />
+              <div className="flex-1 h-px bg-border/50" />
             </div>
-            <p className={cn('font-mono text-base font-bold tabular-nums tracking-tight', getPnlColor(totalPnl))}>
-              {totalPnl >= 0 ? '+' : ''}{formatINR(totalPnl)}
-            </p>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="rounded-xl border border-border bg-bg-surface p-3 animate-pulse">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-lg bg-bg-surface-alt" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3.5 w-24 rounded bg-bg-surface-alt" />
+                    <div className="h-2.5 w-36 rounded bg-bg-surface-alt" />
+                  </div>
+                  <div className="text-right space-y-1.5">
+                    <div className="h-4 w-16 rounded bg-bg-surface-alt ml-auto" />
+                    <div className="h-2.5 w-10 rounded bg-bg-surface-alt ml-auto" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
-          <div className="rounded-xl border border-border bg-bg-surface p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Percent className="h-3 w-3 text-info-purple" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">Win Rate</span>
-            </div>
-            <p className="font-mono text-base font-bold tabular-nums tracking-tight text-text-primary">
-              {winRate.toFixed(1)}%
-            </p>
-            <p className="text-[10px] text-text-tertiary mt-0.5">{winCount}W / {lossCount}L</p>
-          </div>
-          <div className="rounded-xl border border-border bg-bg-surface p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <BarChart3 className="h-3 w-3 text-brand-primary" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">Volume</span>
-            </div>
-            <p className="font-mono text-base font-bold tabular-nums tracking-tight text-text-primary">
-              {formatINR(totalInvested)}
-            </p>
-          </div>
-          <div className="rounded-xl border border-border bg-bg-surface p-3">
-            <div className="flex items-center gap-1.5 mb-1">
-              <Receipt className="h-3 w-3 text-accent-gold" />
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">Charges</span>
-            </div>
-            <p className="font-mono text-base font-bold tabular-nums tracking-tight text-text-primary">
-              {formatINR(totalCharges)}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ── Tabs + Controls ── */}
-      <div className="space-y-2.5 animate-in fade-in slide-in-from-bottom-3 duration-300 delay-100">
-        {/* Tabs */}
-        <div className="flex items-center gap-1 rounded-lg bg-bg-surface p-1 border border-border">
-          {(['all', 'stock', 'index'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={cn(
-                'flex-1 rounded-md py-1.5 text-xs font-semibold transition-all duration-200',
-                activeTab === tab
-                  ? 'bg-brand-primary text-white shadow-sm'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface-alt'
-              )}
-            >
-              {tab === 'all' ? 'All' : tab === 'stock' ? 'Stock' : 'Index'}
-            </button>
-          ))}
-        </div>
-
-        {/* Search + Sort bar */}
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-text-tertiary" />
-            <input
-              type="text"
-              placeholder="Search symbol..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-border bg-bg-surface pl-8 pr-3 py-2 text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand-primary/30 focus:border-brand-primary/40 transition-all"
-            />
-          </div>
-          <button
-            onClick={() => {
-              const next = sortBy === 'date' ? 'pnl' : sortBy === 'pnl' ? 'value' : 'date';
-              setSortBy(next);
-            }}
-            className="flex items-center gap-1 rounded-lg border border-border bg-bg-surface px-2.5 py-2 text-[11px] font-medium text-text-secondary hover:bg-bg-surface-alt transition-colors"
-          >
-            <ArrowUpDown className="h-3 w-3" />
-            {sortBy === 'date' ? 'Date' : sortBy === 'pnl' ? 'P&L' : 'Value'}
-          </button>
-        </div>
-      </div>
-
-      {/* ── Trade List ── */}
-      {filteredTrades.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in duration-300">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-bg-surface-alt mb-3">
-            <History className="h-6 w-6 text-text-tertiary" />
-          </div>
-          <p className="font-heading text-sm font-semibold text-text-primary">No trades yet</p>
-          <p className="text-[11px] text-text-secondary mt-1 max-w-[240px]">
-            Start trading to see your trade history here
-          </p>
-          <a href="/trade" className="mt-3 rounded-lg bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover transition-colors">
-            Start Trading
-          </a>
         </div>
       ) : (
-        <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300 delay-150">
-          {Object.entries(groupedTrades).map(([dateLabel, dayTrades], groupIdx) => (
-            <div key={dateLabel} style={{ animationDelay: `${groupIdx * 80}ms` }}>
-              {/* Date header */}
-              <div className="flex items-center gap-2 mb-1.5">
-                <CalendarDays className="h-3 w-3 text-text-tertiary" />
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">{dateLabel}</span>
-                <span className="text-[10px] text-text-tertiary">· {dayTrades.length} trade{dayTrades.length > 1 ? 's' : ''}</span>
-                <div className="flex-1 border-t border-border/50" />
-                {(() => {
-                  const dayPnl = dayTrades.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
-                  return (
-                    <span className={cn('font-mono text-[11px] font-bold tabular-nums', getPnlColor(dayPnl))}>
-                      {dayPnl >= 0 ? '+' : ''}{formatINR(dayPnl)}
-                    </span>
-                  );
-                })()}
+        <>
+          {/* ── Summary Cards ── */}
+          {filteredTrades.length > 0 && (
+            <div className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="rounded-xl border border-border bg-bg-surface p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <TrendingUp className={cn('h-3 w-3', stats.totalPnl >= 0 ? 'text-profit-green' : 'text-loss-red')} />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">Total P&L</span>
+                </div>
+                <p className={cn('font-mono text-base font-bold tabular-nums tracking-tight', getPnlColor(stats.totalPnl))}>
+                  {stats.totalPnl >= 0 ? '+' : ''}{formatINR(stats.totalPnl)}
+                </p>
               </div>
-
-              {/* Trade cards */}
-              <div className="space-y-1.5">
-                {dayTrades.map((trade, idx) => (
-                  <TradeCard
-                    key={trade.id}
-                    trade={trade}
-                    isExpanded={expandedId === trade.id}
-                    onToggle={() => setExpandedId(expandedId === trade.id ? null : trade.id)}
-                    delay={idx * 50}
-                  />
-                ))}
+              <div className="rounded-xl border border-border bg-bg-surface p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Percent className="h-3 w-3 text-info-purple" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">Win Rate</span>
+                </div>
+                <p className="font-mono text-base font-bold tabular-nums tracking-tight text-text-primary">
+                  {stats.winRate.toFixed(1)}%
+                </p>
+                <p className="text-[10px] text-text-tertiary mt-0.5">{stats.wins}W / {stats.losses}L</p>
+              </div>
+              <div className="rounded-xl border border-border bg-bg-surface p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <BarChart3 className="h-3 w-3 text-brand-primary" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">Volume</span>
+                </div>
+                <p className="font-mono text-base font-bold tabular-nums tracking-tight text-text-primary">
+                  {formatINR(stats.totalInvested)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-border bg-bg-surface p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Receipt className="h-3 w-3 text-accent-gold" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">Charges</span>
+                </div>
+                <p className="font-mono text-base font-bold tabular-nums tracking-tight text-text-primary">
+                  {formatINR(stats.totalCharges)}
+                </p>
               </div>
             </div>
-          ))}
-        </div>
+          )}
+
+          {/* ── Tabs + Controls ── */}
+          <div className="space-y-2.5 animate-in fade-in slide-in-from-bottom-3 duration-300 delay-100">
+            {/* Tabs */}
+            <div className="flex items-center gap-1 rounded-lg bg-bg-surface p-1 border border-border">
+              {(['all', 'stock', 'index'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={cn(
+                    'flex-1 rounded-md py-1.5 text-xs font-semibold transition-all duration-200',
+                    activeTab === tab
+                      ? 'bg-brand-primary text-white shadow-sm'
+                      : 'text-text-secondary hover:text-text-primary hover:bg-bg-surface-alt'
+                  )}
+                >
+                  {tab === 'all' ? 'All' : tab === 'stock' ? 'Stock' : 'Index'}
+                </button>
+              ))}
+            </div>
+
+            {/* Search + Sort bar */}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-text-tertiary" />
+                <input
+                  type="text"
+                  placeholder="Search symbol..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-bg-surface pl-8 pr-3 py-2 text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand-primary/30 focus:border-brand-primary/40 transition-all"
+                />
+              </div>
+              <button
+                onClick={() => {
+                  const next = sortBy === 'date' ? 'pnl' : sortBy === 'pnl' ? 'value' : 'date';
+                  setSortBy(next);
+                }}
+                className="flex items-center gap-1 rounded-lg border border-border bg-bg-surface px-2.5 py-2 text-[11px] font-medium text-text-secondary hover:bg-bg-surface-alt transition-colors"
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                {sortBy === 'date' ? 'Date' : sortBy === 'pnl' ? 'P&L' : 'Value'}
+              </button>
+            </div>
+          </div>
+
+          {/* ── Trade List ── */}
+          {filteredTrades.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in duration-300">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-bg-surface-alt mb-3">
+                <History className="h-6 w-6 text-text-tertiary" />
+              </div>
+              <p className="font-heading text-sm font-semibold text-text-primary">No trades yet</p>
+              <p className="text-[11px] text-text-secondary mt-1 max-w-[240px]">
+                Start trading to see your trade history here
+              </p>
+              <a href="/trade" className="mt-3 rounded-lg bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary-hover transition-colors">
+                Start Trading
+              </a>
+            </div>
+          ) : (
+            <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-300 delay-150">
+              {Object.entries(groupedTrades).map(([dateLabel, dayTrades], groupIdx) => (
+                <div key={dateLabel} style={{ animationDelay: `${groupIdx * 80}ms` }}>
+                  {/* Date header */}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <CalendarDays className="h-3 w-3 text-text-tertiary" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">{dateLabel}</span>
+                    <span className="text-[10px] text-text-tertiary">· {dayTrades.length} trade{dayTrades.length > 1 ? 's' : ''}</span>
+                    <div className="flex-1 border-t border-border/50" />
+                    {(() => {
+                      const dayPnl = dayTrades.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
+                      return (
+                        <span className={cn('font-mono text-[11px] font-bold tabular-nums', getPnlColor(dayPnl))}>
+                          {dayPnl >= 0 ? '+' : ''}{formatINR(dayPnl)}
+                        </span>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Trade cards */}
+                  <div className="space-y-1.5">
+                    {dayTrades.map((trade, idx) => (
+                      <TradeCard
+                        key={trade.id}
+                        trade={trade}
+                        isExpanded={expandedId === trade.id}
+                        onToggle={() => setExpandedId(expandedId === trade.id ? null : trade.id)}
+                        delay={idx * 50}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

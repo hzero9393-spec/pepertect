@@ -22,6 +22,7 @@ import {
   Crosshair,
   DollarSign,
   Star,
+  Zap,
 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { findExpiry, type ExpiryIndex } from '@/lib/expiry-calendar';
@@ -29,6 +30,8 @@ import { addOptionStrikeToGroup } from '@/lib/multi-watchlist';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
+import { LimitOrderModal } from '@/components/trading/LimitOrderModal';
+import { toast } from '@/hooks/use-toast';
 
 // ---- Types (mirror OptionChainPage) ----------------------------------------
 
@@ -228,6 +231,9 @@ export function OptionStrikeOverviewPage() {
    * to /positions after a short delay so the user sees their new position
    * with the live strike price updating in real-time. */
   const [redirecting, setRedirecting] = useState(false);
+  /* Limit order modal state */
+  const [limitModalOpen, setLimitModalOpen] = useState(false);
+  const [limitModalSide, setLimitModalSide] = useState<'BUY' | 'SELL'>('BUY');
 
   const fetchChain = useCallback(async () => {
     if (!token) return;
@@ -877,6 +883,53 @@ export function OptionStrikeOverviewPage() {
                   )}
                 </button>
               </div>
+
+              {/* ============== LIMIT ORDER BUTTONS ============== */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setLimitModalSide('BUY'); setLimitModalOpen(true); }}
+                  disabled={!activeLeg || !data}
+                  className="flex items-center justify-center gap-1.5 rounded-lg py-2 border border-profit-green/30 bg-profit-green/5 text-profit-green text-xs font-bold hover:bg-profit-green/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Zap className="h-3 w-3" />
+                  Buy Limit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLimitModalSide('SELL'); setLimitModalOpen(true); }}
+                  disabled={!activeLeg || !data}
+                  className="flex items-center justify-center gap-1.5 rounded-lg py-2 border border-loss-red/30 bg-loss-red/5 text-loss-red text-xs font-bold hover:bg-loss-red/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <Zap className="h-3 w-3" />
+                  Sell Limit
+                </button>
+              </div>
+
+              {/* Limit Order Modal */}
+              {data && activeLeg && strikeRow && (
+                <LimitOrderModal
+                  open={limitModalOpen}
+                  onClose={() => setLimitModalOpen(false)}
+                  symbol={symbol}
+                  side={limitModalSide}
+                  segment="OPTIONS"
+                  marketPrice={activeLeg.lastPrice}
+                  optionType={side}
+                  strikePrice={strikeRow.strikePrice}
+                  expiry={data.expiry}
+                  instrumentKey={activeLeg.instrumentKey}
+                  lotSize={data.lotSize}
+                  onSuccess={() => {
+                    setLimitModalOpen(false);
+                    toast({
+                      title: `✅ Limit ${limitModalSide} Order Placed`,
+                      description: `${side} ${strikeRow.strikePrice} @ limit price — will execute when price hits`,
+                      duration: 3000,
+                    });
+                  }}
+                />
+              )}
 
               {/* Inline order result */}
               {orderResult && (

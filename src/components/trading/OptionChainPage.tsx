@@ -10,7 +10,6 @@ import {
   Layers,
   Clock,
   ChevronDown,
-  Loader2,
   Search,
   X,
 } from 'lucide-react';
@@ -171,6 +170,10 @@ function parseStrikeQuery(input: string, activeSymbol: string): ParsedStrikeQuer
   return { symbol: symbol ?? activeSymbol, strike, side, expiry };
 }
 
+// ---- In-memory cache for option chain data (stale-while-revalidate) ----
+const chainCache = new Map<string, { data: ChainResponse; ts: number }>();
+const CACHE_TTL = 30_000; // 30 seconds
+
 // ---- Component -----------------------------------------------------------
 
 /* Data passed to order choice popup */
@@ -278,6 +281,17 @@ export function OptionChainPage() {
 
   const fetchChain = useCallback(async () => {
     if (!token) return;
+
+    // Check cache first (stale-while-revalidate)
+    const cacheKey = `${symbol}:${expiry || ''}`;
+    const cached = chainCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) {
+      setData(cached.data);
+      if (!expiry && cached.data.expiries?.length) setExpiry(cached.data.expiries[0]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -289,6 +303,7 @@ export function OptionChainPage() {
       const json = await res.json();
       if (json.success) {
         setData(json.data);
+        chainCache.set(cacheKey, { data: json.data, ts: Date.now() });
         // Initialize expiry from server response if not yet set
         if (!expiry && json.data.expiries?.length) {
           setExpiry(json.data.expiries[0]);
@@ -412,7 +427,7 @@ export function OptionChainPage() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* ============== STRIKE SEARCH BAR ============== */}
       <div className="card-soft p-3 relative">
         <div className="flex items-center gap-2">
@@ -477,185 +492,61 @@ export function OptionChainPage() {
         )}
       </div>
 
-      {/* ============== HEADER ============== */}
-      <div className="card-soft p-4">
-        <div className="flex items-start gap-3">
-          <StockLogo symbol={symbol} size="xl" isIndex rounded="lg" className="ring-1 ring-border shrink-0" />
-          <div className="min-w-0 flex-1">
-            <h1 className="font-heading text-xl sm:text-2xl font-bold text-text-primary tracking-tight">
-              {idxInfo.display}
-            </h1>
-            <p className="text-xs sm:text-sm text-text-secondary truncate mt-0.5">
-              Option Chain · {data?.exchange ?? 'NSE'}
-            </p>
-            <div className="flex flex-wrap items-center gap-1.5 mt-2">
-              <span className="pill bg-tint-blue text-brand-primary inline-flex items-center gap-1">
-                <span className="text-[10px]">🇮🇳</span>
-                {data?.exchange ?? 'NSE'}
-              </span>
-              <span className="pill bg-tint-purple text-info-purple inline-flex items-center gap-1">
-                <Layers className="h-3 w-3" />
-                Lot: {data?.lotSize ?? 0}
-              </span>
-              <span className="pill bg-bg-surface-alt text-text-secondary">
-                Strike Step: {data?.step ?? 0}
-              </span>
-            </div>
-          </div>
-          <div className="text-right shrink-0">
-            <p className={cn(
-              'font-mono text-2xl sm:text-3xl font-bold tabular-nums',
-              underlyingTick ? 'text-text-primary' : 'text-text-secondary'
-            )}>
-              {formatNumber(spot, 2)}
-              {underlyingTick && (
-                <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-profit-green animate-pulse align-middle" />
-              )}
-            </p>
-            {underlyingTick && (
-              <p className={cn(
-                'font-mono text-[11px] tabular-nums font-semibold mt-0.5',
-                spotPositive ? 'text-profit-green' : 'text-loss-red'
-              )}>
-                {spotPositive ? '▲' : '▼'} {Math.abs(underlyingTick.change ?? 0).toFixed(2)} ({(underlyingTick.changePct ?? 0).toFixed(2)}%)
-              </p>
-            )}
-            <p className="text-[11px] text-text-tertiary mt-0.5">
-              <Clock className="inline h-3 w-3 mr-0.5" />
-              {data
-                ? `${data.dte}d to expiry`
-                : 'Loading…'}
-            </p>
-            {(data?.realData || underlyingTick) && (
-              <span className="inline-flex items-center gap-0.5 mt-1 px-1.5 py-0.5 rounded-full bg-tint-green text-profit-green text-[9px] font-bold uppercase tracking-wide">
-                <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
-                Live Upstox
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Index switcher tabs */}
-        <div className="mt-4 flex items-center gap-1 border-b border-border overflow-x-auto no-scrollbar">
-          {INDICES.map((idx) => {
-            const isActive = idx.symbol === symbol;
-            return (
-              <button
-                key={idx.symbol}
-                onClick={() => {
-                  setSymbol(idx.symbol);
-                  setExpiry(null);
-                }}
-                className={cn(
-                  'px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
-                  isActive
-                    ? 'border-brand-primary text-brand-primary'
-                    : 'border-transparent text-text-secondary hover:text-text-primary'
-                )}
-              >
-                {idx.display}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ============== SUMMARY STRIP ============== */}
-      {data && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <SummaryCell
-            label="ATM Strike"
-            value={`₹${formatNumber(data.atm, 0)}`}
-            subtext={`Step ${data.step}`}
-            icon={Activity}
-            tint="bg-tint-blue"
-            color="text-brand-primary"
-          />
-          <SummaryCell
-            label="Spot Price"
-            value={`₹${formatNumber(spot, 2)}`}
-            subtext={`${data.exchange}`}
-            icon={spotPositive ? TrendingUp : TrendingDown}
-            tint="bg-tint-green"
-            color="text-profit-green"
-          />
-          <SummaryCell
-            label="Total Call OI"
-            value={formatOi(totalCallOi)}
-            subtext="Calls"
-            icon={TrendingUp}
-            tint="bg-tint-green"
-            color="text-profit-green"
-          />
-          <SummaryCell
-            label="PCR"
-            value={pcr.toFixed(2)}
-            subtext={pcr < 1 ? 'Bullish bias' : 'Bearish bias'}
-            icon={Layers}
-            tint={pcr < 1 ? 'bg-tint-green' : 'bg-tint-red'}
-            color={pcr < 1 ? 'text-profit-green' : 'text-loss-red'}
-          />
-        </div>
-      )}
-
-      {/* ============== EXPIRY SELECTOR ============== */}
-      {data && data.expiries.length > 0 && (
-        <div className="card-soft p-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-medium text-text-secondary">Expiry:</span>
-              <div className="relative">
-                <select
-                  value={expiry ?? data.expiry}
-                  onChange={(e) => setExpiry(e.target.value)}
-                  className="appearance-none bg-bg-surface-alt border border-border rounded-md pl-3 pr-8 py-1.5 text-xs font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-                >
-                  {data.expiries.map((exp) => {
-                    // Look up label via the calendar (mirrors API logic on client)
-                    const label = getExpiryLabel(exp);
-                    return (
-                      <option key={exp} value={exp}>
-                        {formatExpiry(exp)}{label ? ` · ${label}` : ''}
-                      </option>
-                    );
-                  })}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
+      {loading && !data ? (
+        <>
+          {/* ============== HEADER SKELETON ============== */}
+          <div className="card-soft p-4">
+            <div className="flex items-start gap-3">
+              <div className="h-12 w-12 rounded-lg bg-bg-surface-alt animate-pulse" />
+              <div className="flex-1 space-y-2">
+                <div className="h-5 w-32 rounded bg-bg-surface-alt animate-pulse" />
+                <div className="h-3 w-24 rounded bg-bg-surface-alt animate-pulse" />
+                <div className="flex gap-2">
+                  <div className="h-5 w-16 rounded-full bg-bg-surface-alt animate-pulse" />
+                  <div className="h-5 w-20 rounded-full bg-bg-surface-alt animate-pulse" />
+                </div>
               </div>
-              {/* Current selection badge — WEEKLY / MONTHLY */}
-              {data.expiryType && (
-                <span
-                  className={cn(
-                    'pill text-[10px] font-bold',
-                    data.expiryType === 'MONTHLY'
-                      ? 'bg-tint-purple text-info-purple'
-                      : 'bg-tint-blue text-brand-primary'
-                  )}
-                >
-                  {data.expiryType === 'MONTHLY' ? 'MONTHLY' : 'WEEKLY'}
-                </span>
-              )}
-              {data.expiryLabel && (
-                <span className="text-[11px] text-text-tertiary hidden sm:inline">
-                  {data.expiryLabel}
-                </span>
-              )}
+              <div className="text-right space-y-2">
+                <div className="h-7 w-24 rounded bg-bg-surface-alt animate-pulse ml-auto" />
+                <div className="h-3 w-16 rounded bg-bg-surface-alt animate-pulse ml-auto" />
+              </div>
             </div>
-            <p className="text-[11px] text-text-tertiary hidden sm:block">
-              {data.dte} day{data.dte === 1 ? '' : 's'} to expiry
-            </p>
+            {/* Tab skeleton */}
+            <div className="mt-4 flex gap-1 border-b border-border pb-0">
+              {['w-16', 'w-14', 'w-20', 'w-16'].map((w, i) => (
+                <div key={i} className={`h-8 ${w} rounded-t bg-bg-surface-alt animate-pulse`} />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* ============== OPTION CHAIN TABLE ============== */}
-      <div className="card-soft p-0 overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-brand-primary" />
-            <span className="ml-2 text-sm text-text-secondary">Loading option chain…</span>
+          {/* ============== SUMMARY STRIP SKELETON ============== */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="card-soft p-3 space-y-2">
+                <div className="h-3 w-16 rounded bg-bg-surface-alt animate-pulse" />
+                <div className="h-5 w-20 rounded bg-bg-surface-alt animate-pulse" />
+                <div className="h-2 w-12 rounded bg-bg-surface-alt animate-pulse" />
+              </div>
+            ))}
           </div>
-        ) : error ? (
+          {/* ============== EXPIRY SELECTOR SKELETON ============== */}
+          <div className="card-soft p-3">
+            <div className="flex items-center gap-3">
+              <div className="h-4 w-12 rounded bg-bg-surface-alt animate-pulse" />
+              <div className="h-7 w-40 rounded-md bg-bg-surface-alt animate-pulse" />
+              <div className="h-5 w-16 rounded-full bg-bg-surface-alt animate-pulse" />
+            </div>
+          </div>
+          {/* ============== TABLE SKELETON ============== */}
+          <div className="card-soft p-0 overflow-hidden">
+            <div className="p-4 space-y-3">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <div key={i} className="h-8 w-full rounded bg-bg-surface-alt animate-pulse" />
+              ))}
+            </div>
+          </div>
+        </>
+      ) : error ? (
+        <div className="card-soft overflow-hidden">
           <div className="flex flex-col items-center py-16 text-center px-4">
             <p className="text-sm font-medium text-loss-red mb-1">{error}</p>
             <button
@@ -665,83 +556,261 @@ export function OptionChainPage() {
               Try again
             </button>
           </div>
-        ) : !data ? (
-          <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-text-secondary">No data available</p>
-          </div>
-        ) : (
-          <>
-          <OptionChainTable data={data} quotes={quotes} liveSpot={liveSpot} onPriceClick={handlePriceClick} />
+        </div>
+      ) : (
+        <>
+          {/* ============== HEADER ============== */}
+          <div className="card-soft p-4">
+            <div className="flex items-start gap-3">
+              <StockLogo symbol={symbol} size="xl" isIndex rounded="lg" className="ring-1 ring-border shrink-0" />
+              <div className="min-w-0 flex-1">
+                <h1 className="font-heading text-xl sm:text-2xl font-bold text-text-primary tracking-tight">
+                  {idxInfo.display}
+                </h1>
+                <p className="text-xs sm:text-sm text-text-secondary truncate mt-0.5">
+                  Option Chain · {data?.exchange ?? 'NSE'}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  <span className="pill bg-tint-blue text-brand-primary inline-flex items-center gap-1">
+                    <span className="text-[10px]">🇮🇳</span>
+                    {data?.exchange ?? 'NSE'}
+                  </span>
+                  <span className="pill bg-tint-purple text-info-purple inline-flex items-center gap-1">
+                    <Layers className="h-3 w-3" />
+                    Lot: {data?.lotSize ?? 0}
+                  </span>
+                  <span className="pill bg-bg-surface-alt text-text-secondary">
+                    Strike Step: {data?.step ?? 0}
+                  </span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <p className={cn(
+                  'font-mono text-2xl sm:text-3xl font-bold tabular-nums',
+                  underlyingTick ? 'text-text-primary' : 'text-text-secondary'
+                )}>
+                  {formatNumber(spot, 2)}
+                  {underlyingTick && (
+                    <span className="ml-1 inline-flex h-2 w-2 rounded-full bg-profit-green animate-pulse align-middle" />
+                  )}
+                </p>
+                {underlyingTick && (
+                  <p className={cn(
+                    'font-mono text-[11px] tabular-nums font-semibold mt-0.5',
+                    spotPositive ? 'text-profit-green' : 'text-loss-red'
+                  )}>
+                    {spotPositive ? '▲' : '▼'} {Math.abs(underlyingTick.change ?? 0).toFixed(2)} ({(underlyingTick.changePct ?? 0).toFixed(2)}%)
+                  </p>
+                )}
+                <p className="text-[11px] text-text-tertiary mt-0.5">
+                  <Clock className="inline h-3 w-3 mr-0.5" />
+                  {data
+                    ? `${data.dte}d to expiry`
+                    : 'Loading…'}
+                </p>
+                {(data?.realData || underlyingTick) && (
+                  <span className="inline-flex items-center gap-0.5 mt-1 px-1.5 py-0.5 rounded-full bg-tint-green text-profit-green text-[9px] font-bold uppercase tracking-wide">
+                    <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                    Live Upstox
+                  </span>
+                )}
+              </div>
+            </div>
 
-          {/* Order choice popup */}
-          {choiceAnchor && choiceData && (
-            <div
-              className="fixed z-[60] rounded-xl border border-border bg-bg-surface shadow-xl p-2 space-y-1 w-48"
-              style={{
-                left: Math.min(choiceAnchor.x, window.innerWidth - 200),
-                top: Math.min(choiceAnchor.y + 8, window.innerHeight - 160),
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <button
-                onClick={goToMarketOrder}
-                className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-blue">
-                  <ShoppingCart className="h-3.5 w-3.5 text-brand-primary" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-text-primary">Market Order</p>
-                  <p className="text-[10px] text-text-tertiary">Execute at current price</p>
-                </div>
-              </button>
-              <button
-                onClick={() => openLimitOrder('BUY')}
-                className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-green">
-                  <Zap className="h-3.5 w-3.5 text-profit-green" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-profit-green">Buy Limit</p>
-                  <p className="text-[10px] text-text-tertiary">When price drops to ₹{formatNumber(choiceData.lastPrice, 2)}</p>
-                </div>
-              </button>
-              <button
-                onClick={() => openLimitOrder('SELL')}
-                className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
-              >
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-red">
-                  <Zap className="h-3.5 w-3.5 text-loss-red" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-loss-red">Sell Limit</p>
-                  <p className="text-[10px] text-text-tertiary">When price rises to ₹{formatNumber(choiceData.lastPrice, 2)}</p>
-                </div>
-              </button>
+            {/* Index switcher tabs */}
+            <div className="mt-4 flex items-center gap-1 border-b border-border overflow-x-auto no-scrollbar">
+              {INDICES.map((idx) => {
+                const isActive = idx.symbol === symbol;
+                return (
+                  <button
+                    key={idx.symbol}
+                    onClick={() => {
+                      setSymbol(idx.symbol);
+                      setExpiry(null);
+                    }}
+                    className={cn(
+                      'px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
+                      isActive
+                        ? 'border-brand-primary text-brand-primary'
+                        : 'border-transparent text-text-secondary hover:text-text-primary'
+                    )}
+                  >
+                    {idx.display}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ============== SUMMARY STRIP ============== */}
+          {data && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <SummaryCell
+                label="ATM Strike"
+                value={`₹${formatNumber(data.atm, 0)}`}
+                subtext={`Step ${data.step}`}
+                icon={Activity}
+                tint="bg-tint-blue"
+                color="text-brand-primary"
+              />
+              <SummaryCell
+                label="Spot Price"
+                value={`₹${formatNumber(spot, 2)}`}
+                subtext={`${data.exchange}`}
+                icon={spotPositive ? TrendingUp : TrendingDown}
+                tint="bg-tint-green"
+                color="text-profit-green"
+              />
+              <SummaryCell
+                label="Total Call OI"
+                value={formatOi(totalCallOi)}
+                subtext="Calls"
+                icon={TrendingUp}
+                tint="bg-tint-green"
+                color="text-profit-green"
+              />
+              <SummaryCell
+                label="PCR"
+                value={pcr.toFixed(2)}
+                subtext={pcr < 1 ? 'Bullish bias' : 'Bearish bias'}
+                icon={Layers}
+                tint={pcr < 1 ? 'bg-tint-green' : 'bg-tint-red'}
+                color={pcr < 1 ? 'text-profit-green' : 'text-loss-red'}
+              />
             </div>
           )}
 
-          {/* Limit Order Modal */}
-          {data && choiceData && (
-            <LimitOrderModal
-              open={limitModalOpen}
-              onClose={() => setLimitModalOpen(false)}
-              symbol={data.symbol}
-              side={limitModalSide}
-              segment="OPTIONS"
-              marketPrice={limitModalPrice}
-              optionType={choiceData.optionType}
-              strikePrice={choiceData.strikePrice}
-              expiry={data.expiry}
-              instrumentKey={choiceData.instrumentKey}
-              lotSize={data.lotSize}
-              onSuccess={() => { /* Optionally refresh chain */ }}
-            />
+          {/* ============== EXPIRY SELECTOR ============== */}
+          {data && data.expiries.length > 0 && (
+            <div className="card-soft p-3">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-medium text-text-secondary">Expiry:</span>
+                  <div className="relative">
+                    <select
+                      value={expiry ?? data.expiry}
+                      onChange={(e) => setExpiry(e.target.value)}
+                      className="appearance-none bg-bg-surface-alt border border-border rounded-md pl-3 pr-8 py-1.5 text-xs font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                    >
+                      {data.expiries.map((exp) => {
+                        // Look up label via the calendar (mirrors API logic on client)
+                        const label = getExpiryLabel(exp);
+                        return (
+                          <option key={exp} value={exp}>
+                            {formatExpiry(exp)}{label ? ` · ${label}` : ''}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
+                  </div>
+                  {/* Current selection badge — WEEKLY / MONTHLY */}
+                  {data.expiryType && (
+                    <span
+                      className={cn(
+                        'pill text-[10px] font-bold',
+                        data.expiryType === 'MONTHLY'
+                          ? 'bg-tint-purple text-info-purple'
+                          : 'bg-tint-blue text-brand-primary'
+                      )}
+                    >
+                      {data.expiryType === 'MONTHLY' ? 'MONTHLY' : 'WEEKLY'}
+                    </span>
+                  )}
+                  {data.expiryLabel && (
+                    <span className="text-[11px] text-text-tertiary hidden sm:inline">
+                      {data.expiryLabel}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-text-tertiary hidden sm:block">
+                  {data.dte} day{data.dte === 1 ? '' : 's'} to expiry
+                </p>
+              </div>
+            </div>
           )}
-          </>
-        )}
-      </div>
+
+          {/* ============== OPTION CHAIN TABLE ============== */}
+          <div className="card-soft p-0 overflow-hidden">
+            {!data ? (
+              <div className="flex items-center justify-center py-16">
+                <p className="text-sm text-text-secondary">No data available</p>
+              </div>
+            ) : (
+              <>
+                <OptionChainTable data={data} quotes={quotes} liveSpot={liveSpot} onPriceClick={handlePriceClick} />
+
+                {/* Order choice popup */}
+                {choiceAnchor && choiceData && (
+                  <div
+                    className="fixed z-[60] rounded-xl border border-border bg-bg-surface shadow-xl p-2 space-y-1 w-48"
+                    style={{
+                      left: Math.min(choiceAnchor.x, window.innerWidth - 200),
+                      top: Math.min(choiceAnchor.y + 8, window.innerHeight - 160),
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      onClick={goToMarketOrder}
+                      className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-blue">
+                        <ShoppingCart className="h-3.5 w-3.5 text-brand-primary" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-text-primary">Market Order</p>
+                        <p className="text-[10px] text-text-tertiary">Execute at current price</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => openLimitOrder('BUY')}
+                      className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-green">
+                        <Zap className="h-3.5 w-3.5 text-profit-green" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-profit-green">Buy Limit</p>
+                        <p className="text-[10px] text-text-tertiary">When price drops to ₹{formatNumber(choiceData.lastPrice, 2)}</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => openLimitOrder('SELL')}
+                      className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left hover:bg-bg-surface-alt transition-colors"
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-red">
+                        <Zap className="h-3.5 w-3.5 text-loss-red" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-loss-red">Sell Limit</p>
+                      <p className="text-[10px] text-text-tertiary">When price rises to ₹{formatNumber(choiceData.lastPrice, 2)}</p>
+                    </div>
+                  </button>
+                </div>
+              )}
+
+              {/* Limit Order Modal */}
+              {data && choiceData && (
+                <LimitOrderModal
+                  open={limitModalOpen}
+                  onClose={() => setLimitModalOpen(false)}
+                  symbol={data.symbol}
+                  side={limitModalSide}
+                  segment="OPTIONS"
+                  marketPrice={limitModalPrice}
+                  optionType={choiceData.optionType}
+                  strikePrice={choiceData.strikePrice}
+                  expiry={data.expiry}
+                  instrumentKey={choiceData.instrumentKey}
+                  lotSize={data.lotSize}
+                  onSuccess={() => { /* Optionally refresh chain */ }}
+                />
+              )}
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
