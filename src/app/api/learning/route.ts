@@ -359,7 +359,7 @@ const SEED_PATHS = [
           coinReward: 10,
           questions: JSON.stringify([
             q('Equity delivery mein minimum kitne shares buy kar sakte hain?', ['100', '10', '1', 'Lot size'], 2, 'Equity mein aap sirf 1 share bhi buy kar sakte hain — koi minimum nahi.'),
-            q('Nifty Options mein lot size kitna hai?', ['25', '50', '100', '75'], 0, 'Nifty options ka lot size 25 hai (updated from 50). Har order minimum 25 units ka hoga.'),
+            q('Nifty Options mein lot size kitna hai?', ['65', '50', '100', '75'], 0, 'Nifty options ka lot size 65 hai (2026 mein updated from 75). Har order minimum 65 units ka hoga.'),
             q('Lot size kyun zaroori hai F&O mein?', ['No reason', 'Standardization aur margin calculation', 'Only for brokers', 'Government rule'], 1, 'Lot size standardize karta hai contract size aur margin calculation easy hota hai.'),
           ]),
         },

@@ -27,7 +27,7 @@ const QUESTION_POOL = [
     { q: 'Put option buyer bullish hai ya bearish?', opts: ['Bullish', 'Bearish — expects price to fall', 'Neutral', 'Random'], a: 1, e: 'Put buyer = bearish view. Profits when underlying price falls below strike.' },
     { q: 'ATM option kya hai?', opts: ['Above market', 'Strike = Current market price', 'Below market', 'Expired option'], a: 1, e: 'ATM = At The Money. Strike price ≈ current market price of underlying.' },
     { q: 'Theta kya represent karta hai?', opts: ['Price sensitivity', 'Time decay', 'Volatility sensitivity', 'Interest rate impact'], a: 1, e: 'Theta = time decay. Options lose value as expiry approaches.' },
-    { q: 'Lot size kya hai?', opts: ['Number of options', 'Minimum tradeable quantity', 'Commission rate', 'Account balance'], a: 1, e: 'Lot size = minimum number of shares per contract (e.g., Nifty = 25, BankNifty = 15).' },
+    { q: 'Lot size kya hai?', opts: ['Number of options', 'Minimum tradeable quantity', 'Commission rate', 'Account balance'], a: 1, e: 'Lot size = minimum number of shares per contract (e.g., Nifty = 65, BankNifty = 30, FinNifty = 60).' },
   ],
   // Risk Management
   [

@@ -24,11 +24,11 @@ const STOCK_UNIVERSE_MAP: Record<
   // Indices — these have no DEDUPED_STOCKS entry, so add them explicitly so
   // /stock/NIFTY etc. still work.
   const INDICES: Record<string, { name: string; ltp: number; sector: string; lotSize: number; exchange?: string }> = {
-    NIFTY:     { name: 'NIFTY 50 Index',                     ltp: 24587.30, sector: 'Index', lotSize: 50,  exchange: 'NSE' },
-    SENSEX:    { name: 'BSE SENSEX Index',                   ltp: 80842.10, sector: 'Index', lotSize: 10,  exchange: 'BSE' },
-    BANKNIFTY: { name: 'NIFTY Bank Index',                   ltp: 52134.55, sector: 'Index', lotSize: 15,  exchange: 'NSE' },
+    NIFTY:     { name: 'NIFTY 50 Index',                     ltp: 24587.30, sector: 'Index', lotSize: 65,  exchange: 'NSE' },
+    SENSEX:    { name: 'BSE SENSEX Index',                   ltp: 80842.10, sector: 'Index', lotSize: 20,  exchange: 'BSE' },
+    BANKNIFTY: { name: 'NIFTY Bank Index',                   ltp: 52134.55, sector: 'Index', lotSize: 30,  exchange: 'NSE' },
     NIFTYFS:   { name: 'NIFTY Financial Services Index',     ltp: 23156.80, sector: 'Index', lotSize: 25,  exchange: 'NSE' },
-    FINNIFTY:  { name: 'NIFTY Financial Services Index',     ltp: 23156.80, sector: 'Index', lotSize: 25,  exchange: 'NSE' },
+    FINNIFTY:  { name: 'NIFTY Financial Services Index',     ltp: 23156.80, sector: 'Index', lotSize: 60,  exchange: 'NSE' },
   };
   for (const [k, v] of Object.entries(INDICES)) {
     if (!out[k]) out[k] = v;

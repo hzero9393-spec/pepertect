@@ -28,7 +28,7 @@ const INDICES: Record<string, IndexConfig> = {
     exchange: 'NSE',
     basePrice: 24587.30,
     step: 50,
-    lotSize: 50,
+    lotSize: 65,
     upstoxKey: 'NSE_INDEX|Nifty 50',
   },
   SENSEX: {
@@ -37,7 +37,7 @@ const INDICES: Record<string, IndexConfig> = {
     exchange: 'BSE',
     basePrice: 80842.10,
     step: 100,
-    lotSize: 10,
+    lotSize: 20,
     upstoxKey: 'BSE_INDEX|SENSEX',
   },
   BANKNIFTY: {
@@ -46,7 +46,7 @@ const INDICES: Record<string, IndexConfig> = {
     exchange: 'NSE',
     basePrice: 52134.55,
     step: 100,
-    lotSize: 15,
+    lotSize: 30,
     upstoxKey: 'NSE_INDEX|Nifty Bank',
   },
   FINNIFTY: {
@@ -55,7 +55,7 @@ const INDICES: Record<string, IndexConfig> = {
     exchange: 'NSE',
     basePrice: 23156.80,
     step: 50,
-    lotSize: 25,
+    lotSize: 60,
     upstoxKey: 'NSE_INDEX|Nifty Fin Service',
   },
 };
