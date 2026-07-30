@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
 import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap, ChevronDown, History, Target, Edit3 } from 'lucide-react';
 import React from 'react';
-import type { Position, Trade } from '@/types';
+import type { Position, Trade, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
@@ -18,7 +18,6 @@ import { AnimatedTabContent } from '@/components/shared/AnimatedTabContent';
 import { useLimitOrderMonitor } from '@/hooks/useLimitOrderMonitor';
 import { useOrders } from '@/hooks/useApi';
 import { toast } from '@/hooks/use-toast';
-import type { Position, Trade, Order } from '@/types';
 
 /* Index symbols — used to classify positions as Index vs Stock */
 const INDEX_SYMBOLS = new Set(['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY']);
@@ -97,7 +96,35 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         ]);
         const posData = await posRes.json();
         const tradeData = await tradeRes.json();
-        if (posData.success) setPositions(posData.data);
+        if (posData.success) {
+          // MERGE server data with local state instead of replacing.
+          // This prevents the 15s refresh from overwriting SL/Target values
+          // that were just set locally (if the server hasn't reflected them yet).
+          setPositions(prev => {
+            const serverMap = new Map<string, Position>((posData.data as Position[]).map((s: Position) => [s.id, s]));
+            // Keep positions that exist locally but not on server (about to be removed)
+            const serverIds = new Set(serverMap.keys());
+            // For positions on server, merge: use server data but preserve local SL/Target if server hasn't caught up
+            const merged = prev
+              .filter(p => serverIds.has(p.id)) // remove locally-deleted positions
+              .map(p => {
+                const sv = serverMap.get(p.id)!;
+                return {
+                  ...sv,
+                  // Preserve locally-set SL/Target if server returns null
+                  stopLoss: sv.stopLoss ?? p.stopLoss,
+                  target: sv.target ?? p.target,
+                };
+              });
+            // Add brand new positions from server (opened from another tab/device)
+            for (const [id, sp] of serverMap) {
+              if (!prev.find(p => p.id === id)) {
+                merged.push(sp);
+              }
+            }
+            return merged;
+          });
+        }
         if (tradeData.success) setTrades(tradeData.data);
       } catch (err) {
         console.error('Positions fetch error:', err);
@@ -223,24 +250,58 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   };
 
   const handleUpdateSLTarget = async (stopLoss: number | null, target: number | null) => {
-    if (!selectedPosition) return;
-    
-    const res = await fetch(`/api/positions/${selectedPosition.id}/sl-target`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stopLoss, target }),
-    });
-    
-    const data = await res.json();
-    if (data.success) {
-      // Update local state
-      setPositions(prev => prev.map(p => 
-        p.id === selectedPosition.id 
-          ? { ...p, stopLoss: stopLoss ?? undefined, target: target ?? undefined }
-          : p
-      ));
-    } else {
-      throw new Error(data.error || 'Failed to update');
+    if (!selectedPosition) {
+      throw new Error('No position selected');
+    }
+    if (!token) {
+      throw new Error('Not authenticated. Please log in again.');
+    }
+
+    try {
+      const res = await fetch(`/api/positions/${selectedPosition.id}/sl-target`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stopLoss, target }),
+      });
+
+      // Handle non-JSON responses (e.g. 500 HTML page from DB disconnect)
+      const contentType = res.headers.get('content-type') || '';
+      let data: any;
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text().catch(() => 'Unknown error');
+        throw new Error(`Server error (${res.status}): ${text.slice(0, 200)}`);
+      }
+
+      if (data.success) {
+        // Optimistic update: immediately update local state
+        const posId = selectedPosition.id;
+        setPositions(prev => prev.map(p =>
+          p.id === posId
+            ? { ...p, stopLoss: stopLoss ?? undefined, target: target ?? undefined }
+            : p
+        ));
+        // Show success toast
+        toast({
+          title: '✅ SL & Target Updated',
+          description: `${selectedPosition.symbol}: ${stopLoss ? 'SL ₹' + stopLoss.toFixed(2) : 'SL removed'}${stopLoss && target ? ' · ' : ''}${target ? 'Target ₹' + target.toFixed(2) : target === null ? 'Target removed' : ''}`,
+          duration: 3000,
+        });
+      } else {
+        // Server returned an error — show full message
+        throw new Error(data.error || `Server error (${res.status})`);
+      }
+    } catch (err) {
+      // Show error toast so user ALWAYS sees the problem
+      const msg = err instanceof Error ? err.message : 'Network error. Check your connection.';
+      toast({
+        title: '❌ Failed to update SL/Target',
+        description: msg,
+        variant: 'destructive',
+        duration: 5000,
+      });
+      throw new Error(msg); // Re-throw so the modal also shows the error
     }
   };
 

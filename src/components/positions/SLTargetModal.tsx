@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Target, ShieldAlert, TrendingDown, Check, AlertTriangle, Info } from 'lucide-react';
 import { cn, formatINR } from '@/lib/utils';
@@ -27,15 +27,21 @@ export function SLTargetModal({ isOpen, onClose, position, onUpdate }: SLTargetM
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Reset form when modal opens
+  // Reset form ONLY when modal opens (not on every re-render!)
+  // The `position` prop is a new object reference on every parent re-render
+  // (because liveLtp changes every ~800ms via WebSocket). If we include
+  // `position` in the dependency array, the form resets while the user is typing!
+  const isOpenRef = useRef(false);
   useEffect(() => {
-    if (isOpen && position) {
+    if (isOpen && !isOpenRef.current && position) {
       setStopLoss(position.stopLoss ? String(position.stopLoss) : '');
       setTarget(position.target ? String(position.target) : '');
       setError(null);
       setSuccess(false);
     }
-  }, [isOpen, position]);
+    isOpenRef.current = isOpen;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // Validate values
   const validateValue = (value: string, type: 'SL' | 'TARGET'): string | null => {
@@ -105,7 +111,11 @@ export function SLTargetModal({ isOpen, onClose, position, onUpdate }: SLTargetM
         setSuccess(false);
       }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update');
+      // Error is already shown as toast by handleUpdateSLTarget.
+      // Also show it in the modal for visibility.
+      const msg = err instanceof Error ? err.message : 'Failed to update';
+      setError(msg);
+      console.error('[SLTargetModal] Update failed:', msg);
     } finally {
       setLoading(false);
     }
@@ -292,12 +302,12 @@ export function SLTargetModal({ isOpen, onClose, position, onUpdate }: SLTargetM
                   </div>
                 )}
 
-                {/* Error Message */}
+                {/* Error Message — Full detail shown */}
                 {error && (
                   <div className="p-3 rounded-xl bg-loss-red/10 border border-loss-red/20">
-                    <p className="text-sm text-loss-red flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      {error}
+                    <p className="text-sm text-loss-red flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                      <span className="break-words">{error}</span>
                     </p>
                   </div>
                 )}
