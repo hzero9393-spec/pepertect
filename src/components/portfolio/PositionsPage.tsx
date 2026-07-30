@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 import { SLTargetModal } from '@/components/positions/SLTargetModal';
+import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import { toast } from '@/hooks/use-toast';
 
 /* Index symbols — used to classify positions as Index vs Stock */
@@ -54,6 +55,12 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   /* ---------- SL/Target Modal State ---------- */
   const [slTargetModalOpen, setSlTargetModalOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+
+  /* ── Swipe gesture for Stock/Index tab navigation ── */
+  const swipeRef = useSwipeGesture({
+    onSwipeLeft: () => { if (activeTab === 'stock') setActiveTab('index'); },
+    onSwipeRight: () => { if (activeTab === 'index') setActiveTab('stock'); },
+  });
 
   /* ---------- Resolved instrument keys for OPTIONS positions ----------
    * For an OPTIONS position, `getUpstoxKey(pos.symbol)` returns the underlying
@@ -534,6 +541,8 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         )}
       </div>
 
+      {/* ============== SWIPABLE CONTENT ============== */}
+      <div ref={swipeRef} className="min-h-[50vh]">
       {/* Exit All confirmation bar */}
       {confirmExitAll && (
         <div className="rounded-lg border border-loss-red/30 bg-tint-red p-3 flex items-center gap-3">
@@ -899,6 +908,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           onUpdate={handleUpdateSLTarget}
         />
       )}
+      </div>{/* end swipable content */}
     </div>
   );
 }

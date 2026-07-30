@@ -28,6 +28,7 @@ import {
 } from '@/lib/multi-watchlist';
 import { getUpcomingExpiries, findExpiry, type ExpiryIndex } from '@/lib/expiry-calendar';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import { getUpstoxKey, INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 
 interface StockSearchHit {
@@ -113,6 +114,14 @@ export function WatchlistPage() {
     () => groups.find((g) => g.id === activeGroupId) ?? groups[0] ?? null,
     [groups, activeGroupId],
   );
+
+  /* ── Swipe gesture for watchlist group navigation ── */
+  const groupIds = useMemo(() => groups.map(g => g.id), [groups]);
+  const currentIdx = groupIds.indexOf(activeGroupId);
+  const swipeRef = useSwipeGesture({
+    onSwipeLeft: () => { if (currentIdx < groupIds.length - 1) setActiveGroupId(groupIds[currentIdx + 1]); },
+    onSwipeRight: () => { if (currentIdx > 0) setActiveGroupId(groupIds[currentIdx - 1]); },
+  });
 
   /* ---------- handlers ---------- */
   const handleAddStock = useCallback(
@@ -370,7 +379,8 @@ export function WatchlistPage() {
         );
       })()}
 
-      {/* ============== ACTIVE GROUP CONTENT ============== */}
+      {/* ============== SWIPABLE GROUP CONTENT ============== */}
+      <div ref={swipeRef} className="min-h-[50vh]">
       {activeGroup && (
         <div className="space-y-4">
           {/* ---------- Stocks tab ---------- */}
@@ -524,6 +534,7 @@ export function WatchlistPage() {
           </div>
         </div>
       )}
+      </div>{/* end swipable content */}
     </div>
   );
 }

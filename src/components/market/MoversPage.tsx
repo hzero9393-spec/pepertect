@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { formatNumber, cn } from '@/lib/utils';
 import {
   TrendingUp, TrendingDown, Flame, Loader2, ArrowUp, ArrowDown, RefreshCw,
 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
+import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { getUpstoxKey } from '@/lib/upstox-instruments';
 
 interface Mover {
   symbol: string;
@@ -35,8 +37,10 @@ export function MoversPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<'gainers' | 'losers'>('gainers');
+  const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
+  const subscribedRef = useRef<Set<string>>(new Set());
 
-  const fetchMovers = async (silent = false) => {
+  const fetchMovers = useCallback(async (silent = false) => {
     if (!token) return;
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -52,14 +56,49 @@ export function MoversPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
     fetchMovers();
-    // Auto-refresh every 30s so the page feels live
-    const id = setInterval(() => fetchMovers(true), 30000);
+    // Auto-refresh every 15s (was 30s — faster updates)
+    const id = setInterval(() => fetchMovers(true), 15000);
     return () => clearInterval(id);
-  }, [token]);
+  }, [fetchMovers]);
+
+  // Subscribe to WebSocket for all displayed movers (live price updates)
+  const allSymbols = useMemo(() => {
+    if (!data) return [];
+    return [...data.gainers, ...data.losers].map(m => m.symbol);
+  }, [data]);
+
+  useEffect(() => {
+    if (allSymbols.length === 0) return;
+    const keys = allSymbols.map(s => getUpstoxKey(s)).filter(Boolean) as string[];
+    const newKeys = keys.filter(k => !subscribedRef.current.has(k));
+    if (newKeys.length > 0) {
+      subscribe(newKeys);
+      newKeys.forEach(k => subscribedRef.current.add(k));
+    }
+    return () => {
+      if (subscribedRef.current.size > 0) {
+        unsubscribe(Array.from(subscribedRef.current));
+        subscribedRef.current.clear();
+      }
+    };
+  }, [allSymbols, subscribe, unsubscribe]);
+
+  // Enhance mover data with live WebSocket prices
+  const enhanceWithLive = useCallback((list: Mover[]): Mover[] => {
+    return list.map(m => {
+      const key = getUpstoxKey(m.symbol);
+      const tick = key ? quotes[key] : undefined;
+      if (!tick) return m;
+      const liveLtp = tick.ltp ?? m.ltp;
+      const liveChange = tick.change ?? m.change;
+      const liveChangePct = tick.changePct ?? m.changePct;
+      return { ...m, ltp: liveLtp, change: liveChange, changePct: liveChangePct };
+    });
+  }, [quotes]);
 
   if (loading) {
     return (
@@ -74,10 +113,14 @@ export function MoversPage() {
     );
   }
 
-  const gainers = data?.gainers ?? [];
-  const losers = data?.losers ?? [];
+  const gainers = enhanceWithLive(data?.gainers ?? []);
+  const losers = enhanceWithLive(data?.losers ?? []);
+  // Re-sort after live update to keep order correct
+  gainers.sort((a, b) => b.changePct - a.changePct);
+  losers.sort((a, b) => a.changePct - b.changePct);
   const list = activeTab === 'gainers' ? gainers : losers;
   const asOf = data?.asOf ? new Date(data.asOf) : null;
+  const isLive = wsStatus === 'upstox_connected';
 
   return (
     <div className="space-y-5">
@@ -92,6 +135,12 @@ export function MoversPage() {
             <h2 className="font-heading text-xl font-bold text-text-primary">
               Top Gainers &amp; Losers
             </h2>
+            {isLive && (
+              <span className="inline-flex items-center gap-0.5 ml-2 text-[10px] font-bold uppercase text-profit-green">
+                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse" />
+                LIVE
+              </span>
+            )}
           </div>
           <p className="text-sm text-text-secondary mt-1">
             Today's top 20 gainers and 20 losers scanned across {data?.totalScanned ?? 430}+ stocks.
@@ -199,6 +248,9 @@ export function MoversPage() {
             <div className="space-y-1">
               {list.map((m, idx) => {
                 const positive = m.changePct >= 0;
+                const key = getUpstoxKey(m.symbol);
+                const tick = key ? quotes[key] : undefined;
+                const isLiveTick = !!tick?.timestamp && Date.now() - tick.timestamp < 30000;
                 return (
                   <a
                     key={m.symbol}
@@ -223,6 +275,9 @@ export function MoversPage() {
                       <div className="flex items-center gap-2">
                         <p className="font-mono text-sm font-semibold text-text-primary truncate">{m.symbol}</p>
                         <span className="pill bg-bg-surface-alt text-text-secondary text-[10px]">{m.sector}</span>
+                        {isLiveTick && (
+                          <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                        )}
                       </div>
                       <p className="text-[11px] text-text-secondary truncate">{m.name}</p>
                     </div>
@@ -261,8 +316,8 @@ export function MoversPage() {
       {/* ============== DISCLAIMER ============== */}
       <div className="rounded-xl bg-bg-surface border border-border p-3">
         <p className="text-[11px] text-text-tertiary leading-relaxed">
-          <strong className="text-text-secondary">Note:</strong> Prices and changes are simulated for paper trading.
-          The list refreshes every 30 seconds and is stable for the current trading day.
+          <strong className="text-text-secondary">Note:</strong> Prices update in real-time via WebSocket.
+          Auto-refreshes every 15 seconds.
           Tap any stock to view its detailed chart, or use the Trade button to place an order.
         </p>
       </div>

@@ -13,6 +13,7 @@ import type { Order, Trade, Stock } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
 import { BasketPage } from '@/components/trading/BasketPage';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 
@@ -74,6 +75,14 @@ export function TradePage() {
     };
   }, [symbol, subscribe, unsubscribe]);
   const liveTick = symbol ? quotes[getUpstoxKey(symbol.toUpperCase()) ?? ''] : undefined;
+
+  /* ── Swipe gesture for tab navigation ── */
+  const TABS_ORDER = ['place', 'basket', 'orders'] as const;
+  const tabIndex = TABS_ORDER.indexOf(mainTab);
+  const swipeRef = useSwipeGesture({
+    onSwipeLeft: () => { if (tabIndex < TABS_ORDER.length - 1) setMainTab(TABS_ORDER[tabIndex + 1]); },
+    onSwipeRight: () => { if (tabIndex > 0) setMainTab(TABS_ORDER[tabIndex - 1]); },
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -371,6 +380,8 @@ export function TradePage() {
         </div>
       )}
 
+      {/* ============== SWIPABLE TAB CONTENT ============== */}
+      <div ref={swipeRef} className="min-h-[60vh]">
       {/* 24h retention notice — only on Orders tab */}
       {mainTab === 'orders' && (
         <div className="rounded-lg bg-tint-blue/60 border border-brand-primary/20 px-3 py-2 text-xs text-text-secondary flex items-center gap-2">
@@ -712,6 +723,7 @@ export function TradePage() {
           </div>
         </div>
       )}
+      </div>{/* end swipable tab content */}
     </div>
   );
 }
