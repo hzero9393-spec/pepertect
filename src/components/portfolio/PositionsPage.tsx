@@ -569,10 +569,61 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   }, [trades, activeTab]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Upstox reconnect banner (shown when token is expired) */}
       <UpstoxReconnectBanner status={wsStatus} />
 
+      {/* ============== LOADING SKELETON ============== */}
+      {loading ? (
+        <div className="space-y-3 animate-in fade-in duration-200">
+          {/* Tab skeleton */}
+          <div className="flex items-center gap-1 border-b border-border pb-0">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <div key={i} className="flex-1 h-10 rounded-t-lg bg-bg-surface-alt animate-pulse" />
+            ))}
+          </div>
+          {/* Hero P&L card skeleton */}
+          <div className="card-soft p-4 space-y-3 border-2 border-brand-primary/20">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <div className="h-3 w-20 rounded bg-bg-surface-alt animate-pulse" />
+                <div className="h-7 w-36 rounded bg-bg-surface-alt animate-pulse" />
+              </div>
+              <div className="space-y-2 text-right">
+                <div className="h-3 w-16 rounded bg-bg-surface-alt animate-pulse ml-auto" />
+                <div className="h-5 w-24 rounded bg-bg-surface-alt animate-pulse ml-auto" />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-lg bg-bg-base p-2 space-y-1.5">
+                  <div className="h-2 w-10 rounded bg-bg-surface-alt animate-pulse" />
+                  <div className="h-4 w-16 rounded bg-bg-surface-alt animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Position card skeletons */}
+          <div className="space-y-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="card-soft p-3 animate-pulse space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-lg bg-bg-surface-alt" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3.5 w-28 rounded bg-bg-surface-alt" />
+                    <div className="h-2.5 w-40 rounded bg-bg-surface-alt" />
+                  </div>
+                  <div className="text-right space-y-1.5">
+                    <div className="h-4 w-20 rounded bg-bg-surface-alt ml-auto" />
+                    <div className="h-2.5 w-12 rounded bg-bg-surface-alt ml-auto" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
       {/* ============== TAB SWITCHER: Stock | Index ============== */}
       <div className="flex items-center gap-1 border-b border-border">
         <button
@@ -990,6 +1041,8 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       )}
       </AnimatedTabContent>
       </div>{/* end swipable content */}
+        </>
+      )}
     </div>
   );
 }

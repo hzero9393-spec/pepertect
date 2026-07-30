@@ -546,11 +546,82 @@ export function OptionStrikeOverviewPage() {
         </div>
       </div>
 
-      {/* ============== LOADING / ERROR ============== */}
+      {/* ============== LOADING SKELETON / ERROR ============== */}
       {loading ? (
-        <div className="card-soft p-6 flex items-center justify-center">
-          <Loader2 className="h-4 w-4 animate-spin text-brand-primary" />
-          <span className="ml-2 text-xs text-text-secondary">Loading strike data…</span>
+        <div className="space-y-3 animate-in fade-in duration-200">
+          {/* Header skeleton */}
+          <div className="card-soft p-3">
+            <div className="flex items-center gap-3">
+              <div className="h-8 w-8 rounded-lg bg-bg-surface-alt animate-pulse" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-4 w-32 rounded bg-bg-surface-alt animate-pulse" />
+                <div className="h-2.5 w-48 rounded bg-bg-surface-alt animate-pulse" />
+              </div>
+              <div className="text-right space-y-1.5">
+                <div className="h-3 w-12 rounded bg-bg-surface-alt animate-pulse ml-auto" />
+                <div className="h-5 w-20 rounded bg-bg-surface-alt animate-pulse ml-auto" />
+              </div>
+            </div>
+          </div>
+          {/* CE/PE switcher skeleton */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <div className="h-9 rounded-lg bg-bg-surface-alt animate-pulse" />
+            <div className="h-9 rounded-lg bg-bg-surface-alt animate-pulse" />
+          </div>
+          {/* LTP card skeleton */}
+          <div className="card-soft p-3 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-16 rounded bg-bg-surface-alt animate-pulse" />
+              <div className="h-7 w-28 rounded bg-bg-surface-alt animate-pulse" />
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="h-2 w-8 rounded bg-bg-surface-alt animate-pulse" />
+                  <div className="h-4 w-12 rounded bg-bg-surface-alt animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Greeks skeleton */}
+          <div className="card-soft p-3 space-y-2">
+            <div className="h-3 w-24 rounded bg-bg-surface-alt animate-pulse" />
+            <div className="grid grid-cols-4 gap-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="space-y-1">
+                  <div className="h-2 w-10 rounded bg-bg-surface-alt animate-pulse" />
+                  <div className="h-4 w-14 rounded bg-bg-surface-alt animate-pulse" />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Breakeven skeleton */}
+          <div className="card-soft p-3 space-y-2">
+            <div className="h-3 w-28 rounded bg-bg-surface-alt animate-pulse" />
+            <div className="grid grid-cols-3 gap-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-lg border border-border bg-bg-surface p-2 space-y-1">
+                  <div className="h-2 w-12 rounded bg-bg-surface-alt animate-pulse mx-auto" />
+                  <div className="h-3 w-16 rounded bg-bg-surface-alt animate-pulse mx-auto" />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Order panel skeleton */}
+          <div className="card-soft p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="h-3 w-28 rounded bg-bg-surface-alt animate-pulse" />
+              <div className="h-4 w-20 rounded bg-bg-surface-alt animate-pulse" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="h-10 rounded-lg bg-bg-surface-alt animate-pulse" />
+              <div className="h-10 rounded-lg bg-bg-surface-alt animate-pulse" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="h-8 rounded-lg bg-bg-surface-alt animate-pulse" />
+              <div className="h-8 rounded-lg bg-bg-surface-alt animate-pulse" />
+            </div>
+          </div>
         </div>
       ) : error ? (
         <div className="card-soft p-4 flex flex-col items-center text-center">

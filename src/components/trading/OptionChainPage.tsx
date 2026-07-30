@@ -519,12 +519,12 @@ export function OptionChainPage() {
             </div>
           </div>
           {/* ============== SUMMARY STRIP SKELETON ============== */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="card-soft p-3 space-y-2">
-                <div className="h-3 w-16 rounded bg-bg-surface-alt animate-pulse" />
-                <div className="h-5 w-20 rounded bg-bg-surface-alt animate-pulse" />
-                <div className="h-2 w-12 rounded bg-bg-surface-alt animate-pulse" />
+              <div key={i} className="card-soft p-2.5 space-y-1.5">
+                <div className="h-2.5 w-14 rounded bg-bg-surface-alt animate-pulse" />
+                <div className="h-4 w-20 rounded bg-bg-surface-alt animate-pulse" />
+                <div className="h-2 w-10 rounded bg-bg-surface-alt animate-pulse" />
               </div>
             ))}
           </div>
@@ -538,9 +538,21 @@ export function OptionChainPage() {
           </div>
           {/* ============== TABLE SKELETON ============== */}
           <div className="card-soft p-0 overflow-hidden">
-            <div className="p-4 space-y-3">
-              {Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="h-8 w-full rounded bg-bg-surface-alt animate-pulse" />
+            <div className="py-2.5 border-b border-border bg-bg-surface-alt">
+              <div className="h-5 w-32 rounded-full bg-bg-surface-alt/60 animate-pulse mx-auto" />
+            </div>
+            <div className="p-0 space-y-0">
+              <div className="h-7 border-b border-border bg-bg-surface-alt/60 animate-pulse" />
+              {Array.from({ length: 15 }).map((_, i) => (
+                <div key={i} className="h-7 border-b border-border/50" style={{ animationDelay: `${i * 30}ms` }}>
+                  <div className="flex items-center h-full px-2 gap-1">
+                    <div className="flex-1 h-3 rounded bg-bg-surface-alt animate-pulse" />
+                    <div className="w-12 h-3 rounded bg-bg-surface-alt animate-pulse" />
+                    <div className="w-16 h-4 rounded bg-bg-surface-alt/80 animate-pulse mx-auto" />
+                    <div className="w-12 h-3 rounded bg-bg-surface-alt animate-pulse" />
+                    <div className="flex-1 h-3 rounded bg-bg-surface-alt animate-pulse" />
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -644,7 +656,7 @@ export function OptionChainPage() {
 
           {/* ============== SUMMARY STRIP ============== */}
           {data && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <SummaryCell
                 label="ATM Strike"
                 value={`₹${formatNumber(data.atm, 0)}`}
@@ -833,11 +845,11 @@ function SummaryCell({
   color: string;
 }) {
   return (
-    <div className="card-soft p-3">
+    <div className="card-soft p-2.5">
       <div className="flex items-start justify-between">
-        <p className="text-[11px] font-medium text-text-secondary">{label}</p>
+        <p className="text-[10px] font-medium text-text-secondary">{label}</p>
         <div className={cn('icon-tile-sm', tint)}>
-          <Icon className={cn('h-3.5 w-3.5', color)} />
+          <Icon className={cn('h-3 w-3', color)} />
         </div>
       </div>
       <p className="mt-1 font-mono text-base sm:text-lg font-bold tabular-nums text-text-primary">
