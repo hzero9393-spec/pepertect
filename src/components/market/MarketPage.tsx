@@ -6,8 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { EmptyState } from '@/components/shared/common';
 import { formatNumber, cn } from '@/lib/utils';
-import { Search, TrendingUp, TrendingDown, ChevronDown, Loader2 } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, ChevronDown, Loader2, Activity } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
+import { Sparkline } from '@/components/shared/Sparkline';
 import type { Stock, IndexData } from '@/types';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { useStocks, useIndices } from '@/hooks/useApi';
@@ -20,11 +21,35 @@ import { getUpstoxKey, INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 const INITIAL_PAGE_SIZE = 30;
 const PAGE_INCREMENT = 20;
 
+type FilterType = 'all' | 'gainers' | 'losers' | 'active';
+const FILTER_TABS: { key: FilterType; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'gainers', label: 'Gainers' },
+  { key: 'losers', label: 'Losers' },
+  { key: 'active', label: 'Most Active' },
+];
+
+/* Generate deterministic mini-series for an index sparkline */
+function getMiniSeries(symbol: string, positive: boolean): number[] {
+  let h = 0;
+  for (let i = 0; i < symbol.length; i++) h = (Math.imul(31, h) + symbol.charCodeAt(i)) | 0;
+  const data: number[] = [];
+  let v = 50;
+  for (let i = 0; i < 12; i++) {
+    const noise = (Math.abs(Math.sin(h + i)) * 12) - 6;
+    const trend = positive ? 1.5 : -1.5;
+    v = Math.max(5, Math.min(95, v + noise + trend));
+    data.push(v);
+  }
+  return data;
+}
+
 export function MarketPage() {
   const { token } = useAuthStore();
   const [search, setSearch] = useState('');
   const [visibleCount, setVisibleCount] = useState(INITIAL_PAGE_SIZE);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [filter, setFilter] = useState<FilterType>('all');
 
   // ─── React Query hooks (cached, deduplicated) ───
   const { data: stocks = [], isLoading: loading } = useStocks();
@@ -37,18 +62,37 @@ export function MarketPage() {
 
   /* Filter by search — when searching, ignore pagination and show all matches */
   const filtered = useMemo(() => {
-    if (!search) return stocks;
-    const q = search.toLowerCase();
-    return stocks.filter(
-      (s) =>
-        s.symbol.toLowerCase().includes(q) ||
-        s.name.toLowerCase().includes(q)
-    );
-  }, [stocks, search]);
+    let result = stocks;
+    if (search) {
+      const q = search.toLowerCase();
+      result = stocks.filter(
+        (s) =>
+          s.symbol.toLowerCase().includes(q) ||
+          s.name.toLowerCase().includes(q)
+      );
+    }
+    // Apply tab filter
+    if (filter === 'gainers') {
+      result = result.filter((s) => (s.changePct ?? 0) > 0);
+    } else if (filter === 'losers') {
+      result = result.filter((s) => (s.changePct ?? 0) < 0);
+    } else if (filter === 'active') {
+      result = [...result].sort((a, b) => Math.abs(b.changePct ?? 0) - Math.abs(a.changePct ?? 0)).slice(0, 20);
+    }
+    return result;
+  }, [stocks, search, filter]);
 
   /* Visible slice — only paginated when not searching */
   const visibleStocks = search ? filtered : filtered.slice(0, visibleCount);
   const hasMore = !search && filtered.length > visibleCount;
+
+  /* Market overview stats */
+  const marketStats = useMemo(() => {
+    const advances = stocks.filter((s) => (s.changePct ?? 0) > 0).length;
+    const declines = stocks.filter((s) => (s.changePct ?? 0) < 0).length;
+    const unchanged = stocks.length - advances - declines;
+    return { advances, declines, unchanged };
+  }, [stocks]);
 
   /* Subscribe to live ticks for visible stocks + all indices */
   useEffect(() => {
@@ -111,6 +155,7 @@ export function MarketPage() {
           const change = tick?.change ?? idx.change ?? 0;
           const changePct = tick?.changePct ?? idx.changePct ?? 0;
           const positive = change >= 0;
+          const miniData = getMiniSeries(idx.symbol, positive);
           return (
             <a
               key={idx.id}
@@ -119,7 +164,9 @@ export function MarketPage() {
             >
               <StockLogo symbol={idx.symbol} size="sm" isIndex rounded="md" />
               <div>
-                <p className="font-heading text-xs sm:text-sm font-semibold text-text-primary">{idx.symbol}</p>
+                <p className="font-heading text-xs sm:text-sm font-semibold text-text-primary">
+                  {idx.symbol} <span className="text-[9px] text-text-tertiary">NSE</span>
+                </p>
                 <p className={cn(
                   'font-mono text-base sm:text-lg font-bold tabular-nums',
                   tick ? 'text-text-primary' : 'text-text-secondary'
@@ -132,6 +179,7 @@ export function MarketPage() {
                 <p className={`font-mono text-[10px] sm:text-xs tabular-nums ${positive ? 'text-profit-green' : 'text-loss-red'}`}>
                   {positive ? '▲' : '▼'} {Math.abs(change).toFixed(2)} ({positive ? '+' : ''}{changePct.toFixed(2)}%)
                 </p>
+                <Sparkline data={miniData} width={60} height={24} color={positive ? 'var(--profit-green)' : 'var(--loss-red)'} />
               </div>
             </a>
           );
@@ -147,6 +195,49 @@ export function MarketPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        {FILTER_TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setFilter(tab.key)}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
+              filter === tab.key
+                ? 'bg-brand-primary text-white'
+                : 'bg-bg-surface-alt text-text-secondary hover:bg-border'
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Market Overview — Advances / Declines / Unchanged */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg bg-tint-green/50 p-3 text-center">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <TrendingUp className="h-3.5 w-3.5 text-profit-green" />
+          </div>
+          <p className="text-lg font-bold font-mono text-profit-green">{marketStats.advances}</p>
+          <p className="text-[10px] text-text-secondary">Advances</p>
+        </div>
+        <div className="rounded-lg bg-tint-red/50 p-3 text-center">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <TrendingDown className="h-3.5 w-3.5 text-loss-red" />
+          </div>
+          <p className="text-lg font-bold font-mono text-loss-red">{marketStats.declines}</p>
+          <p className="text-[10px] text-text-secondary">Declines</p>
+        </div>
+        <div className="rounded-lg bg-bg-surface-alt p-3 text-center">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <Activity className="h-3.5 w-3.5 text-text-tertiary" />
+          </div>
+          <p className="text-lg font-bold font-mono text-text-primary">{marketStats.unchanged}</p>
+          <p className="text-[10px] text-text-secondary">Unchanged</p>
+        </div>
       </div>
 
       {/* Stocks — 1 col mobile, 2 col tablet, 3 col desktop */}
@@ -197,7 +288,13 @@ export function MarketPage() {
                     <a
                       key={stock.id}
                       href={`/stock/${stock.symbol}`}
-                      className="rounded-lg border border-border-default bg-bg-base p-3 sm:p-4 transition-colors hover:bg-bg-surface-alt hover:border-brand-primary/30"
+                      className={cn(
+                        'rounded-lg border border-border-default bg-bg-base p-3 sm:p-4 transition-all duration-200',
+                        'hover:translate-y-[-2px] hover:shadow-md hover:shadow-brand-primary/5',
+                        'hover:bg-bg-surface-alt hover:border-brand-primary/30',
+                        'border-l-[3px]',
+                        positive ? 'border-l-profit-green/50' : 'border-l-loss-red/50'
+                      )}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
@@ -216,15 +313,18 @@ export function MarketPage() {
                         </div>
                       </div>
                       <div className="mt-2 sm:mt-3 flex items-end justify-between">
-                        <p className={cn(
-                          'font-mono text-base sm:text-lg font-bold tabular-nums',
-                          tick ? 'text-text-primary' : 'text-text-secondary'
-                        )}>
-                          ₹{formatNumber(ltp ?? 0)}
-                          {tick && (
-                            <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse align-middle" />
-                          )}
-                        </p>
+                        <div>
+                          <p className={cn(
+                            'font-mono text-base sm:text-lg font-bold tabular-nums',
+                            tick ? 'text-text-primary' : 'text-text-secondary'
+                          )}>
+                            ₹{formatNumber(ltp ?? 0)}
+                            {tick && (
+                              <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse align-middle" />
+                            )}
+                          </p>
+                          <p className="text-[10px] text-text-tertiary font-mono">Vol: {formatNumber(stock.volume || 0)}</p>
+                        </div>
                         <p className={`font-mono text-xs tabular-nums ${positive ? 'text-profit-green' : 'text-loss-red'}`}>
                           {positive ? '+' : ''}{changePct.toFixed(2)}%
                         </p>

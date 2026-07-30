@@ -7,7 +7,8 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import {
   X, Zap, LayoutDashboard, TrendingUp, BarChart3, Briefcase, Eye,
   GraduationCap, HelpCircle, Settings, User,
-  LogOut, ChevronRight, Sun, Moon, ListTree, Wallet,
+  LogOut, ChevronRight, Sun, Moon, ListTree, Wallet, Wallet as WalletIcon,
+  TrendingUp as TrendingUpIcon, BarChart3 as BarChart3Icon,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -21,12 +22,15 @@ interface DrawerItem {
   activeMatchers?: string[];
 }
 
-const PRIMARY_ITEMS: DrawerItem[] = [
+const TRADING_ITEMS: DrawerItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'market', label: 'Markets', icon: TrendingUp },
   { id: 'trade', label: 'Trade', icon: BarChart3 },
   { id: 'optionchain', label: 'Option Chain', icon: ListTree },
   { id: 'positions', label: 'Positions', icon: Briefcase, href: '/positions', activeMatchers: ['/positions', '/position'] },
+];
+
+const ANALYSIS_ITEMS: DrawerItem[] = [
   { id: 'history', label: 'Wallet History', icon: Wallet },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
 ];
@@ -136,13 +140,13 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
         {user && (
           <div className="border-b border-border-default p-4">
             <div className="flex items-center gap-3">
-              <Avatar className="h-10 w-10">
-                <AvatarFallback className="bg-brand-primary text-sm text-white">
+              <Avatar className="h-12 w-12">
+                <AvatarFallback className="bg-brand-primary text-base text-white">
                   {getInitials(user.name || user.email)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="truncate text-sm font-semibold text-text-primary">
+                <p className="truncate text-base font-bold text-text-primary">
                   {user.name || user.email}
                 </p>
                 <div className="flex items-center gap-2 mt-0.5">
@@ -154,11 +158,25 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
                   )}>
                     {user.tier}
                   </span>
-                  <span className="text-xs text-text-secondary">
-                    ₹{Number(user.virtualCapital).toLocaleString('en-IN')}
-                  </span>
                 </div>
               </div>
+            </div>
+            {/* Mini stats row */}
+            <div className="border-t border-border pt-2 mt-2 flex items-center gap-2 text-[11px] text-text-secondary">
+              <span className="flex items-center gap-1">
+                <WalletIcon className="h-3.5 w-3.5" />
+                Balance: ₹{Number(user.virtualCapital).toLocaleString('en-IN')}
+              </span>
+              <span className="text-border">|</span>
+              <span className="flex items-center gap-1 text-profit-green">
+                <TrendingUpIcon className="h-3.5 w-3.5" />
+                P&L: +₹0.00
+              </span>
+              <span className="text-border">|</span>
+              <span className="flex items-center gap-1">
+                <BarChart3Icon className="h-3.5 w-3.5" />
+                Trades: 0
+              </span>
             </div>
           </div>
         )}
@@ -166,22 +184,29 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-6">
           <div className="space-y-1">
-            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-              Trading
+            <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+              TRADING
             </p>
-            {PRIMARY_ITEMS.map(renderItem)}
+            {TRADING_ITEMS.map(renderItem)}
           </div>
 
           <div className="space-y-1">
-            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-              More
+            <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+              ANALYSIS
+            </p>
+            {ANALYSIS_ITEMS.map(renderItem)}
+          </div>
+
+          <div className="space-y-1">
+            <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+              MORE
             </p>
             {SECONDARY_ITEMS.map(renderItem)}
           </div>
 
           <div className="space-y-1">
-            <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-              Account
+            <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">
+              ACCOUNT
             </p>
             {ACCOUNT_ITEMS.map(renderItem)}
             {/* Theme toggle */}
@@ -201,7 +226,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
           </div>
         </nav>
 
-        {/* Logout */}
+        {/* Logout + Version */}
         <div className="border-t border-border-default p-3" style={{ paddingBottom: 'calc(1rem + var(--safe-bottom))' }}>
           <button
             onClick={() => {
@@ -213,6 +238,7 @@ export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
             <LogOut className="h-5 w-5 shrink-0" />
             <span>Logout</span>
           </button>
+          <p className="text-center text-[10px] text-text-tertiary mt-2">Pepertect v1.0.0</p>
         </div>
       </aside>
     </>

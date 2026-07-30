@@ -213,6 +213,10 @@
 /* ============================================================
    Base Styles
    ============================================================ */
+html {
+  scroll-behavior: smooth;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -220,6 +224,8 @@
 
   body {
     background-color: var(--bg-base);
+    background-image: radial-gradient(circle, var(--border) 0.5px, transparent 0.5px);
+    background-size: 24px 24px;
     color: var(--text-primary);
     font-family: var(--font-body);
     -webkit-font-smoothing: antialiased;
@@ -242,6 +248,40 @@
   [role="button"] {
     transition-property: background-color, color, border-color, box-shadow;
   }
+}
+
+.dark body {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.03) 0.5px, transparent 0.5px);
+}
+
+/* ============================================================
+   Page Transition Animation
+   ============================================================ */
+@keyframes pageFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: pageFadeIn 0.2s ease-out;
+}
+
+/* ============================================================
+   Focus Visible Ring Consistency
+   ============================================================ */
+:focus-visible {
+  outline: none;
+}
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--focus-ring, rgba(37, 99, 235, 0.35));
+  outline-offset: 2px;
+}
+
+/* ============================================================
+   Selection Color
+   ============================================================ */
+::selection {
+  background-color: var(--brand-primary);
+  color: white;
 }
 
 /* ============================================================
@@ -276,20 +316,23 @@
 /* ============================================================
    Custom Scrollbar
    ============================================================ */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: var(--text-secondary);
-  border-radius: 3px;
-  opacity: 0.4;
+  background: var(--border);
+  border-radius: 999px;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  opacity: 0.7;
+  background: var(--text-tertiary);
 }
 
 /* ============================================================
@@ -442,6 +485,10 @@
   border-radius: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
   border: 1px solid var(--border);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.card-soft:hover {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02);
 }
 .dark .card-soft {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
@@ -470,6 +517,10 @@
   height: 40px;
   border-radius: 10px;
   flex-shrink: 0;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.icon-tile:hover {
+  transform: translateY(-1px);
 }
 .icon-tile-sm {
   display: inline-flex;
@@ -506,10 +557,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+  box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35);
   margin-top: -22px; /* elevate above the bar */
   border: 4px solid var(--bg-surface);
-  transition: transform 150ms ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.fab-trade:hover {
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.45);
+  transform: translateY(-1px);
 }
 .fab-trade:active {
   transform: scale(0.95);
@@ -536,6 +591,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 .seg-tab[data-active='true'] {
   color: var(--text-primary);
@@ -605,9 +661,11 @@
 
 .hero-support {
   background: linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
+  background-image: linear-gradient(135deg, var(--tint-blue) 0%, transparent 60%), linear-gradient(135deg, #EFF6FF 0%, #F5F3FF 100%);
 }
 .dark .hero-support {
   background: linear-gradient(135deg, rgba(37, 99, 235, 0.10) 0%, rgba(139, 92, 246, 0.10) 100%);
+  background-image: linear-gradient(135deg, var(--tint-blue) 0%, transparent 60%), linear-gradient(135deg, rgba(37, 99, 235, 0.10) 0%, rgba(139, 92, 246, 0.10) 100%);
 }
 
 /* ============================================================

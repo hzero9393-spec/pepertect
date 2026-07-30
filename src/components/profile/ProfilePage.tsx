@@ -3,22 +3,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { useTheme } from 'next-themes';
 import { getInitials, formatINR, cn } from '@/lib/utils';
 import {
-  Mail, Phone, Calendar, Shield, Wallet, PieChart, Activity,
-  Trophy, Target, Lock, Bell, Globe, LogOut, ChevronRight,
-  Camera, Copy, Check, Monitor, ShieldCheck, BadgeCheck,
-  Clock, Store, Grid as GridIcon,
-  TrendingUp, Moon, Sun, X, Loader2, AlertTriangle,
-  Trash2, Zap,
-  Download, Smartphone,
+  Mail, Phone, Shield, Trophy, Target, Lock, Bell, Globe, LogOut, ChevronRight,
+  Camera, Copy, Check, ShieldCheck, BadgeCheck,
+  TrendingUp, X, Loader2, AlertTriangle,
+  Trash2, Download, Smartphone, BarChart3, ChevronDown,
+  RefreshCcw, UserX,
 } from 'lucide-react';
 import type { Portfolio } from '@/types';
 
 export function ProfilePage() {
   const { user, token, login, logout } = useAuthStore();
-  const { theme, setTheme } = useTheme();
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [saving, setSaving] = useState(false);
@@ -28,6 +24,11 @@ export function ProfilePage() {
   const [editOpen, setEditOpen] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
   const [language, setLanguage] = useState('en');
+
+  // Collapsible section state
+  const [securityOpen, setSecurityOpen] = useState(true);
+  const [preferencesOpen, setPreferencesOpen] = useState(true);
+  const [dangerOpen, setDangerOpen] = useState(false);
 
   // Avatar upload state
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -104,12 +105,10 @@ export function ProfilePage() {
     if (!file) return;
     setAvatarError(null);
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setAvatarError('Please select an image file');
       return;
     }
-    // Validate size (max 500KB to stay under data URL column limit)
     if (file.size > 500 * 1024) {
       setAvatarError('Image must be under 500KB. Please use a smaller image.');
       return;
@@ -117,7 +116,6 @@ export function ProfilePage() {
 
     setAvatarUploading(true);
     try {
-      // Convert to base64 data URL
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
@@ -132,7 +130,6 @@ export function ProfilePage() {
       });
       const data = await res.json();
       if (data.success) {
-        // Optimistic local update + sync to auth store
         setAvatarUrl(dataUrl);
         if (user) login({ ...user, avatar: dataUrl }, token!);
       } else {
@@ -143,7 +140,6 @@ export function ProfilePage() {
       setAvatarError('Network error during upload');
     } finally {
       setAvatarUploading(false);
-      // Reset input so the same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -170,13 +166,11 @@ export function ProfilePage() {
     }
   };
 
-  // ---- Logout All (removes account from ALL devices including current) ----
+  // ---- Logout All ----
   const handleLogoutAll = async () => {
     setLogoutAllSubmitting(true);
     setLogoutAllResult(null);
     try {
-      // includeCurrent=true → deletes ALL sessions (including this one),
-      // then we redirect to the landing page.
       const res = await fetch('/api/user/logout-all?includeCurrent=true', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
@@ -184,7 +178,6 @@ export function ProfilePage() {
       const data = await res.json();
       if (data.success) {
         setLogoutAllResult({ success: true, message: data.message || 'Account removed from all devices.' });
-        // Clear local auth state and redirect to landing page after brief pause
         setTimeout(() => {
           logout();
           window.location.href = '/';
@@ -199,40 +192,45 @@ export function ProfilePage() {
     }
   };
 
+  // ---- Reset portfolio ----
+  const [resetting, setResetting] = useState(false);
+  const handleResetPortfolio = async () => {
+    setResetting(true);
+    try {
+      const res = await fetch('/api/portfolio/reset', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPortfolio(null);
+      }
+    } catch {
+      // silent
+    } finally {
+      setResetting(false);
+    }
+  };
+
   const userId = user?.id ? `TRD${String(user.id).slice(-6).padStart(6, '0')}` : 'TRD000000';
-  const memberSince = user?.createdAt
-    ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
-    : 'Jul 2026';
-  const lastLogin = 'Today, 12:30 PM';
+  const joinDate = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+    : 'July 2025';
 
   const totalPnl = portfolio?.totalPnl ?? 0;
-  const usedMargin = portfolio?.investedAmount ?? 0;
-  const availableMargin = portfolio?.availableMargin ?? (user?.virtualCapital ?? 100000);
   const totalTrades = portfolio?.totalTrades ?? 0;
-  const wins = portfolio?.winningTrades ?? 0;
-  const losses = Math.max(0, totalTrades - wins);
   const winRate = portfolio?.winRate ?? 0;
-  const totalPnlPct = usedMargin > 0 ? (totalPnl / usedMargin) * 100 : 0;
-
-  const languageLabel = (() => {
-    const map: Record<string, string> = {
-      en: 'English', hi: 'हिन्दी', mr: 'मराठी', ta: 'தமிழ்',
-      te: 'తెలుగు', bn: 'বাংলা', gu: 'ગુજરાતી', kn: 'ಕನ್ನಡ',
-    };
-    return map[language] || 'English';
-  })();
 
   return (
-    <div className="space-y-4">
+    <div className="page-enter space-y-4">
 
-      {/* ============== PROFILE HEADER CARD ============== */}
-      <div className="card-soft p-4">
-        <div className="flex items-start gap-4">
-          {/* Avatar with camera overlay (now functional) */}
-          <div className="relative shrink-0">
+      {/* ============== 1. PROFILE CARD ============== */}
+      <div className="rounded-2xl bg-bg-surface border border-border p-5 md:p-6">
+        <div className="flex flex-col items-center text-center">
+          {/* Centered Avatar with camera overlay */}
+          <div className="relative">
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand-primary text-white text-2xl font-bold overflow-hidden">
               {avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={avatarUrl}
                   alt={user?.name || 'avatar'}
@@ -245,17 +243,16 @@ export function ProfilePage() {
             <button
               onClick={handleAvatarClick}
               disabled={avatarUploading}
-              className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-white border-2 border-border shadow-sm hover:bg-bg-surface-alt transition-colors disabled:opacity-50"
+              className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-brand-primary text-white shadow-lg hover:bg-brand-primary-hover transition-colors disabled:opacity-50"
               aria-label="Change profile picture"
               type="button"
             >
               {avatarUploading ? (
-                <Loader2 className="h-3.5 w-3.5 text-brand-primary animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Camera className="h-3.5 w-3.5 text-text-secondary" />
+                <Camera className="h-4 w-4" />
               )}
             </button>
-            {/* Hidden file input — triggered by camera button */}
             <input
               ref={fileInputRef}
               type="file"
@@ -265,203 +262,273 @@ export function ProfilePage() {
             />
           </div>
 
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
-              <h2 className="font-heading text-xl font-bold text-text-primary truncate">
-                {user?.name || 'Demo User'}
-              </h2>
-              <BadgeCheck className="h-5 w-5 text-profit-green shrink-0" />
-              {twoFactorEnabled && (
-                <span title="2FA enabled">
-                  <ShieldCheck className="h-4 w-4 text-profit-green shrink-0" />
-                </span>
-              )}
-            </div>
-
-            {/* Email + copy */}
+          {/* Avatar error / remove link */}
+          {avatarError && (
+            <p className="mt-2 text-xs text-loss-red font-medium">{avatarError}</p>
+          )}
+          {avatarUrl && !avatarUploading && (
             <button
-              onClick={() => copyToClipboard(user?.email || '', 'email')}
-              className="mt-1 flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+              onClick={handleAvatarRemove}
+              className="mt-1.5 text-[11px] text-text-tertiary hover:text-loss-red font-medium"
             >
-              <Mail className="h-3.5 w-3.5" />
-              <span className="truncate">{user?.email || 'demo@pepertect.com'}</span>
-              {copiedField === 'email' ? (
-                <Check className="h-3 w-3 text-profit-green" />
-              ) : (
-                <Copy className="h-3 w-3" />
-              )}
+              Remove photo
             </button>
+          )}
 
-            {/* User ID + copy */}
-            <button
-              onClick={() => copyToClipboard(userId, 'uid')}
-              className="mt-1 flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
-            >
-              <span className="font-mono">{userId}</span>
-              {copiedField === 'uid' ? (
-                <Check className="h-3 w-3 text-profit-green" />
-              ) : (
-                <Copy className="h-3 w-3" />
-              )}
-            </button>
-
-            {/* ============== PLAN BADGE ============== */}
-            <div className="mt-3 flex items-center gap-2 flex-wrap">
-              <span className="pill bg-tint-blue text-brand-primary">Free Account</span>
-              <span className="pill bg-bg-surface-alt text-text-secondary">{user?.role || 'USER'}</span>
-              <span className="pill bg-tint-green text-profit-green inline-flex items-center gap-1">
-                <ShieldCheck className="h-3 w-3" />
-                KYC Verified
+          {/* Name */}
+          <div className="mt-3 flex items-center justify-center gap-1.5">
+            <h2 className="text-xl font-bold text-text-primary">
+              {user?.name || 'Demo User'}
+            </h2>
+            <BadgeCheck className="h-5 w-5 text-profit-green shrink-0" />
+            {twoFactorEnabled && (
+              <span title="2FA enabled">
+                <ShieldCheck className="h-4 w-4 text-profit-green shrink-0" />
               </span>
-            </div>
+            )}
           </div>
 
+          {/* Email */}
+          <button
+            onClick={() => copyToClipboard(user?.email || '', 'email')}
+            className="mt-1 flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            <span className="truncate">{user?.email || 'demo@pepertect.com'}</span>
+            {copiedField === 'email' ? (
+              <Check className="h-3 w-3 text-profit-green" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </button>
+
+          {/* User ID */}
+          <button
+            onClick={() => copyToClipboard(userId, 'uid')}
+            className="mt-0.5 flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+          >
+            <span className="font-mono">{userId}</span>
+            {copiedField === 'uid' ? (
+              <Check className="h-3 w-3 text-profit-green" />
+            ) : (
+              <Copy className="h-3 w-3" />
+            )}
+          </button>
+
+          {/* Member Since */}
+          <p className="mt-1.5 text-xs text-text-tertiary">Joined {joinDate}</p>
+
+          {/* Account Tier Badge */}
+          <div className="mt-3 flex items-center gap-2 flex-wrap justify-center">
+            <span className="pill bg-tint-blue text-brand-primary">Free Account</span>
+            <span className="pill bg-bg-surface-alt text-text-secondary">{user?.role || 'USER'}</span>
+            <span className="pill bg-tint-green text-profit-green inline-flex items-center gap-1">
+              <ShieldCheck className="h-3 w-3" />
+              KYC Verified
+            </span>
+          </div>
+
+          {/* Edit Profile Button */}
           <button
             onClick={() => setEditOpen(!editOpen)}
-            className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-semibold text-text-primary hover:bg-bg-surface-alt"
+            className="mt-4 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-primary hover:bg-bg-surface-alt transition-colors"
           >
             Edit Profile
           </button>
         </div>
 
-        {/* Avatar error / remove link */}
-        {avatarError && (
-          <p className="mt-2 text-xs text-loss-red font-medium">{avatarError}</p>
-        )}
-        {avatarUrl && !avatarUploading && (
-          <button
-            onClick={handleAvatarRemove}
-            className="mt-2 text-[11px] text-text-tertiary hover:text-loss-red font-medium"
-          >
-            Remove photo
-          </button>
-        )}
-
         {/* Edit form (collapsible) */}
-        {editOpen && (
-          <div className="mt-4 border-t border-border pt-4 space-y-3">
-            <div>
-              <label className="text-xs font-medium text-text-secondary">Full Name</label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1 w-full h-11 px-3 rounded-lg border border-border bg-bg-surface-alt text-sm font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-                placeholder="Enter your name"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-text-secondary">Phone</label>
-              <input
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="mt-1 w-full h-11 px-3 rounded-lg border border-border bg-bg-surface-alt text-sm font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-                placeholder="+91 XXXXX XXXXX"
-              />
-            </div>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="w-full h-11 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover disabled:opacity-50"
+        <AnimatePresence>
+          {editOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
             >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-            {message && (
-              <p className={cn('text-xs text-center font-medium', message.includes('success') ? 'text-profit-green' : 'text-loss-red')}>
-                {message}
-              </p>
-            )}
+              <div className="mt-4 border-t border-border pt-4 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-text-secondary">Full Name</label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="mt-1 w-full h-11 px-3 rounded-lg border border-border bg-bg-surface-alt text-sm font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                    placeholder="Enter your name"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-text-secondary">Phone</label>
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="mt-1 w-full h-11 px-3 rounded-lg border border-border bg-bg-surface-alt text-sm font-medium text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                    placeholder="+91 XXXXX XXXXX"
+                  />
+                </div>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="w-full h-11 rounded-lg bg-brand-primary text-white text-sm font-semibold hover:bg-brand-primary-hover disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+                {message && (
+                  <p className={cn('text-xs text-center font-medium', message.includes('success') ? 'text-profit-green' : 'text-loss-red')}>
+                    {message}
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ============== 2. ACCOUNT STATS ============== */}
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard
+          icon={BarChart3}
+          tint="bg-tint-blue"
+          color="text-brand-primary"
+          label="Total Trades"
+          value={String(totalTrades)}
+        />
+        <StatCard
+          icon={Target}
+          tint="bg-tint-green"
+          color="text-profit-green"
+          label="Win Rate"
+          value={`${winRate.toFixed(1)}%`}
+        />
+        <StatCard
+          icon={Trophy}
+          tint="bg-tint-yellow"
+          color="text-accent-gold"
+          label="Best Trade"
+          value="—"
+        />
+        <StatCard
+          icon={TrendingUp}
+          tint="bg-tint-purple"
+          color={cn(totalPnl >= 0 ? 'text-profit-green' : 'text-loss-red')}
+          label="Total P&L"
+          value={formatINR(totalPnl)}
+        />
+      </div>
+
+      {/* ============== 3. SECURITY SECTION ============== */}
+      <CollapsibleSection
+        icon={Shield}
+        title="Security"
+        open={securityOpen}
+        onToggle={() => setSecurityOpen(!securityOpen)}
+      >
+        <SettingRow
+          icon={ShieldCheck}
+          label="Two-Factor Authentication"
+          value={twoFactorEnabled ? 'Enabled' : 'Disabled'}
+          valueColor={twoFactorEnabled ? 'text-profit-green' : 'text-text-secondary'}
+          href="/settings/2fa"
+        />
+        <SettingRow
+          icon={Lock}
+          label="Change Password"
+          href="/settings/change-password"
+        />
+        <SettingRow
+          icon={Lock}
+          label="Login Activity"
+          href="/settings/login-activity"
+        />
+        <button
+          type="button"
+          onClick={() => setLogoutAllOpen(true)}
+          className="flex items-center gap-3 px-1 py-3 border-t border-border w-full text-left"
+        >
+          <div className="icon-tile-sm bg-tint-red">
+            <LogOut className="h-4 w-4 text-loss-red" />
           </div>
-        )}
-      </div>
+          <span className="text-sm font-medium text-loss-red">Logout All Devices</span>
+          <ChevronRight className="ml-auto h-4 w-4 text-loss-red" />
+        </button>
+      </CollapsibleSection>
 
-      {/* ============== ACCOUNT DETAILS ============== */}
-      <div>
-        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Account Details</h3>
-        <div className="card-soft p-1">
-          <DetailRow icon={Store} label="Broker" value="Paper Trading" />
-          <DetailRow icon={Globe} label="Timezone" value="IST (UTC +5:30)" />
-          <DetailRow icon={GridIcon} label="Account Type" value="Demo" />
-          <DetailRow icon={Clock} label="Last Login" value={lastLogin} />
-          <DetailRow icon={Globe} label="Currency" value="INR" />
-          <DetailRow icon={Calendar} label="Member Since" value={memberSince} last />
-        </div>
-      </div>
+      {/* ============== 4. PREFERENCES SECTION ============== */}
+      <CollapsibleSection
+        icon={Bell}
+        title="Preferences"
+        open={preferencesOpen}
+        onToggle={() => setPreferencesOpen(!preferencesOpen)}
+      >
+        <SettingRow
+          icon={Bell}
+          label="Notification Settings"
+          href="/settings/notifications"
+        />
+        <SettingRow
+          icon={Globe}
+          label="Language"
+          value={(() => {
+            const map: Record<string, string> = {
+              en: 'English', hi: 'हिन्दी', mr: 'मराठी', ta: 'தமிழ்',
+              te: 'తెలుగు', bn: 'বাংলা', gu: 'ગુજરાતી', kn: 'ಕನ್ನಡ',
+            };
+            return map[language] || 'English';
+          })()}
+          href="/settings/language"
+        />
+        <SettingRow
+          icon={Phone}
+          label="Remove from this device"
+          value="Sign out only here"
+          danger
+          onClick={logout}
+        />
+      </CollapsibleSection>
 
-      {/* ============== QUICK ACTIONS (all wired to real pages) ============== */}
-      <div>
-        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Quick Actions</h3>
-        <div className="grid grid-cols-4 gap-2">
-          <QuickAction
-            icon={Lock}
-            label="Change Password"
-            href="/settings/change-password"
-            tint="bg-tint-blue"
-            color="text-brand-primary"
-          />
-          <QuickAction
-            icon={Shield}
-            label={twoFactorEnabled ? '2FA Enabled' : 'Enable 2FA'}
-            href="/settings/2fa"
-            tint={twoFactorEnabled ? 'bg-tint-green' : 'bg-tint-green'}
-            color="text-profit-green"
-            badge={twoFactorEnabled ? 'Active' : 'Recommended'}
-          />
-          <QuickAction
-            icon={Monitor}
-            label="Login Activity"
-            href="/settings/login-activity"
-            tint="bg-tint-purple"
-            color="text-info-purple"
-          />
-          <QuickActionButton
-            icon={LogOut}
-            label="Logout All Devices"
-            tint="bg-tint-red"
-            color="text-loss-red"
-            onClick={() => setLogoutAllOpen(true)}
-          />
+      {/* ============== 5. DANGER ZONE ============== */}
+      <CollapsibleSection
+        icon={AlertTriangle}
+        title="Danger Zone"
+        open={dangerOpen}
+        onToggle={() => setDangerOpen(!dangerOpen)}
+        danger
+      >
+        <div className="px-1">
+          <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
+            <div className="flex items-center gap-3">
+              <div className="icon-tile-sm bg-tint-red">
+                <UserX className="h-4 w-4 text-loss-red" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-text-primary">Delete Account</p>
+                <p className="text-xs text-text-secondary">Permanently delete your account and all data</p>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-text-tertiary" />
+          </div>
+          <button
+            type="button"
+            onClick={handleResetPortfolio}
+            disabled={resetting}
+            className="flex items-center justify-between py-3 w-full text-left"
+          >
+            <div className="flex items-center gap-3">
+              <div className="icon-tile-sm bg-tint-red">
+                <RefreshCcw className={cn('h-4 w-4 text-loss-red', resetting && 'animate-spin')} />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-text-primary">Reset Portfolio</p>
+                <p className="text-xs text-text-secondary">Reset all positions, orders, and balance</p>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-text-tertiary" />
+          </button>
         </div>
-      </div>
+      </CollapsibleSection>
 
-      {/* ============== PREFERENCES ============== */}
-      <div>
-        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Preferences</h3>
-        <div className="card-soft p-1">
-          <PreferenceToggle
-            icon={theme === 'dark' ? Moon : Sun}
-            label="Dark Mode"
-            on={theme === 'dark'}
-            onToggle={() => mounted && setTheme(theme === 'dark' ? 'light' : 'dark')}
-          />
-          <PreferenceRow
-            icon={Bell}
-            label="Notification Settings"
-            href="/settings/notifications"
-          />
-          <PreferenceRow
-            icon={Globe}
-            label="Language"
-            value={languageLabel}
-            href="/settings/language"
-          />
-          <PreferenceRow
-            icon={Monitor}
-            label="Remove from this device"
-            value="Sign out only here"
-            href="#"
-            danger
-            onClick={logout}
-          />
-          <PreferenceRow
-            icon={LogOut}
-            label="Logout All Devices"
-            href="#"
-            danger
-            onClick={() => setLogoutAllOpen(true)}
-            last
-          />
-        </div>
-      </div>
+      {/* ============== INSTALL APP BUTTON ============== */}
+      <InstallAppButton />
 
       {/* ============== LOGOUT ALL MODAL ============== */}
       {logoutAllOpen && (
@@ -470,7 +537,7 @@ export function ProfilePage() {
           onClick={() => !logoutAllSubmitting && setLogoutAllOpen(false)}
         >
           <div
-            className="w-full max-w-sm card-soft p-5"
+            className="w-full max-w-sm rounded-2xl bg-bg-surface border border-border p-5 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-3">
@@ -541,211 +608,153 @@ export function ProfilePage() {
           </div>
         </div>
       )}
-
-      {/* ============== INSTALL APP BUTTON ============== */}
-      <InstallAppButton />
     </div>
   );
 }
 
-function SummaryMini({
+/* ============================================================
+   Stat Card (for Account Stats grid)
+   ============================================================ */
+function StatCard({
   icon: Icon,
   tint,
   color,
   label,
   value,
-  subtext,
 }: {
   icon: React.ElementType;
   tint: string;
   color: string;
   label: string;
-  value: React.ReactNode;
-  subtext?: string;
+  value: string;
 }) {
   return (
-    <div className="card-soft p-3">
-      <div className="flex items-center gap-2">
+    <div className="rounded-xl bg-bg-surface border border-border p-4">
+      <div className="flex items-center gap-2.5">
         <div className={cn('icon-tile-sm', tint)}>
           <Icon className={cn('h-4 w-4', color)} />
         </div>
-        <p className="text-[11px] font-medium text-text-secondary">{label}</p>
+        <p className="text-xs font-medium text-text-secondary">{label}</p>
       </div>
-      <p className="mt-2 font-mono text-base font-bold tabular-nums text-text-primary">{value}</p>
-      {subtext && <p className="text-[10px] text-text-tertiary mt-0.5">{subtext}</p>}
+      <p className={cn('mt-2 font-mono text-lg font-bold tabular-nums', color)}>{value}</p>
     </div>
   );
 }
 
-function DetailRow({
+/* ============================================================
+   Collapsible Section
+   ============================================================ */
+function CollapsibleSection({
   icon: Icon,
-  label,
-  value,
-  last,
-}: {
-  icon: React.ElementType;
-  label: string;
-  value: string;
-  last?: boolean;
-}) {
-  return (
-    <div className={cn('flex items-center gap-3 px-3 py-3', !last && 'border-b border-border')}>
-      <div className="icon-tile-sm bg-bg-surface-alt">
-        <Icon className="h-4 w-4 text-text-secondary" />
-      </div>
-      <span className="text-sm text-text-secondary">{label}</span>
-      <span className="ml-auto text-sm font-semibold text-text-primary">{value}</span>
-    </div>
-  );
-}
-
-function QuickAction({
-  icon: Icon,
-  label,
-  href,
-  tint,
-  color,
-  badge,
-}: {
-  icon: React.ElementType;
-  label: string;
-  href: string;
-  tint: string;
-  color: string;
-  badge?: string;
-}) {
-  return (
-    <a href={href} className="card-soft p-3 flex flex-col items-center gap-2 hover:shadow-md transition-shadow">
-      <div className={cn('icon-tile', tint)}>
-        <Icon className={cn('h-5 w-5', color)} />
-      </div>
-      <span className="text-[11px] font-medium text-text-primary text-center leading-tight">{label}</span>
-      {badge && <span className="text-[9px] font-semibold text-profit-green">{badge}</span>}
-    </a>
-  );
-}
-
-// Same shape as QuickAction but rendered as a <button> (for actions that don't navigate).
-function QuickActionButton({
-  icon: Icon,
-  label,
-  tint,
-  color,
-  onClick,
-}: {
-  icon: React.ElementType;
-  label: string;
-  tint: string;
-  color: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="card-soft p-3 flex flex-col items-center gap-2 hover:shadow-md transition-shadow"
-      type="button"
-    >
-      <div className={cn('icon-tile', tint)}>
-        <Icon className={cn('h-5 w-5', color)} />
-      </div>
-      <span className="text-[11px] font-medium text-text-primary text-center leading-tight">{label}</span>
-    </button>
-  );
-}
-
-function PreferenceToggle({
-  icon: Icon,
-  label,
-  on,
+  title,
+  open,
   onToggle,
+  danger,
+  children,
 }: {
   icon: React.ElementType;
-  label: string;
-  on: boolean;
+  title: string;
+  open: boolean;
   onToggle: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-3 px-3 py-3 border-b border-border">
-      <div className="icon-tile-sm bg-bg-surface-alt">
-        <Icon className="h-4 w-4 text-text-secondary" />
-      </div>
-      <span className="text-sm font-medium text-text-primary">{label}</span>
+    <div className={cn(
+      'rounded-xl bg-bg-surface border',
+      danger ? 'border-loss-red/20' : 'border-border'
+    )}>
       <button
-        className="toggle-track ml-auto"
-        data-on={on}
+        type="button"
         onClick={onToggle}
-        aria-label={`Toggle ${label}`}
-        aria-pressed={on}
+        className="flex items-center gap-2.5 w-full px-4 py-3.5"
       >
-        <span className="toggle-thumb" />
+        <div className={cn('icon-tile-sm', danger ? 'bg-tint-red' : 'bg-bg-surface-alt')}>
+          <Icon className={cn('h-4 w-4', danger ? 'text-loss-red' : 'text-text-secondary')} />
+        </div>
+        <span className={cn('text-sm font-semibold', danger ? 'text-loss-red' : 'text-text-primary')}>
+          {title}
+        </span>
+        <ChevronDown className={cn(
+          'ml-auto h-4 w-4 text-text-tertiary transition-transform duration-200',
+          open && 'rotate-180'
+        )} />
       </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="px-4 pb-3">
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function PreferenceRow({
+/* ============================================================
+   Setting Row (icon + label + value/ChevronRight)
+   ============================================================ */
+function SettingRow({
   icon: Icon,
   label,
   value,
+  valueColor,
   href,
   danger,
   onClick,
-  last,
 }: {
   icon: React.ElementType;
   label: string;
   value?: string;
-  href: string;
+  valueColor?: string;
+  href?: string;
   danger?: boolean;
   onClick?: () => void;
-  last?: boolean;
 }) {
-  return (
-    <a
-      href={href}
-      onClick={onClick}
-      className={cn(
-        'flex items-center gap-3 px-3 py-3',
-        !last && 'border-b border-border',
-        danger ? 'text-loss-red' : 'text-text-primary'
-      )}
-    >
+  const content = (
+    <div className={cn(
+      'flex items-center gap-3 py-3 border-b border-border last:border-0',
+      danger && 'text-loss-red'
+    )}>
       <div className={cn('icon-tile-sm', danger ? 'bg-tint-red' : 'bg-bg-surface-alt')}>
         <Icon className={cn('h-4 w-4', danger ? 'text-loss-red' : 'text-text-secondary')} />
       </div>
       <span className={cn('text-sm font-medium', danger ? 'text-loss-red' : 'text-text-primary')}>{label}</span>
-      {value && <span className="ml-auto text-xs text-text-secondary">{value}</span>}
-      {!value && <ChevronRight className={cn('ml-auto h-4 w-4', danger ? 'text-loss-red' : 'text-text-tertiary')} />}
-    </a>
-  );
-}
-
-// ─── TimeUnit Component for Countdown Timer ───────────────
-function TimeUnit({ 
-  value, 
-  label, 
-  isUrgent = false,
-  pulse = false 
-}: { 
-  value: number; 
-  label: string; 
-  isUrgent?: boolean;
-  pulse?: boolean;
-}) {
-  return (
-    <div className="flex flex-col items-center min-w-[44px]">
-      <span className={cn(
-        "font-mono text-xl sm:text-2xl font-bold tabular-nums leading-none",
-        isUrgent ? "text-loss-red" : "text-text-primary",
-        pulse && "animate-pulse"
-      )}>
-        {String(value).padStart(2, '0')}{label}
-      </span>
+      {value && (
+        <span className={cn('ml-auto text-xs', valueColor || 'text-text-secondary')}>{value}</span>
+      )}
+      {!value && (
+        <ChevronRight className={cn('ml-auto h-4 w-4', danger ? 'text-loss-red' : 'text-text-tertiary')} />
+      )}
     </div>
   );
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="w-full text-left">
+        {content}
+      </button>
+    );
+  }
+
+  if (href) {
+    return <a href={href}>{content}</a>;
+  }
+
+  return content;
 }
 
-// ─── Install App Button Component ──────────────────────────
+/* ============================================================
+   Install App Button Component
+   ============================================================ */
 function InstallAppButton() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
@@ -753,17 +762,14 @@ function InstallAppButton() {
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
-    // Check if iOS
-    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     setIsIOS(ios);
 
-    // Check if already installed
     if (localStorage.getItem('pepertect_app_installed')) {
       setInstalled(true);
     }
 
-    // Listen for install prompt
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
@@ -781,10 +787,8 @@ function InstallAppButton() {
     };
   }, []);
 
-  // Modal state for install instructions
   const [showInstallModal, setShowInstallModal] = useState(false);
 
-  // Detect platform for install instructions
   const getPlatform = (): 'ios' | 'android' | 'desktop' => {
     if (isIOS) return 'ios';
     if (/Android/i.test(navigator.userAgent)) return 'android';
@@ -794,9 +798,7 @@ function InstallAppButton() {
 
   const handleInstall = async () => {
     setInstalling(true);
-    
     if (deferredPrompt) {
-      // Native install prompt available (Chrome/Android)
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
@@ -805,14 +807,11 @@ function InstallAppButton() {
       }
       setDeferredPrompt(null);
     } else {
-      // Show instructions modal based on platform
       setShowInstallModal(true);
     }
-    
     setInstalling(false);
   };
 
-  // Always show the button now (don't hide if no prompt)
   if (installed) {
     return (
       <div className="rounded-xl border border-profit-green/30 bg-tint-green/10 p-4">
@@ -842,7 +841,6 @@ function InstallAppButton() {
               {isIOS ? 'Tap Share → "Add to Home Screen"' : 'Add to home screen for quick access'}
             </p>
           </div>
-          
           <button
             onClick={handleInstall}
             disabled={installing}
@@ -861,7 +859,6 @@ function InstallAppButton() {
             )}
           </button>
         </div>
-        
         {!deferredPrompt && !isIOS && (
           <p className="mt-2 text-[11px] text-text-tertiary text-center">
             💡 Click Install for step-by-step instructions
@@ -869,7 +866,6 @@ function InstallAppButton() {
         )}
       </div>
 
-      {/* Install Instructions Modal */}
       {showInstallModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setShowInstallModal(false)}>
           <motion.div
@@ -878,7 +874,6 @@ function InstallAppButton() {
             className="bg-background rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-border"
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
             <div className="relative p-5 pb-4 bg-gradient-to-r from-brand-primary to-brand-primary-hover text-white">
               <button
                 onClick={() => setShowInstallModal(false)}
@@ -896,8 +891,6 @@ function InstallAppButton() {
                 </div>
               </div>
             </div>
-
-            {/* Instructions */}
             <div className="p-5 space-y-4">
               {platform === 'ios' ? (
                 <div className="p-4 rounded-xl bg-bg-surface-alt border border-border">
@@ -954,7 +947,6 @@ function InstallAppButton() {
                   </ol>
                 </div>
               )}
-
               <button
                 onClick={() => setShowInstallModal(false)}
                 className="w-full py-3 rounded-xl bg-brand-primary text-white font-semibold text-sm hover:bg-brand-primary-hover transition-colors"

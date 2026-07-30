@@ -9,7 +9,6 @@ import {
   TrendingDown,
   Layers,
   Clock,
-  ChevronDown,
   Search,
   X,
 } from 'lucide-react';
@@ -698,24 +697,30 @@ export function OptionChainPage() {
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-medium text-text-secondary">Expiry:</span>
-                  <div className="relative">
-                    <select
-                      value={expiry ?? data.expiry}
-                      onChange={(e) => setExpiry(e.target.value)}
-                      className="appearance-none bg-bg-surface-alt border border-border rounded-md pl-3 pr-8 py-1.5 text-xs font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
-                    >
-                      {data.expiries.map((exp) => {
-                        // Look up label via the calendar (mirrors API logic on client)
-                        const label = getExpiryLabel(exp);
-                        return (
-                          <option key={exp} value={exp}>
-                            {formatExpiry(exp)}{label ? ` · ${label}` : ''}
-                          </option>
-                        );
-                      })}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                    {data.expiries.map((exp) => {
+                      const isActive = exp === (expiry ?? data.expiry);
+                      const label = getExpiryLabel(exp) || formatExpiry(exp);
+                      const isWeekly = getExpiryLabel(exp)?.includes('W');
+                      return (
+                        <button
+                          key={exp}
+                          onClick={() => setExpiry(exp)}
+                          className={cn(
+                            'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap',
+                            isActive
+                              ? 'bg-brand-primary text-white shadow-sm'
+                              : 'bg-bg-surface-alt text-text-secondary hover:bg-border'
+                          )}
+                        >
+                          {label}
+                          {isWeekly && <span className="ml-1 text-[9px] opacity-70">W</span>}
+                        </button>
+                      );
+                    })}
                   </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
                   {/* Current selection badge — WEEKLY / MONTHLY */}
                   {data.expiryType && (
                     <span
@@ -729,15 +734,10 @@ export function OptionChainPage() {
                       {data.expiryType === 'MONTHLY' ? 'MONTHLY' : 'WEEKLY'}
                     </span>
                   )}
-                  {data.expiryLabel && (
-                    <span className="text-[11px] text-text-tertiary hidden sm:inline">
-                      {data.expiryLabel}
-                    </span>
-                  )}
+                  <p className="text-[11px] text-text-tertiary hidden sm:block">
+                    {data.dte} day{data.dte === 1 ? '' : 's'} to expiry
+                  </p>
                 </div>
-                <p className="text-[11px] text-text-tertiary hidden sm:block">
-                  {data.dte} day{data.dte === 1 ? '' : 's'} to expiry
-                </p>
               </div>
             </div>
           )}
@@ -875,6 +875,7 @@ function OptionChainTable({
   const atmRowRef = useRef<HTMLTableRowElement | null>(null);
   const scrolledRef = useRef(false);
   const [viewMode, setViewMode] = useState<'LTP' | 'OI'>('LTP');
+  const [chainView, setChainView] = useState<'compact' | 'detailed'>('detailed');
 
   /* Auto-scroll the ATM strike into view once on initial render.
      We use a flag so that switching expiry re-triggers the scroll. */
@@ -900,8 +901,17 @@ function OptionChainTable({
   // Find where the spot price line should be inserted (between which two strikes)
   const spotLineInsertIndex = strikes.findIndex((row) => row.strikePrice > effectiveSpot);
 
+  // Max OI for horizontal bars
+  const maxCeOi = Math.max(...strikes.map((r) => r.ce.oi), 1);
+  const maxPeOi = Math.max(...strikes.map((r) => r.pe.oi), 1);
+
   return (
     <div className="overflow-x-auto">
+      {/* Mobile compact/detailed toggle */}
+      <div className="flex sm:hidden gap-1.5 mb-0 bg-bg-surface-alt p-1 border-b border-border">
+        <button onClick={() => setChainView('compact')} className={cn('flex-1 rounded-md py-1.5 text-xs font-semibold', chainView === 'compact' ? 'bg-bg-surface shadow-sm text-text-primary' : 'text-text-secondary')}>Compact</button>
+        <button onClick={() => setChainView('detailed')} className={cn('flex-1 rounded-md py-1.5 text-xs font-semibold', chainView === 'detailed' ? 'bg-bg-surface shadow-sm text-text-primary' : 'text-text-secondary')}>Detailed</button>
+      </div>
       {/* LTP / OI Toggle */}
       <div className="relative flex items-center justify-center py-2.5 border-b border-border bg-bg-surface-alt">
         <span className="text-[11px] font-medium text-text-tertiary mr-2">View:</span>
@@ -939,36 +949,46 @@ function OptionChainTable({
 
       <table className="w-full text-xs sm:text-sm">
         <thead>
-          <tr className="bg-bg-surface-alt text-text-secondary border-b border-border">
-            {/* CALL side */}
-            <th colSpan={2} className="px-2 sm:px-3 py-2 text-center text-profit-green font-semibold border-r border-border">
-              CALLS
-            </th>
-            <th rowSpan={2} className="px-2 sm:px-3 py-2 text-center font-semibold text-text-primary border-r border-border">
-              STRIKE
-            </th>
-            {/* PUT side */}
-            <th colSpan={2} className="px-2 sm:px-3 py-2 text-center text-loss-red font-semibold">
-              PUTS
-            </th>
-          </tr>
-          <tr className="bg-bg-surface-alt text-text-tertiary border-b border-border text-[10px] sm:text-[11px] uppercase tracking-wide">
-            {viewMode === 'LTP' ? (
-              <>
-                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">IV</th>
-                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium border-r border-border">LTP</th>
-                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">LTP</th>
-                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">IV</th>
-              </>
-            ) : (
-              <>
-                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">OI</th>
-                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium border-r border-border">Vol</th>
-                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">Vol</th>
-                <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">OI</th>
-              </>
-            )}
-          </tr>
+          {chainView === 'compact' ? (
+            <tr className="bg-bg-surface-alt text-text-secondary border-b border-border">
+              <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium text-profit-green bg-profit-green/5 border-r border-border">CE LTP</th>
+              <th className="px-2 sm:px-3 py-1.5 text-center font-semibold text-text-primary border-r border-border">STRIKE</th>
+              <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium text-loss-red bg-loss-red/5">PE LTP</th>
+            </tr>
+          ) : (
+            <>
+              <tr className="bg-bg-surface-alt text-text-secondary border-b border-border">
+                {/* CALL side */}
+                <th colSpan={2} className="px-2 sm:px-3 py-2 text-center text-profit-green font-semibold border-r border-border bg-profit-green/5">
+                  CALLS
+                </th>
+                <th rowSpan={2} className="px-2 sm:px-3 py-2 text-center font-semibold text-text-primary border-r border-border">
+                  STRIKE
+                </th>
+                {/* PUT side */}
+                <th colSpan={2} className="px-2 sm:px-3 py-2 text-center text-loss-red font-semibold bg-loss-red/5">
+                  PUTS
+                </th>
+              </tr>
+              <tr className="bg-bg-surface-alt text-text-tertiary border-b border-border text-[10px] sm:text-[11px] uppercase tracking-wide">
+                {viewMode === 'LTP' ? (
+                  <>
+                    <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">IV</th>
+                    <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium border-r border-border">LTP</th>
+                    <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">LTP</th>
+                    <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">IV</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">OI</th>
+                    <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium border-r border-border">Vol</th>
+                    <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">Vol</th>
+                    <th className="px-1.5 sm:px-2 py-1.5 text-right font-medium">OI</th>
+                  </>
+                )}
+              </tr>
+            </>
+          )}
         </thead>
         <tbody>
           {strikes.map((row, idx) => {
@@ -1019,11 +1039,27 @@ function OptionChainTable({
                   ref={isAtm ? atmRowRef : undefined}
                   className={cn(
                     'border-b border-border/40 transition-colors hover:bg-bg-surface-alt/40',
-                    isAtm && 'bg-brand-primary/[0.06] ring-1 ring-inset ring-brand-primary/20'
+                    isAtm && 'bg-brand-primary/5 border-y border-brand-primary/20 border-l-2 border-l-brand-primary'
                   )}
                 >
                   {/* CALL side — columns change based on viewMode */}
-                  {viewMode === 'LTP' ? (
+                  {chainView === 'compact' ? (
+                    <td className={cn(
+                      'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold border-r border-border',
+                      isCeItm ? 'text-profit-green bg-profit-green/[0.06]' : 'text-text-primary'
+                    )}>
+                      <button
+                        onClick={(e) => onPriceClick(e, row.strikePrice, 'CE', ceLtp, row.ce.instrumentKey)}
+                        className="inline-flex items-center hover:opacity-80 transition-opacity rounded px-1 py-0.5 -mx-1 cursor-pointer"
+                        title="Tap to place order"
+                      >
+                        <span className={cn(ceUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] mr-1')}>
+                          {ceUp ? '▲' : '▼'}
+                        </span>
+                        {formatNumber(ceLtp, 2)}
+                      </button>
+                    </td>
+                  ) : viewMode === 'LTP' ? (
                     <>
                       {/* IV */}
                       <td className={cn(
@@ -1056,10 +1092,11 @@ function OptionChainTable({
                     <>
                       {/* OI */}
                       <td className={cn(
-                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary relative overflow-hidden',
                         isCeItm && 'bg-profit-green/[0.06]'
                       )}>
-                        {formatOi(ceOi)}
+                        <div className="absolute inset-y-0 left-0 rounded bg-profit-green/10" style={{ width: `${(ceOi / maxCeOi) * 100}%` }} />
+                        <span className="relative">{formatOi(ceOi)}</span>
                       </td>
                       {/* Volume */}
                       <td className={cn(
@@ -1084,15 +1121,29 @@ function OptionChainTable({
                     >
                       {row.strikePrice}
                       {isAtm && (
-                        <span className="text-[9px] font-semibold text-brand-primary bg-brand-primary/10 px-1 py-0.5 rounded">
-                          ATM
-                        </span>
+                        <span className="ml-1.5 inline-flex items-center rounded px-1 py-0.5 text-[9px] font-bold bg-brand-primary/10 text-brand-primary">ATM</span>
                       )}
                     </a>
                   </td>
 
                   {/* PUT side — columns change based on viewMode */}
-                  {viewMode === 'LTP' ? (
+                  {chainView === 'compact' ? (
+                    <td className={cn(
+                      'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums font-semibold',
+                      isPeItm ? 'text-loss-red bg-loss-red/[0.06]' : 'text-text-primary'
+                    )}>
+                      <button
+                        onClick={(e) => onPriceClick(e, row.strikePrice, 'PE', peLtp, row.pe.instrumentKey)}
+                        className="inline-flex items-center hover:opacity-80 transition-opacity rounded px-1 py-0.5 -mx-1 cursor-pointer"
+                        title="Tap to place order"
+                      >
+                        {formatNumber(peLtp, 2)}
+                        <span className={cn(peUp ? 'text-profit-green' : 'text-loss-red', 'text-[10px] ml-1')}>
+                          {peUp ? '▲' : '▼'}
+                        </span>
+                      </button>
+                    </td>
+                  ) : viewMode === 'LTP' ? (
                     <>
                       {/* LTP — clickable */}
                       <td className={cn(
@@ -1132,10 +1183,11 @@ function OptionChainTable({
                       </td>
                       {/* OI */}
                       <td className={cn(
-                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary',
+                        'px-1.5 sm:px-2 py-2 text-right font-mono tabular-nums text-text-secondary relative overflow-hidden',
                         isPeItm && 'bg-loss-red/[0.06]'
                       )}>
-                        {formatOi(peOi)}
+                        <div className="absolute inset-y-0 left-0 rounded bg-loss-red/10" style={{ width: `${(peOi / maxPeOi) * 100}%` }} />
+                        <span className="relative">{formatOi(peOi)}</span>
                       </td>
                     </>
                   )}

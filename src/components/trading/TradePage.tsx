@@ -532,22 +532,22 @@ export function TradePage() {
               </div>
             </div>
 
-            {/* Order Type */}
+            {/* Order Type — pill tabs */}
             <div className="space-y-2">
               <label className="text-xs font-semibold text-text-secondary">Order Type</label>
-              <div className="flex gap-2">
+              <div className="flex gap-1.5 bg-bg-surface-alt rounded-lg p-1">
                 {(['MARKET', 'LIMIT', 'SL'] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setOrderType(t)}
                     className={cn(
-                      'flex-1 rounded-lg py-2 text-xs font-semibold transition-colors border',
+                      'flex-1 rounded-md px-3 py-2 text-xs font-semibold transition-all',
                       orderType === t
-                        ? 'border-brand-primary bg-tint-blue text-brand-primary'
-                        : 'border-border bg-bg-surface text-text-secondary hover:bg-bg-surface-alt'
+                        ? 'bg-bg-surface text-text-primary shadow-sm'
+                        : 'text-text-secondary hover:text-text-primary'
                     )}
                   >
-                    {t === 'SL' ? 'SL' : t.charAt(0) + t.slice(1).toLowerCase()}
+                    {t}
                   </button>
                 ))}
               </div>
@@ -586,6 +586,23 @@ export function TradePage() {
                   </span>
                 </div>
               </div>
+              {/* Quick lot multiply buttons */}
+              <div className="flex gap-1.5 mt-2">
+                {[1, 2, 5, 10].map((mult) => (
+                  <button
+                    key={mult}
+                    onClick={() => setQuantity(String(mult))}
+                    className={cn(
+                      'flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors',
+                      quantity === String(mult)
+                        ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/30'
+                        : 'bg-bg-surface-alt text-text-secondary border border-transparent hover:border-border'
+                    )}
+                  >
+                    {mult}x
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Price (if LIMIT or SL) */}
@@ -605,31 +622,29 @@ export function TradePage() {
               </div>
             )}
 
-            {/* Buy/Sell buttons */}
-            <div className="flex gap-2">
+            {/* BUY/SELL split toggle */}
+            <div className="flex rounded-xl overflow-hidden border border-border h-12">
               <button
                 onClick={() => setSide('BUY')}
                 className={cn(
-                  'flex-1 h-12 rounded-lg text-sm font-bold uppercase transition-colors flex items-center justify-center gap-1.5',
+                  'flex-1 flex items-center justify-center gap-2 text-sm font-bold transition-all duration-200',
                   side === 'BUY'
-                    ? 'bg-profit-green text-white shadow-md shadow-profit-green/30'
-                    : 'bg-bg-surface-alt text-text-secondary border border-border'
+                    ? 'bg-profit-green text-white shadow-inner'
+                    : 'bg-bg-surface-alt text-text-secondary hover:bg-border'
                 )}
               >
-                <ArrowUp className="h-4 w-4" />
-                BUY
+                <ArrowUp className="h-4 w-4" /> BUY
               </button>
               <button
                 onClick={() => setSide('SELL')}
                 className={cn(
-                  'flex-1 h-12 rounded-lg text-sm font-bold uppercase transition-colors flex items-center justify-center gap-1.5',
+                  'flex-1 flex items-center justify-center gap-2 text-sm font-bold transition-all duration-200',
                   side === 'SELL'
-                    ? 'bg-loss-red text-white shadow-md shadow-loss-red/30'
-                    : 'bg-bg-surface-alt text-text-secondary border border-border'
+                    ? 'bg-loss-red text-white shadow-inner'
+                    : 'bg-bg-surface-alt text-text-secondary hover:bg-border'
                 )}
               >
-                <ArrowDown className="h-4 w-4" />
-                SELL
+                <ArrowDown className="h-4 w-4" /> SELL
               </button>
             </div>
 
@@ -663,6 +678,21 @@ export function TradePage() {
                 </div>
               </div>
             )}
+
+            {/* Margin calculator widget */}
+            <div className="rounded-lg bg-bg-surface-alt p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-text-secondary">Estimated Margin</span>
+                <span className="text-xs font-semibold font-mono text-text-primary">₹{formatNumber(orderValue || (liveStock?.ltp ?? 0))}</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-border overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-brand-primary transition-all duration-300"
+                  style={{ width: `${availableBalance && availableBalance > 0 ? Math.min(((orderValue || (liveStock?.ltp ?? 0)) / availableBalance) * 100, 100) : 0}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-text-tertiary">{availableBalance && availableBalance > 0 ? (((orderValue || (liveStock?.ltp ?? 0)) / availableBalance) * 100).toFixed(1) : '0.0'}% of available margin</p>
+            </div>
 
             {/* REVIEW CTA */}
             <button

@@ -18,6 +18,7 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { formatNumber, cn } from '@/lib/utils';
 import {
   Search, Plus, Trash2, Star, X, ChevronDown, Pencil, Check, Layers, Clock,
+  BarChart3, Eye,
 } from 'lucide-react';
 import { StockLogo } from '@/components/shared/StockLogo';
 import {
@@ -228,7 +229,7 @@ export function WatchlistPage() {
 
 
   return (
-    <div className="space-y-4">
+    <div className="page-enter space-y-4">
       {/* ============== HEADER ============== */}
       <div className="card-soft p-4">
         <div className="flex items-center gap-3">
@@ -278,7 +279,7 @@ export function WatchlistPage() {
       </div>
 
       {/* ============== GROUP TABS ============== */}
-      <div className="flex items-center gap-1 border-b border-border overflow-x-auto no-scrollbar">
+      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
         {groups.map((g) => {
           const isActive = g.id === activeGroupId;
           const isRenaming = renaming === g.id;
@@ -287,14 +288,11 @@ export function WatchlistPage() {
             <div
               key={g.id}
               className={cn(
-                'group relative flex items-center gap-1 border-b-2 -mb-px whitespace-nowrap transition-colors',
-                isActive
-                  ? 'border-brand-primary text-brand-primary'
-                  : 'border-transparent text-text-secondary hover:text-text-primary'
+                'group relative flex items-center gap-1 whitespace-nowrap transition-all duration-200',
               )}
             >
               {isRenaming ? (
-                <>
+                <div className="flex items-center gap-1">
                   <input
                     autoFocus
                     type="text"
@@ -305,24 +303,39 @@ export function WatchlistPage() {
                       if (e.key === 'Escape') setRenaming(null);
                     }}
                     onBlur={() => handleRenameGroup(g.id)}
-                    className="bg-transparent border-b border-brand-primary/40 px-2 py-2 text-xs font-semibold text-text-primary focus:outline-none"
+                    className="bg-bg-surface-alt border border-border rounded-lg px-2 py-1.5 text-xs font-semibold text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-primary/30 w-32"
                   />
-                  <Check className="h-3 w-3 text-profit-green" />
-                </>
+                  <button
+                    onClick={() => handleRenameGroup(g.id)}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg bg-profit-green text-white"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center">
                   <button
                     onClick={() => switchGroup(g.id)}
-                    className="px-3 py-2 text-xs sm:text-sm font-semibold"
+                    className={cn(
+                      'flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-lg transition-all duration-200',
+                      isActive
+                        ? 'bg-brand-primary text-white shadow-sm'
+                        : 'bg-bg-surface-alt text-text-secondary hover:text-text-primary hover:bg-bg-surface'
+                    )}
                   >
                     {g.name}
-                    <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
+                    <span className={cn(
+                      'ml-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold',
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : 'bg-bg-surface text-text-secondary'
+                    )}>
                       {g.items.length}
                     </span>
                   </button>
                   <button
                     onClick={() => { setRenaming(g.id); setRenameValue(g.name); }}
-                    className="transition-opacity px-1 text-text-tertiary hover:text-brand-primary"
+                    className="ml-1 transition-opacity px-1 text-text-tertiary hover:text-brand-primary"
                     aria-label="Rename list"
                     title="Rename list"
                   >
@@ -331,14 +344,14 @@ export function WatchlistPage() {
                   {!isDefault && (
                     <button
                       onClick={() => handleDeleteGroup(g.id)}
-                      className="transition-opacity px-1 text-text-tertiary hover:text-loss-red"
+                      className="ml-0.5 transition-opacity px-1 text-text-tertiary hover:text-loss-red"
                       aria-label="Delete list"
                       title="Delete list"
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
                   )}
-              </>
+                </div>
               )}
             </div>
           );
@@ -393,10 +406,10 @@ export function WatchlistPage() {
         <div className="space-y-4">
           {/* ---------- Stocks tab ---------- */}
           {activeGroup.id === 'stocks' && (
-            <div className="card-soft p-4">
-              <h3 className="font-heading text-sm font-semibold text-text-primary mb-2">
-                Add Stock to &ldquo;{activeGroup.name}&rdquo;
-              </h3>
+            <div className="rounded-xl border border-border bg-bg-surface p-4">
+              <label className="block text-[10px] font-semibold uppercase tracking-wider text-text-tertiary mb-2">
+                Add to Watchlist
+              </label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary" />
                 <input
@@ -404,7 +417,7 @@ export function WatchlistPage() {
                   value={stockQuery}
                   onChange={(e) => setStockQuery(e.target.value)}
                   placeholder="Search stocks to add…"
-                  className="w-full pl-9 pr-3 py-2 bg-bg-surface-alt border border-border rounded-md text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
+                  className="w-full pl-9 pr-3 py-2.5 bg-bg-surface-alt border border-border rounded-lg text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
                 />
                 {searching && (
                   <div className="absolute right-3 top-1/2 -translate-y-1/2">
@@ -418,9 +431,9 @@ export function WatchlistPage() {
                     <button
                       key={s.symbol}
                       onClick={() => handleAddStock(s.symbol, s.name)}
-                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-bg-surface-alt transition-colors"
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-sm hover:bg-bg-surface-alt transition-colors"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <StockLogo symbol={s.symbol} size="sm" rounded="md" />
                         <div className="min-w-0">
                           <span className="font-mono font-semibold text-text-primary">{s.symbol}</span>
@@ -525,16 +538,21 @@ export function WatchlistPage() {
               <LiveStatusBadge />
             </div>
             {activeGroup.items.length === 0 ? (
-              <div className="flex flex-col items-center py-8 text-center">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-bg-surface-alt mb-2">
-                  <Star className="h-6 w-6 text-text-secondary" />
+              <div className="flex flex-col items-center py-10 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-tint-blue mb-3">
+                  <Eye className="h-7 w-7 text-brand-primary" />
                 </div>
-                <p className="text-sm font-medium text-text-primary">No items yet</p>
-                <p className="text-xs text-text-secondary mt-1">
-                  {activeGroup.id === 'stocks'
-                    ? 'Search and add stocks above to start tracking them here.'
-                    : 'Use the form above to add NIFTY / SENSEX / BANKNIFTY / FINNIFTY strikes.'}
+                <p className="font-heading text-sm font-semibold text-text-primary">Your watchlist is empty</p>
+                <p className="text-xs text-text-secondary mt-1.5 max-w-[220px]">
+                  Add stocks or option strikes to track them here
                 </p>
+                <a
+                  href="/market"
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand-primary px-4 py-2 text-xs font-semibold text-white hover:bg-brand-primary/90 transition-colors"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add from Markets
+                </a>
               </div>
             ) : (
               <WatchlistItems items={activeGroup.items} userId={userId} activeGroupId={activeGroup.id} />
@@ -630,8 +648,48 @@ function WatchlistItems({
     };
   }, [unsubscribe]);
 
+  // Compute top movers (max 3 biggest gainers)
+  const topMovers = useMemo(() => {
+    const movers: { item: WatchlistItem; changePct: number; label: string }[] = [];
+    for (const item of items) {
+      let changePct = 0;
+      let label = '';
+      if (item.type === 'STOCK') {
+        const upstoxKey = getUpstoxKey(item.symbol);
+        const tick = upstoxKey ? quotes[upstoxKey] : undefined;
+        changePct = tick?.changePct ?? 0;
+        label = item.symbol;
+      } else {
+        const yymmdd = (item.expiry || '').replace(/-/g, '').slice(2);
+        const optKey = `NSE_FO|${item.symbol}${yymmdd}${item.strike}${item.side}`;
+        const optTick = quotes[optKey];
+        changePct = optTick?.changePct ?? 0;
+        label = `${item.symbol} ${item.strike}${item.side}`;
+      }
+      if (changePct > 0) {
+        movers.push({ item, changePct, label });
+      }
+    }
+    movers.sort((a, b) => b.changePct - a.changePct);
+    return movers.slice(0, 3);
+  }, [items, quotes]);
+
   return (
     <div className="space-y-2">
+      {topMovers.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary self-center mr-1">Top Movers</span>
+          {topMovers.map((m) => (
+            <span
+              key={itemFingerprint(m.item)}
+              className="shrink-0 inline-flex items-center gap-1 rounded-full bg-profit-green/10 px-2.5 py-1 text-[11px] font-bold text-profit-green"
+            >
+              <span className="truncate max-w-[80px]">{m.label}</span>
+              +{m.changePct.toFixed(2)}%
+            </span>
+          ))}
+        </div>
+      )}
       {items.map((item) => (
         <WatchlistItemRow
           key={itemFingerprint(item)}
@@ -662,47 +720,63 @@ function WatchlistItemRow({
     const changePct = tick?.changePct ?? 0;
     const isUp = (tick?.change ?? 0) >= 0;
     const isLive = !!tick?.timestamp && Date.now() - tick.timestamp < 30000;
+    const borderAccent = tick ? (isUp ? 'border-l-profit-green' : 'border-l-loss-red') : '';
     return (
-      <div className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 hover:bg-bg-surface-alt/50 transition-colors">
-        <a href={`/stock/${item.symbol}`} className="flex items-center gap-2.5 min-w-0 flex-1">
-          <StockLogo symbol={item.symbol} size="md" rounded="md" />
-          <div className="min-w-0">
+      <div className={cn(
+        'flex items-center gap-3 rounded-xl border border-border bg-bg-surface p-3 hover:shadow-md hover:shadow-black/5 hover:border-brand-primary/20 transition-all duration-200',
+        borderAccent && 'border-l-[3px]',
+        borderAccent
+      )}>
+        <a href={`/stock/${item.symbol}`} className="flex items-center gap-3 min-w-0 flex-1">
+          <StockLogo symbol={item.symbol} size="lg" rounded="lg" />
+          <div className="min-w-0 flex-1">
             <p className="font-mono text-sm font-semibold text-text-primary truncate">{item.symbol}</p>
             {item.name && <p className="text-xs text-text-secondary truncate">{item.name}</p>}
           </div>
         </a>
-        <div className="text-right shrink-0 mr-1">
-          {ltp > 0 ? (
-            <>
-              <p className={cn(
-                'font-mono text-sm font-bold tabular-nums',
-                tick ? 'text-text-primary' : 'text-text-secondary'
-              )}>
-                ₹{formatNumber(ltp, 2)}
-              </p>
-              {tick && (
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-right">
+            {ltp > 0 ? (
+              <>
                 <p className={cn(
-                  'font-mono text-[10px] tabular-nums font-semibold',
-                  isUp ? 'text-profit-green' : 'text-loss-red'
+                  'font-mono text-base font-bold tabular-nums',
+                  tick ? 'text-text-primary' : 'text-text-secondary'
                 )}>
-                  {isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+                  ₹{formatNumber(ltp, 2)}
                 </p>
-              )}
-            </>
-          ) : (
-            <p className="text-[11px] text-text-tertiary">—</p>
-          )}
-          {isLive && (
-            <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse mt-0.5" />
-          )}
+                {tick && (
+                  <span className={cn(
+                    'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+                    isUp ? 'bg-profit-green/10 text-profit-green' : 'bg-loss-red/10 text-loss-red'
+                  )}>
+                    {isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+                  </span>
+                )}
+              </>
+            ) : (
+              <p className="text-[11px] text-text-tertiary">—</p>
+            )}
+            {isLive && (
+              <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse mt-0.5" />
+            )}
+          </div>
+          <a
+            href={`/trade?symbol=${encodeURIComponent(item.symbol)}`}
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-bg-surface-alt text-text-secondary hover:bg-brand-primary/10 hover:text-brand-primary transition-colors shrink-0"
+            aria-label={`Trade ${item.symbol}`}
+            title={`Trade ${item.symbol}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <BarChart3 className="h-4 w-4" />
+          </a>
+          <button
+            onClick={onRemove}
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary hover:bg-loss-red/10 hover:text-loss-red transition-colors shrink-0"
+            aria-label="Remove from watchlist"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
         </div>
-        <button
-          onClick={onRemove}
-          className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-loss-red/10 hover:text-loss-red transition-colors shrink-0"
-          aria-label="Remove from watchlist"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
       </div>
     );
   }
@@ -720,16 +794,21 @@ function WatchlistItemRow({
   const changePct = optTick?.changePct ?? 0;
   const isUp = (optTick?.change ?? 0) >= 0;
   const isLive = !!optTick?.timestamp && Date.now() - optTick.timestamp < 30000;
+  const borderAccent = optTick ? (isUp ? 'border-l-profit-green' : 'border-l-loss-red') : '';
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-border p-2.5 hover:bg-bg-surface-alt/50 transition-colors">
-      <a href={href} className="flex items-center gap-2.5 min-w-0 flex-1">
+    <div className={cn(
+      'flex items-center gap-3 rounded-xl border border-border bg-bg-surface p-3 hover:shadow-md hover:shadow-black/5 hover:border-brand-primary/20 transition-all duration-200',
+      borderAccent && 'border-l-[3px]',
+      borderAccent
+    )}>
+      <a href={href} className="flex items-center gap-3 min-w-0 flex-1">
         <div className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-md text-white shrink-0',
+          'flex h-10 w-10 items-center justify-center rounded-lg text-white shrink-0',
           item.side === 'CE' ? 'bg-profit-green' : 'bg-loss-red'
         )}>
-          <Layers className="h-4 w-4" />
+          <Layers className="h-5 w-5" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="font-mono text-sm font-bold text-text-primary">
               {idxInfo?.display ?? item.symbol} {item.strike}
@@ -753,38 +832,40 @@ function WatchlistItemRow({
           </p>
         </div>
       </a>
-      <div className="text-right shrink-0 mr-1">
-        {ltp > 0 ? (
-          <>
-            <p className={cn(
-              'font-mono text-sm font-bold tabular-nums',
-              optTick ? 'text-text-primary' : 'text-text-secondary'
-            )}>
-              ₹{formatNumber(ltp, 2)}
-            </p>
-            {optTick && (
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="text-right">
+          {ltp > 0 ? (
+            <>
               <p className={cn(
-                'font-mono text-[10px] tabular-nums font-semibold',
-                isUp ? 'text-profit-green' : 'text-loss-red'
+                'font-mono text-base font-bold tabular-nums',
+                optTick ? 'text-text-primary' : 'text-text-secondary'
               )}>
-                {isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+                ₹{formatNumber(ltp, 2)}
               </p>
-            )}
-          </>
-        ) : (
-          <p className="text-[11px] text-text-tertiary">—</p>
-        )}
-        {isLive && (
-          <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse mt-0.5" />
-        )}
+              {optTick && (
+                <span className={cn(
+                  'inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums',
+                  isUp ? 'bg-profit-green/10 text-profit-green' : 'bg-loss-red/10 text-loss-red'
+                )}>
+                  {isUp ? '▲' : '▼'} {Math.abs(changePct).toFixed(2)}%
+                </span>
+              )}
+            </>
+          ) : (
+            <p className="text-[11px] text-text-tertiary">—</p>
+          )}
+          {isLive && (
+            <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse mt-0.5" />
+          )}
+        </div>
+        <button
+          onClick={onRemove}
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-text-tertiary hover:bg-loss-red/10 hover:text-loss-red transition-colors shrink-0"
+          aria-label="Remove strike from watchlist"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
-      <button
-        onClick={onRemove}
-        className="flex h-9 w-9 items-center justify-center rounded-md text-text-secondary hover:bg-loss-red/10 hover:text-loss-red transition-colors shrink-0"
-        aria-label="Remove strike from watchlist"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
     </div>
   );
 }
