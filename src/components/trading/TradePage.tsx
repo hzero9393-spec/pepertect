@@ -16,6 +16,7 @@ import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
+import { AnimatedTabContent } from '@/components/shared/AnimatedTabContent';
 
 const POPULAR_STOCKS = [
   'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN',
@@ -76,12 +77,18 @@ export function TradePage() {
   }, [symbol, subscribe, unsubscribe]);
   const liveTick = symbol ? quotes[getUpstoxKey(symbol.toUpperCase()) ?? ''] : undefined;
 
-  /* ── Swipe gesture for tab navigation ── */
+  /* ── Swipe gesture + slide animation for tab navigation ── */
   const TABS_ORDER = ['place', 'basket', 'orders'] as const;
   const tabIndex = TABS_ORDER.indexOf(mainTab);
+  const [slideDir, setSlideDir] = useState(0);
+  const switchTab = (tab: typeof mainTab) => {
+    const newIdx = TABS_ORDER.indexOf(tab);
+    setSlideDir(newIdx > tabIndex ? 1 : -1);
+    setMainTab(tab);
+  };
   const swipeRef = useSwipeGesture({
-    onSwipeLeft: () => { if (tabIndex < TABS_ORDER.length - 1) setMainTab(TABS_ORDER[tabIndex + 1]); },
-    onSwipeRight: () => { if (tabIndex > 0) setMainTab(TABS_ORDER[tabIndex - 1]); },
+    onSwipeLeft: () => { if (tabIndex < TABS_ORDER.length - 1) switchTab(TABS_ORDER[tabIndex + 1]); },
+    onSwipeRight: () => { if (tabIndex > 0) switchTab(TABS_ORDER[tabIndex - 1]); },
   });
 
   useEffect(() => {
@@ -202,7 +209,7 @@ export function TradePage() {
            *    user immediately sees their new position with the entry
            *    price = the actual market price they paid, and the live
            *    stock price streaming in real-time. */
-        setMainTab('orders');
+        switchTab('orders');
         setActiveTab('orders');
         setRedirecting(true);
         setTimeout(() => {
@@ -261,14 +268,14 @@ export function TradePage() {
       {/* ============== TOP TABS: Place Order | Basket | Orders ============== */}
       <div className="flex items-center gap-6 border-b border-border">
         <button
-          onClick={() => setMainTab('place')}
+          onClick={() => switchTab('place')}
           className="seg-tab"
           data-active={mainTab === 'place'}
         >
           Place Order
         </button>
         <button
-          onClick={() => setMainTab('basket')}
+          onClick={() => switchTab('basket')}
           className="seg-tab"
           data-active={mainTab === 'basket'}
         >
@@ -278,7 +285,7 @@ export function TradePage() {
           </span>
         </button>
         <button
-          onClick={() => setMainTab('orders')}
+          onClick={() => switchTab('orders')}
           className="seg-tab"
           data-active={mainTab === 'orders'}
         >
@@ -382,6 +389,7 @@ export function TradePage() {
 
       {/* ============== SWIPABLE TAB CONTENT ============== */}
       <div ref={swipeRef} className="min-h-[60vh]">
+      <AnimatedTabContent activeKey={mainTab} direction={slideDir}>
       {/* 24h retention notice — only on Orders tab */}
       {mainTab === 'orders' && (
         <div className="rounded-lg bg-tint-blue/60 border border-brand-primary/20 px-3 py-2 text-xs text-text-secondary flex items-center gap-2">
@@ -723,6 +731,7 @@ export function TradePage() {
           </div>
         </div>
       )}
+      </AnimatedTabContent>
       </div>{/* end swipable tab content */}
     </div>
   );

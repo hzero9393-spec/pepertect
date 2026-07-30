@@ -14,6 +14,7 @@ import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
 import { SLTargetModal } from '@/components/positions/SLTargetModal';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
+import { AnimatedTabContent } from '@/components/shared/AnimatedTabContent';
 import { toast } from '@/hooks/use-toast';
 
 /* Index symbols — used to classify positions as Index vs Stock */
@@ -56,10 +57,15 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   const [slTargetModalOpen, setSlTargetModalOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
 
-  /* ── Swipe gesture for Stock/Index tab navigation ── */
+  /* ── Swipe gesture + slide animation for Stock/Index tab navigation ── */
+  const [slideDir, setSlideDir] = useState(0);
+  const switchTab = (tab: 'stock' | 'index') => {
+    setSlideDir(tab === 'index' ? 1 : -1);
+    setActiveTab(tab);
+  };
   const swipeRef = useSwipeGesture({
-    onSwipeLeft: () => { if (activeTab === 'stock') setActiveTab('index'); },
-    onSwipeRight: () => { if (activeTab === 'index') setActiveTab('stock'); },
+    onSwipeLeft: () => { if (activeTab === 'stock') switchTab('index'); },
+    onSwipeRight: () => { if (activeTab === 'index') switchTab('stock'); },
   });
 
   /* ---------- Resolved instrument keys for OPTIONS positions ----------
@@ -502,7 +508,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       {/* ============== TAB SWITCHER: Stock | Index ============== */}
       <div className="flex items-center gap-1 border-b border-border">
         <button
-          onClick={() => setActiveTab('stock')}
+          onClick={() => switchTab('stock')}
           className="seg-tab"
           data-active={activeTab === 'stock'}
         >
@@ -515,7 +521,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           </span>
         </button>
         <button
-          onClick={() => setActiveTab('index')}
+          onClick={() => switchTab('index')}
           className="seg-tab"
           data-active={activeTab === 'index'}
         >
@@ -543,6 +549,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
 
       {/* ============== SWIPABLE CONTENT ============== */}
       <div ref={swipeRef} className="min-h-[50vh]">
+      <AnimatedTabContent activeKey={activeTab} direction={slideDir}>
       {/* Exit All confirmation bar */}
       {confirmExitAll && (
         <div className="rounded-lg border border-loss-red/30 bg-tint-red p-3 flex items-center gap-3">
@@ -908,6 +915,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           onUpdate={handleUpdateSLTarget}
         />
       )}
+      </AnimatedTabContent>
       </div>{/* end swipable content */}
     </div>
   );

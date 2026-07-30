@@ -713,3 +713,23 @@ Stage Summary:
 - Modified: `prisma/schema.prisma` (removed required directUrl)
 - All 200 responses, no errors in dev log
 - Agent Browser verified: Complete flow working end-to-end
+
+---
+Task ID: 3
+Agent: Main
+Task: Fix build error and redeploy to Vercel
+
+Work Log:
+- Found all swipe + movers code was already implemented in previous session
+- TradePage, PositionsPage, WatchlistPage all have useSwipeGesture integrated
+- MoversPage has WebSocket live prices + 15s auto-refresh
+- Found JSX comment syntax error on TradePage line 383: missing closing `}` in comment
+- Fixed: `{/* ... */` → `{/* ... */}`
+- Build passed successfully
+- Pushed to hzero9393-spec/pepertect (dev-gen-z token expired)
+- Deployed to Vercel production via CLI
+
+Stage Summary:
+- Fixed build-breaking JSX comment syntax error in TradePage.tsx
+- Vercel production deployment successful in 41s
+- Live: https://pepertect.vercel.app

@@ -29,6 +29,7 @@ import {
 import { getUpcomingExpiries, findExpiry, type ExpiryIndex } from '@/lib/expiry-calendar';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { useSwipeGesture } from '@/hooks/useSwipeGesture';
+import { AnimatedTabContent } from '@/components/shared/AnimatedTabContent';
 import { getUpstoxKey, INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
 
 interface StockSearchHit {
@@ -115,12 +116,18 @@ export function WatchlistPage() {
     [groups, activeGroupId],
   );
 
-  /* ── Swipe gesture for watchlist group navigation ── */
+  /* ── Swipe gesture + slide animation for watchlist group navigation ── */
   const groupIds = useMemo(() => groups.map(g => g.id), [groups]);
   const currentIdx = groupIds.indexOf(activeGroupId);
+  const [slideDir, setSlideDir] = useState(0);
+  const switchGroup = (groupId: string) => {
+    const newIdx = groupIds.indexOf(groupId);
+    if (newIdx >= 0) setSlideDir(newIdx > currentIdx ? 1 : -1);
+    setActiveGroupId(groupId);
+  };
   const swipeRef = useSwipeGesture({
-    onSwipeLeft: () => { if (currentIdx < groupIds.length - 1) setActiveGroupId(groupIds[currentIdx + 1]); },
-    onSwipeRight: () => { if (currentIdx > 0) setActiveGroupId(groupIds[currentIdx - 1]); },
+    onSwipeLeft: () => { if (currentIdx < groupIds.length - 1) switchGroup(groupIds[currentIdx + 1]); },
+    onSwipeRight: () => { if (currentIdx > 0) switchGroup(groupIds[currentIdx - 1]); },
   });
 
   /* ---------- handlers ---------- */
@@ -179,7 +186,7 @@ export function WatchlistPage() {
     const name = newGroupName.trim();
     if (!name) return;
     const g = createGroup(userId, name);
-    setActiveGroupId(g.id);
+    switchGroup(g.id);
     setNewGroupName('');
     setCreatingGroup(false);
   }, [userId, newGroupName]);
@@ -209,7 +216,7 @@ export function WatchlistPage() {
   const confirmDeleteGroup = useCallback(
     (groupId: string) => {
       deleteGroup(userId, groupId);
-      setActiveGroupId('stocks');
+      switchGroup('stocks');
       setDeleteConfirmId(null);
     },
     [userId],
@@ -305,7 +312,7 @@ export function WatchlistPage() {
               ) : (
                 <>
                   <button
-                    onClick={() => setActiveGroupId(g.id)}
+                    onClick={() => switchGroup(g.id)}
                     className="px-3 py-2 text-xs sm:text-sm font-semibold"
                   >
                     {g.name}
@@ -381,6 +388,7 @@ export function WatchlistPage() {
 
       {/* ============== SWIPABLE GROUP CONTENT ============== */}
       <div ref={swipeRef} className="min-h-[50vh]">
+      <AnimatedTabContent activeKey={activeGroupId} direction={slideDir}>
       {activeGroup && (
         <div className="space-y-4">
           {/* ---------- Stocks tab ---------- */}
@@ -534,6 +542,7 @@ export function WatchlistPage() {
           </div>
         </div>
       )}
+      </AnimatedTabContent>
       </div>{/* end swipable content */}
     </div>
   );
