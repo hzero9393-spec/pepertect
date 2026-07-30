@@ -1,11 +1,19 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Zap, Loader2, Mail, Lock, ArrowRight } from 'lucide-react';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import {
+  Zap, Loader2, Mail, ArrowRight, ArrowLeft, CheckCircle2,
+  Shield, RefreshCw, Fingerprint,
+} from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { isDisposableEmail } from '@/lib/temp-email-domains';
+
+type AuthStep = 'email' | 'otp' | 'success';
 
 /* ── Google SVG Icon ── */
 function GoogleIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -19,7 +27,7 @@ function GoogleIcon({ className = 'h-4 w-4' }: { className?: string }) {
   );
 }
 
-/* ── Google OAuth Redirect (no GSI popup issues) ── */
+/* ── Google OAuth Redirect ── */
 function buildGoogleAuthUrl(state: string) {
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
   const redirectUri = typeof window !== 'undefined' ? window.location.origin + '/api/auth/google/callback' : '';
@@ -37,55 +45,191 @@ function buildGoogleAuthUrl(state: string) {
 
 export function LoginPage() {
   const { login } = useAuthStore();
+  const [step, setStep] = useState<AuthStep>('email');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
+  const [maskedEmail, setMaskedEmail] = useState('');
+  const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
+  const otpInputRef = useRef<HTMLDivElement>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  /* ── Countdown timers ── */
+  useEffect(() => {
+    if (resendTimer <= 0) return;
+    const timer = setTimeout(() => setResendTimer((t) => t - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendTimer]);
+
+  /* Global rate limit cooldown (e.g. 60s after Supabase rate limit) */
+  useEffect(() => {
+    if (rateLimitCooldown <= 0) return;
+    const timer = setTimeout(() => setRateLimitCooldown((t) => t - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [rateLimitCooldown]);
+
+  /* ── Auto-focus OTP input ── */
+  useEffect(() => {
+    if (step === 'otp') {
+      // Small delay so the DOM updates first
+      setTimeout(() => {
+        otpInputRef.current?.querySelector('input')?.focus();
+      }, 100);
+    }
+  }, [step]);
+
+  /* ── Handle Google OAuth callback errors ── */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const googleError = params.get('error');
+    if (googleError) {
+      setError(`Google sign-in was cancelled or failed: ${googleError}`);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  /* ── Mask email for display ── */
+  const maskEmail = (e: string) => {
+    const [user, domain] = e.split('@');
+    if (!domain) return e;
+    const visible = user.slice(0, 2);
+    const hidden = '*'.repeat(Math.max(user.length - 2, 3));
+    return `${visible}${hidden}@${domain}`;
+  };
+
+  /* ── Step 1: Send OTP ── */
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!email.includes('@') || !email.includes('.')) {
+      setError('Please enter a valid email address');
+      return;
+    }
+
+    if (isDisposableEmail(email)) {
+      setError('Disposable emails are not allowed. Please use a real email.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: email.toLowerCase().trim(),
+        options: {
+          shouldCreateUser: true,
+          emailRedirectTo: undefined, // We handle OTP manually, not magic link redirect
+        },
       });
-      const data = await res.json();
-      if (data.success) {
-        login(data.user, data.token);
-        window.history.pushState({}, '', '/dashboard');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      } else {
-        setError(data.error || 'Login failed');
+
+      if (otpError) {
+        if (otpError.message.includes('rate limit') || otpError.code === 'over_email_send_rate_limit') {
+          const cooldown = 60;
+          setRateLimitCooldown(cooldown);
+          setError(`Too many OTP requests. Please wait ${cooldown} seconds before trying again.`);
+        } else {
+          setError(otpError.message);
+        }
+        return;
       }
+
+      // OTP sent successfully — move to verification step
+      setMaskedEmail(maskEmail(email));
+      setStep('otp');
+      setOtp('');
+      setResendTimer(60);
     } catch {
-      setError('Network error. Please try again.');
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDemoLogin = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'demo@pepertect.com', password: 'demo12345' }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        login(data.user, data.token);
-        window.history.pushState({}, '', '/dashboard');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      } else {
-        setError('Demo account unavailable. Please register.');
+  /* ── Step 2: Verify OTP ── */
+  const handleVerifyOtp = useCallback(
+    async (otpValue: string) => {
+      if (otpValue.length !== 6) return;
+      setError('');
+      setLoading(true);
+
+      try {
+        const { data, error: verifyError } = await supabase.auth.verifyOtp({
+          email: email.toLowerCase().trim(),
+          token: otpValue,
+          type: 'email',
+        });
+
+        if (verifyError || !data.session) {
+          setError('Invalid OTP. Please check and try again.');
+          setLoading(false);
+          return;
+        }
+
+        // Supabase session verified — now link with our backend
+        const res = await fetch('/api/auth/supabase-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${data.session.access_token}`,
+          },
+        });
+
+        const result = await res.json();
+
+        if (result.success && result.user) {
+          login(result.user, result.token);
+          setStep('success');
+          // Auto-redirect after showing success
+          setTimeout(() => {
+            window.history.pushState({}, '', '/dashboard');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }, 800);
+        } else {
+          setError(result.error || 'Failed to create session. Please try again.');
+          setLoading(false);
+        }
+      } catch {
+        setError('Network error. Please try again.');
+        setLoading(false);
       }
+    },
+    [email, login]
+  );
+
+  /* ── OTP change handler ── */
+  const handleOtpChange = (value: string) => {
+    setOtp(value);
+    if (value.length === 6) {
+      handleVerifyOtp(value);
+    }
+  };
+
+  /* ── Resend OTP ── */
+  const handleResendOtp = async () => {
+    if (resendTimer > 0) return;
+    setError('');
+    setLoading(true);
+    try {
+      const { error: otpError } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.toLowerCase().trim(),
+      });
+
+      if (otpError) {
+        if (otpError.message.includes('rate limit') || otpError.code === 'over_email_send_rate_limit') {
+          const cooldown = 60;
+          setRateLimitCooldown(cooldown);
+          setError(`Too many OTP requests. Please wait ${cooldown} seconds before trying again.`);
+        } else {
+          setError(otpError.message);
+        }
+        return;
+      }
+      setResendTimer(60);
+      setOtp('');
     } catch {
-      setError('Network error');
+      setError('Failed to resend OTP. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -94,118 +238,212 @@ export function LoginPage() {
   /* ── Google OAuth Redirect Flow ── */
   const triggerGoogleLogin = () => {
     const state = 'login_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    const url = buildGoogleAuthUrl(state);
-    window.location.href = url;
+    window.location.href = buildGoogleAuthUrl(state);
   };
 
-  // Handle Google OAuth callback
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const googleError = params.get('error');
-    if (googleError) {
-      setError(`Google sign-in was cancelled or failed: ${googleError}`);
-      // Clean URL
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
+  /* ── Go back to email step ── */
+  const goBack = () => {
+    setStep('email');
+    setOtp('');
+    setError('');
+    setResendTimer(0);
+  };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg-base px-4">
       <div className="w-full max-w-[400px] space-y-6">
-        {/* Logo & Title */}
+        {/* Logo and Title */}
         <div className="text-center space-y-2">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-primary-hover shadow-lg shadow-brand-primary/25">
             <Zap className="h-6 w-6 text-white" />
           </div>
-          <h1 className="font-heading text-xl font-bold text-text-primary">Welcome back</h1>
-          <p className="text-xs text-text-secondary">Sign in to Pepertect to continue trading</p>
-        </div>
-
-        {/* Google Sign-In Button (redirect flow — no popup issues) */}
-        <a
-          href="#"
-          onClick={(e) => { e.preventDefault(); triggerGoogleLogin(); }}
-          className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-surface-alt hover:shadow-sm active:scale-[0.98]"
-        >
-          <GoogleIcon className="h-4 w-4" />
-          Continue with Google
-        </a>
-
-        {/* Divider */}
-        <div className="relative flex items-center gap-3">
-          <div className="flex-1 border-t border-border" />
-          <span className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">or continue with email</span>
-          <div className="flex-1 border-t border-border" />
-        </div>
-
-        {/* Email form */}
-        <form onSubmit={handleLogin} className="space-y-3">
-          {error && (
-            <div className="rounded-lg border border-loss-red/20 bg-loss-red/5 px-3 py-2 text-xs text-loss-red">
-              {error}
-            </div>
+          {step === 'email' && (
+            <>
+              <h1 className="font-heading text-xl font-bold text-text-primary">Welcome to Pepertect</h1>
+              <p className="text-xs text-text-secondary">Sign in with your email — no password needed</p>
+            </>
           )}
+          {step === 'otp' && (
+            <>
+              <h1 className="font-heading text-xl font-bold text-text-primary">Check your email</h1>
+              <p className="text-xs text-text-secondary">
+                We sent a 6-digit code to <span className="font-semibold text-text-primary">{maskedEmail}</span>
+              </p>
+            </>
+          )}
+          {step === 'success' && (
+            <>
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-profit-green/10">
+                <CheckCircle2 className="h-8 w-8 text-profit-green" />
+              </div>
+              <h1 className="font-heading text-xl font-bold text-text-primary">You&apos;re in!</h1>
+              <p className="text-xs text-text-secondary">Redirecting to dashboard...</p>
+            </>
+          )}
+        </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="email" className="text-[11px] font-medium text-text-secondary">Email</Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="pl-9 h-10 rounded-lg border-border bg-bg-surface text-sm"
-              />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="password" className="text-[11px] font-medium text-text-secondary">Password</Label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary" />
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="pl-9 h-10 rounded-lg border-border bg-bg-surface text-sm"
-              />
-            </div>
-          </div>
+        {/* Google Sign-In Button - not shown during OTP/success steps */}
+        {step === 'email' && (
+          <>
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); triggerGoogleLogin(); }}
+              className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-surface-alt hover:shadow-sm active:scale-[0.98]"
+            >
+              <GoogleIcon className="h-4 w-4" />
+              Continue with Google
+            </a>
 
-          <Button
-            type="submit"
-            className="w-full h-10 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold text-sm transition-all hover:shadow-lg hover:shadow-brand-primary/20 active:scale-[0.98]"
-            disabled={loading}
-          >
-            {loading ? (
-              <><Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />Signing in...</>
-            ) : (
-              <>Sign In <ArrowRight className="ml-1 h-3.5 w-3.5" /></>
+            {/* Divider */}
+            <div className="relative flex items-center gap-3">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">or sign in with email</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+          </>
+        )}
+
+        {/* Error display */}
+        {error && (
+          <div className="rounded-lg border border-loss-red/20 bg-loss-red/5 px-3.5 py-2.5 text-xs text-loss-red font-medium flex items-start gap-2">
+            <span className="shrink-0 mt-0.5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            </span>
+            {error}
+          </div>
+        )}
+
+        {/* ═══ Step 1: Email Form ═══ */}
+        {step === 'email' && (
+          <form onSubmit={handleSendOtp} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-[11px] font-medium text-text-secondary">Email Address</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoFocus
+                  className="pl-9 h-11 rounded-lg border-border bg-bg-surface text-sm"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full h-11 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold text-sm transition-all hover:shadow-lg hover:shadow-brand-primary/20 active:scale-[0.98]"
+              disabled={loading || rateLimitCooldown > 0}
+            >
+              {loading ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending OTP...</>
+              ) : rateLimitCooldown > 0 ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Wait {rateLimitCooldown}s...</>
+              ) : (
+                <>Send Login Code <ArrowRight className="ml-1 h-4 w-4" /></>
+              )}
+            </Button>
+
+            {/* Security note */}
+            <div className="flex items-center gap-2 justify-center pt-1">
+              <Shield className="h-3 w-3 text-text-tertiary" />
+              <span className="text-[10px] text-text-tertiary">
+                Secure login — no password stored. OTP expires in 5 minutes.
+              </span>
+            </div>
+          </form>
+        )}
+
+        {/* ═══ Step 2: OTP Verification ═══ */}
+        {step === 'otp' && (
+          <div className="space-y-5">
+            {/* OTP Input */}
+            <div ref={otpInputRef} className="flex justify-center">
+              <InputOTP
+                maxLength={6}
+                value={otp}
+                onChange={handleOtpChange}
+                disabled={loading}
+                containerClassName="gap-2"
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                  <InputOTPSlot index={1} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                  <InputOTPSlot index={2} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                </InputOTPGroup>
+                <InputOTPGroup>
+                  <InputOTPSlot index={3} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                  <InputOTPSlot index={4} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                  <InputOTPSlot index={5} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+
+            {loading && (
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-brand-primary" />
+                <span className="text-xs text-text-secondary">Verifying...</span>
+              </div>
             )}
-          </Button>
 
-          <button
-            type="button"
-            onClick={handleDemoLogin}
-            disabled={loading}
-            className="w-full py-2 rounded-lg border border-dashed border-border text-[11px] font-medium text-text-tertiary hover:bg-bg-surface-alt hover:text-text-primary transition-colors"
-          >
-            Try Demo Account — No signup required
-          </button>
-        </form>
+            {/* Resend + Back */}
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={loading}
+                className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                Change email
+              </button>
 
-        {/* Footer */}
-        <p className="text-center text-xs text-text-secondary">
-          Don&apos;t have an account?{' '}
-          <a href="/register" className="text-brand-primary hover:underline font-semibold">
-            Sign up free
-          </a>
-        </p>
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={resendTimer > 0 || loading}
+                className="flex items-center gap-1 text-xs text-brand-primary hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resendTimer > 0 ? (
+                  `Resend in ${resendTimer}s`
+                ) : (
+                  <>
+                    <RefreshCw className="h-3 w-3" />
+                    Resend code
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Help text */}
+            <p className="text-center text-[10px] text-text-tertiary leading-relaxed">
+              Didn&apos;t receive the code? Check your spam folder or{' '}
+              <button onClick={handleResendOtp} disabled={resendTimer > 0 || loading} className="text-brand-primary hover:underline disabled:opacity-50">
+                try again
+              </button>
+            </p>
+          </div>
+        )}
+
+        {/* ═══ Step 3: Success (auto-redirects) ═══ */}
+        {step === 'success' && (
+          <div className="flex justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-brand-primary" />
+          </div>
+        )}
+
+        {/* Footer — only on email step */}
+        {step === 'email' && (
+          <p className="text-center text-xs text-text-secondary">
+            By continuing, you agree to our{' '}
+            <a href="/legal/terms" className="text-brand-primary hover:underline">Terms</a>
+            {' '}and{' '}
+            <a href="/legal/privacy" className="text-brand-primary hover:underline">Privacy Policy</a>
+          </p>
+        )}
       </div>
     </div>
   );
