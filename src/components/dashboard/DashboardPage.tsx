@@ -8,7 +8,7 @@ import { usePortfolio, usePositions, useIndices, useOrders, useTrades } from '@/
 import {
   Wallet, TrendingUp, TrendingDown, Activity, Trophy,
   BarChart3, ArrowRight, Plus, Briefcase, Receipt, Zap, Flame, History,
-  Clock, Sparkles,
+  Clock, Sparkles, Star,
 } from 'lucide-react';
 import type { Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -48,8 +48,30 @@ const getTodayStart = () => {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
 };
 
+/** Format position/order label — shows strike for options, e.g. 'NIFTY 23400 CE' */
+function formatPositionLabel(p: { symbol: string; segment: string; strikePrice: number | null; optionType: string | null; expiry: string | null }): string {
+  if (p.segment === 'OPTIONS' && p.strikePrice && p.optionType) {
+    return `${p.symbol} ${p.strikePrice} ${p.optionType}`;
+  }
+  return p.symbol;
+}
+
+interface Mover {
+  symbol: string;
+  name: string;
+  sector: string;
+  ltp: number;
+  change: number;
+  changePct: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
 export function DashboardPage() {
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
 
   // ─── React Query hooks (cached, deduplicated, auto-refresh) ───
   const { data: portfolio } = usePortfolio();
@@ -69,6 +91,27 @@ export function DashboardPage() {
     return { wins, totalTrades: trades.length, pnl: totalPnl };
   }, [yesterdayTrades]);
 
+  // ─── Movers data ───
+  const [moversData, setMoversData] = useState<{ gainers: Mover[]; losers: Mover[] } | null>(null);
+  const [moversLoading, setMoversLoading] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetch('/api/market/movers', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (!cancelled && res.success && res.data) {
+          setMoversData({ gainers: res.data.gainers ?? [], losers: res.data.losers ?? [] });
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setMoversLoading(false); });
+    return () => { cancelled = true; };
+  }, [token]);
+
   // Combined loading state from all queries
   const loading = !portfolio && !positions && !indices;
 
@@ -79,10 +122,7 @@ export function DashboardPage() {
   const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
   const subscribedRef = useRef<Set<string>>(new Set());
 
-  /* Resolved option-strike instrument keys (parallel to PositionsPage logic).
-   * Without this, an OPTIONS position (e.g. NIFTY 32900 CE) would subscribe to
-   * NIFTY's underlying spot price (~24,000) instead of the option premium (~₹100),
-   * producing absurd P&L on the dashboard. */
+  /* Resolved option-strike instrument keys (parallel to PositionsPage logic). */
   const [optionKeyMap, setOptionKeyMap] = useState<Map<string, string | null>>(new Map());
   useEffect(() => {
     const optPositions = positions.filter(
@@ -92,7 +132,6 @@ export function DashboardPage() {
         p.strikePrice != null &&
         p.optionType &&
         p.expiry &&
-        /* Skip positions that already have a stored instrumentKey. */
         !p.instrumentKey
     );
     if (optPositions.length === 0) {
@@ -115,8 +154,6 @@ export function DashboardPage() {
   }, [positions]);
 
   // Helper: get the right Upstox key to subscribe to for a position.
-  // Prefers the stored instrumentKey (instant); falls back to option-chain
-  // resolution for legacy positions.
   function getLiveKeyForPosition(p: Position): string | null {
     if (p.instrumentKey) return p.instrumentKey;
     if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
@@ -125,7 +162,7 @@ export function DashboardPage() {
     return getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol] || null;
   }
 
-  // Compute Upstox instrument keys for the loaded indices + open positions
+  // Compute Upstox instrument keys for the loaded indices + open positions + movers
   const allKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const i of indices) {
@@ -137,9 +174,19 @@ export function DashboardPage() {
       const k = getLiveKeyForPosition(p);
       if (k) keys.add(k);
     }
+    // Subscribe to movers symbols (4 gainers + 4 losers)
+    if (moversData) {
+      const moversSymbols = [
+        ...(moversData.gainers ?? []).slice(0, 4),
+        ...(moversData.losers ?? []).slice(0, 4),
+      ];
+      for (const m of moversSymbols) {
+        const k = getUpstoxKey(m.symbol);
+        if (k) keys.add(k);
+      }
+    }
     return Array.from(keys);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [indices, positions, optionKeyMap]);
+  }, [indices, positions, optionKeyMap, moversData]);
 
   // Subscribe to live quotes whenever keys change
   useEffect(() => {
@@ -165,11 +212,6 @@ export function DashboardPage() {
     };
   }, [unsubscribe]);
 
-  // ─── Data is now fetched via React Query hooks above ───
-  // No manual useEffect + fetch needed — React Query handles caching,
-
-
-
   if (loading) {
     return (
       <div className="space-y-4">
@@ -186,16 +228,12 @@ export function DashboardPage() {
   const totalPnl = portfolio?.totalPnl ?? 0;
   const totalPnlPositive = totalPnl >= 0;
   
-  /* Show Today's P&L: Use realized P&L which represents today's closed profits
-   * For unrealized (open positions), we calculate from positions array */
   const todaysRealizedPnl = portfolio?.realizedPnl ?? 0;
   
-  // Calculate unrealized P&L from open positions (simple version)
   let todaysUnrealizedPnl = 0;
   try {
     for (const p of positions) {
       if (!p || p.status !== 'OPEN') continue;
-      // Simple check: only count if position exists
       const key = getLiveKeyForPosition(p);
       if (key && quotes[key]) {
         const ltp = quotes[key].ltp ?? 0;
@@ -206,10 +244,8 @@ export function DashboardPage() {
     }
   } catch(e) { /* ignore */ }
   
-  // Today's Total P&L = Realized + Unrealized from open positions
   const todaysTotalPnl = todaysRealizedPnl + todaysUnrealizedPnl;
   
-  // Use yesterday's stats if available, otherwise fall back to cumulative
   const displayWins = yesterdayStats?.wins ?? portfolio?.winningTrades ?? 0;
   const displayTotalTrades = yesterdayStats?.totalTrades ?? portfolio?.totalTrades ?? 0;
   const displayPnl = yesterdayStats?.pnl ?? totalPnl;
@@ -219,16 +255,15 @@ export function DashboardPage() {
   const invested = portfolio?.investedAmount ?? 0;
   const totalPnlPct = invested > 0 ? (totalPnl / invested) * 100 : 0;
 
+  const gainers = moversData?.gainers ?? [];
+  const losers = moversData?.losers ?? [];
+
   return (
     <div className="space-y-5">
-      {/* Upstox reconnect banner (shown when token is expired) */}
       <UpstoxReconnectBanner status={wsStatus} />
-
-
 
       {/* ============== HERO CARD ============== */}
       <div className="card-soft hero-gradient p-5 relative overflow-hidden">
-        {/* Decorative chart graphic (top-right) */}
         <svg
           className="absolute -right-2 -top-2 opacity-60 pointer-events-none"
           width="120"
@@ -255,7 +290,6 @@ export function DashboardPage() {
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          {/* Bars */}
           <rect x="15" y="60" width="6" height="14" rx="1" fill="#2563EB" opacity="0.4" />
           <rect x="45" y="50" width="6" height="24" rx="1" fill="#2563EB" opacity="0.4" />
           <rect x="75" y="35" width="6" height="39" rx="1" fill="#2563EB" opacity="0.4" />
@@ -297,7 +331,6 @@ export function DashboardPage() {
 
       {/* ============== METRICS GRID 2x2 ============== */}
       <div className="grid gap-3 grid-cols-2">
-        {/* Total Balance */}
         <MetricCard
           icon={Wallet}
           iconBg="bg-tint-blue"
@@ -306,7 +339,6 @@ export function DashboardPage() {
           value={formatINR(portfolio?.totalBalance ?? tierFallback)}
           subtext="Virtual Capital"
         />
-        {/* Today's P&L — Shows today's profit only */}
         <MetricCard
           icon={todaysTotalPnl >= 0 ? TrendingUp : TrendingDown}
           iconBg={todaysTotalPnl >= 0 ? 'bg-tint-green' : 'bg-tint-red'}
@@ -319,7 +351,6 @@ export function DashboardPage() {
           }
           subtext={`Realized ${formatINR(todaysRealizedPnl)} · Live positions`}
         />
-        {/* Available Margin */}
         <MetricCard
           icon={Activity}
           iconBg="bg-tint-purple"
@@ -328,7 +359,6 @@ export function DashboardPage() {
           value={formatINR(portfolio?.availableMargin ?? tierFallback)}
           subtext={`Invested: ${formatINR(portfolio?.investedAmount ?? 0)}`}
         />
-        {/* Win Rate - Shows Yesterday's Performance */}
         <MetricCard
           icon={Trophy}
           iconBg="bg-tint-yellow"
@@ -414,7 +444,6 @@ export function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {positions.slice(0, 3).map((pos) => {
-                // Live tick lookup — uses resolved option-strike key for OPTIONS positions
                 const liveKey = getLiveKeyForPosition(pos);
                 const tick = liveKey ? quotes[liveKey] : undefined;
                 const liveLtp = tick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
@@ -424,25 +453,35 @@ export function DashboardPage() {
                   : 0;
                 const positive = livePnl >= 0;
                 const isLive = !!tick?.timestamp && Date.now() - tick.timestamp < 30000;
+                const label = formatPositionLabel(pos);
+                const isOptions = pos.segment === 'OPTIONS';
                 return (
                   <a
                     key={pos.id}
-                    href={`/stock/${pos.symbol}`}
+                    href="/positions"
                     className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-bg-surface-alt"
                   >
                     <StockLogo symbol={pos.symbol} size="md" rounded="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="font-mono text-sm font-semibold text-text-primary">
-                          {pos.symbol}
+                          {label}
                           {isLive && (
                             <span className="ml-1 inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse align-middle" />
                           )}
                         </p>
-                        <span className="pill bg-tint-green text-profit-green">BUY</span>
+                        <span className={cn(
+                          'pill',
+                          pos.side === 'LONG' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
+                        )}>
+                          {pos.side}
+                        </span>
                       </div>
                       <p className="text-[11px] text-text-secondary mt-0.5">
-                        NSE · {pos.quantity} Shares · ₹{formatNumber(liveLtp, 2)}
+                        {isOptions
+                          ? `${pos.optionType} · ${pos.quantity} lots · ₹${formatNumber(liveLtp, 2)}`
+                          : `NSE · ${pos.quantity} Shares · ₹${formatNumber(liveLtp, 2)}`
+                        }
                       </p>
                     </div>
                     <div className="text-right shrink-0">
@@ -461,41 +500,94 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* ============== TOP MOVERS BANNER ============== */}
-      <a
-        href="/movers"
-        className="block rounded-2xl border border-border bg-gradient-to-br from-tint-green/40 via-bg-surface to-tint-red/40 p-4 hover:shadow-md transition-shadow"
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-bg-surface-alt shrink-0">
-              <Flame className="h-6 w-6 text-accent-gold" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-heading text-sm font-bold text-text-primary">
-                Top Gainers &amp; Losers
-              </p>
-              <p className="text-[11px] text-text-secondary mt-0.5 truncate">
-                Today's top 20 gainers and 20 losers across 430+ stocks
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="pill bg-tint-green text-profit-green">+Gainers</span>
-            <span className="pill bg-tint-red text-loss-red">-Losers</span>
-            <ArrowRight className="h-4 w-4 text-text-secondary" />
-          </div>
-        </div>
-      </a>
-
-      {/* ============== QUICK ACTIONS ============== */}
+      {/* ============== TOP GAINERS & LOSERS ============== */}
       <div>
-        <h3 className="font-heading text-base font-semibold text-text-primary px-1 mb-2">Quick Actions</h3>
-        <div className="grid grid-cols-4 gap-2">
-          <QuickAction icon={Plus} label="Place Order" href="/trade" tint="bg-tint-blue" color="text-brand-primary" />
-          <QuickAction icon={Briefcase} label="Positions" href="/positions" tint="bg-tint-green" color="text-profit-green" />
-          <QuickAction icon={History} label="Wallet History" href="/history" tint="bg-tint-purple" color="text-info-purple" />
-          <QuickAction icon={Wallet} label="Funds" href="/portfolio" tint="bg-tint-yellow" color="text-accent-gold" />
+        <div className="flex items-center justify-between px-1 mb-2">
+          <div className="flex items-center gap-2">
+            <h3 className="font-heading text-base font-semibold text-text-primary">Top Gainers & Losers</h3>
+            <Flame className="h-4 w-4 text-accent-gold" />
+          </div>
+          <a href="/movers" className="text-xs font-semibold text-brand-primary hover:underline">
+            View More →
+          </a>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="card-soft p-3">
+            <p className="text-xs text-profit-green font-semibold mb-2">▲ Gainers</p>
+            {moversLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex items-center gap-2 py-1.5">
+                    <div className="h-6 w-6 rounded-md animate-pulse bg-bg-surface-alt" />
+                    <div className="flex-1"><div className="h-3 w-16 rounded animate-pulse bg-bg-surface-alt" /></div>
+                    <div className="h-3 w-12 rounded animate-pulse bg-bg-surface-alt" />
+                    <div className="h-3 w-10 rounded animate-pulse bg-bg-surface-alt" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div>
+                {gainers.slice(0, 4).map((m) => {
+                  const upstoxKey = getUpstoxKey(m.symbol);
+                  const tick = upstoxKey ? quotes[upstoxKey] : undefined;
+                  const liveLtp = tick?.ltp ?? m.ltp;
+                  const liveChangePct = tick?.changePct ?? m.changePct;
+                  return (
+                    <a
+                      key={m.symbol}
+                      href={`/stock/${m.symbol}`}
+                      className="flex items-center gap-2 py-1.5 hover:bg-bg-surface-alt rounded-lg transition-colors"
+                    >
+                      <StockLogo symbol={m.symbol} size="xs" rounded="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-mono text-xs font-semibold text-text-primary truncate">{m.symbol}</p>
+                      </div>
+                      <p className="font-mono text-xs font-bold tabular-nums text-text-primary">₹{formatNumber(liveLtp, 2)}</p>
+                      <p className="font-mono text-[10px] tabular-nums w-14 text-right text-profit-green">+{liveChangePct.toFixed(2)}%</p>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="card-soft p-3">
+            <p className="text-xs text-loss-red font-semibold mb-2">▼ Losers</p>
+            {moversLoading ? (
+              <div className="space-y-2">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="flex items-center gap-2 py-1.5">
+                    <div className="h-6 w-6 rounded-md animate-pulse bg-bg-surface-alt" />
+                    <div className="flex-1"><div className="h-3 w-16 rounded animate-pulse bg-bg-surface-alt" /></div>
+                    <div className="h-3 w-12 rounded animate-pulse bg-bg-surface-alt" />
+                    <div className="h-3 w-10 rounded animate-pulse bg-bg-surface-alt" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div>
+                {losers.slice(0, 4).map((m) => {
+                  const upstoxKey = getUpstoxKey(m.symbol);
+                  const tick = upstoxKey ? quotes[upstoxKey] : undefined;
+                  const liveLtp = tick?.ltp ?? m.ltp;
+                  const liveChangePct = tick?.changePct ?? m.changePct;
+                  return (
+                    <a
+                      key={m.symbol}
+                      href={`/stock/${m.symbol}`}
+                      className="flex items-center gap-2 py-1.5 hover:bg-bg-surface-alt rounded-lg transition-colors"
+                    >
+                      <StockLogo symbol={m.symbol} size="xs" rounded="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-mono text-xs font-semibold text-text-primary truncate">{m.symbol}</p>
+                      </div>
+                      <p className="font-mono text-xs font-bold tabular-nums text-text-primary">₹{formatNumber(liveLtp, 2)}</p>
+                      <p className="font-mono text-[10px] tabular-nums w-14 text-right text-loss-red">{liveChangePct.toFixed(2)}%</p>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -510,48 +602,72 @@ export function DashboardPage() {
           </div>
           <div className="card-soft p-3">
             <div className="space-y-2">
-              {recentOrders.map((ord) => (
-                <a
-                  key={ord.id}
-                  href={`/stock/${ord.symbol}`}
-                  className="flex items-center gap-3 rounded-xl p-2 hover:bg-bg-surface-alt transition-colors"
-                >
-                  <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono text-sm font-semibold text-text-primary">{ord.symbol}</p>
-                      <span
-                        className={cn(
-                          'pill',
-                          ord.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
-                        )}
-                      >
-                        {ord.side}
-                      </span>
+              {recentOrders.map((ord) => {
+                const isOptions = ord.segment === 'OPTIONS' && ord.strikePrice;
+                const label = isOptions
+                  ? `${ord.symbol} ${ord.strikePrice} ${ord.optionType}`
+                  : ord.symbol;
+                return (
+                  <a
+                    key={ord.id}
+                    href={`/trade?symbol=${ord.symbol}`}
+                    className="flex items-center gap-3 rounded-xl p-2 hover:bg-bg-surface-alt transition-colors"
+                  >
+                    <StockLogo symbol={ord.symbol} size="sm" rounded="sm" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-mono text-sm font-semibold text-text-primary">{label}</p>
+                        <span
+                          className={cn(
+                            'pill',
+                            ord.side === 'BUY' ? 'bg-tint-green text-profit-green' : 'bg-tint-red text-loss-red'
+                          )}
+                        >
+                          {ord.side}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-text-secondary mt-0.5">
+                        {isOptions
+                          ? `${ord.optionType} · ${ord.quantity} lots · ${ord.orderType}`
+                          : `${ord.orderType} · ${ord.quantity} qty`
+                        }
+                      </p>
                     </div>
-                    <p className="text-[11px] text-text-secondary mt-0.5">
-                      {ord.orderType} · {ord.quantity} qty
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
-                      ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
-                    </p>
-                    {(() => {
-                      const si = formatOrderStatus(ord.status);
-                      return (
-                        <p className={cn('text-[11px] font-medium', si.color)}>
-                          {si.label}
-                        </p>
-                      );
-                    })()}
-                  </div>
-                </a>
-              ))}
+                    <div className="text-right shrink-0">
+                      <p className="font-mono text-sm font-semibold tabular-nums text-text-primary">
+                        ₹{formatNumber(ord.filledPrice ?? ord.price ?? 0, 2)}
+                      </p>
+                      {(() => {
+                        const si = formatOrderStatus(ord.status);
+                        return (
+                          <p className={cn('text-[11px] font-medium', si.color)}>
+                            {si.label}
+                          </p>
+                        );
+                      })()}
+                    </div>
+                  </a>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
+
+      {/* ============== QUICK ACTIONS (8 buttons, 4x2 grid) ============== */}
+      <div>
+        <h3 className="font-heading text-base font-semibold text-text-primary px-1 mb-2">Quick Actions</h3>
+        <div className="grid grid-cols-4 gap-2">
+          <QuickAction icon={Plus} label="Place Order" href="/trade" tint="bg-tint-blue" color="text-brand-primary" />
+          <QuickAction icon={Briefcase} label="Positions" href="/positions" tint="bg-tint-green" color="text-profit-green" />
+          <QuickAction icon={Star} label="Watchlist" href="/watchlist" tint="bg-tint-yellow" color="text-accent-gold" />
+          <QuickAction icon={BarChart3} label="Option Chain" href="/optionchain" tint="bg-tint-purple" color="text-info-purple" />
+          <QuickAction icon={Flame} label="Top Movers" href="/movers" tint="bg-tint-red" color="text-loss-red" />
+          <QuickAction icon={Wallet} label="Funds" href="/portfolio" tint="bg-tint-yellow" color="text-accent-gold" />
+          <QuickAction icon={History} label="Wallet History" href="/history" tint="bg-tint-purple" color="text-info-purple" />
+          <QuickAction icon={Sparkles} label="Learning" href="/learning" tint="bg-tint-blue" color="text-brand-primary" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -611,7 +727,6 @@ function QuickAction({
   );
 }
 
-// Live data badge — shows green dot when WebSocket is connected to Upstox
 function LiveBadge({ connected }: { connected: boolean }) {
   return (
     <span

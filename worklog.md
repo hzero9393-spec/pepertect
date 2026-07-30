@@ -733,3 +733,22 @@ Stage Summary:
 - Fixed build-breaking JSX comment syntax error in TradePage.tsx
 - Vercel production deployment successful in 41s
 - Live: https://pepertect.vercel.app
+
+---
+Task ID: 4
+Agent: Main
+Task: Add smooth slide animation to tab swipe navigation
+
+Work Log:
+- Created AnimatedTabContent component with framer-motion AnimatePresence
+- Spring physics animation: stiffness 350, damping 35, mass 0.8
+- Direction-aware: slides left when going forward, right when going back
+- TradePage: place→basket→orders smooth slide on swipe + tab click
+- PositionsPage: stock↔index smooth slide
+- WatchlistPage: watchlist groups smooth slide
+- Build passed, deployed to Vercel in 44s
+
+Stage Summary:
+- 5 files changed, 137 insertions, 18 deletions
+- New component: src/components/shared/AnimatedTabContent.tsx
+- Live: https://pepertect.vercel.app
