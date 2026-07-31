@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X, Check, CheckCheck, Settings, Trash2, TrendingUp, AlertTriangle, Gift, Star, Info } from 'lucide-react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { cn } from '@/lib/utils';
@@ -172,154 +171,138 @@ export function NotificationBell() {
           unreadCount > 0 ? "text-brand-primary" : "text-text-secondary"
         )} />
         
-        {/* Unread Badge */}
-        <AnimatePresence>
-          {unreadCount > 0 && (
-            <motion.span
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0 }}
-              className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-loss-red px-1 text-[10px] font-bold text-white"
-            >
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </motion.span>
-          )}
-        </AnimatePresence>
+        {/* Unread Badge — CSS-only animation, no framer-motion */}
+        {unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-loss-red px-1 text-[10px] font-bold text-white animate-in zoom-in-50 duration-200">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        )}
       </button>
 
-      {/* Dropdown Panel */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.96 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-2xl border border-border bg-background shadow-xl z-50 overflow-hidden"
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-brand-primary/5 to-accent-gold/5">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary">
-                  <span className="text-xs font-bold text-white">P</span>
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-text-primary">Notifications</h3>
-                  {unreadCount > 0 && (
-                    <p className="text-[10px] text-brand-primary font-medium">{unreadCount} new</p>
-                  )}
-                </div>
+      {/* Dropdown Panel — CSS-only entrance animation */}
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-2xl border border-border bg-background shadow-xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-border bg-gradient-to-r from-brand-primary/5 to-accent-gold/5">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-primary">
+                <span className="text-xs font-bold text-white">P</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div>
+                <h3 className="text-sm font-bold text-text-primary">Notifications</h3>
                 {unreadCount > 0 && (
-                  <button
-                    onClick={() => markAllRead.mutate()}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-brand-primary hover:bg-brand-primary/10 transition-colors"
-                  >
-                    <CheckCheck className="h-3.5 w-3.5" />
-                    All read
-                  </button>
+                  <p className="text-[10px] text-brand-primary font-medium">{unreadCount} new</p>
                 )}
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="p-1 rounded-lg hover:bg-bg-surface-alt transition-colors"
-                >
-                  <X className="h-4 w-4 text-text-secondary" />
-                </button>
               </div>
             </div>
-
-            {/* Notifications List */}
-            <div className="max-h-80 overflow-y-auto">
-              {isLoading ? (
-                <div className="p-8 text-center">
-                  <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand-primary" />
-                  <p className="mt-2 text-xs text-text-tertiary">Loading...</p>
-                </div>
-              ) : notifications.length === 0 ? (
-                <div className="p-8 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bg-surface-alt mb-3">
-                    <Bell className="h-6 w-6 text-text-tertiary" />
-                  </div>
-                  <p className="text-sm font-medium text-text-secondary">No notifications yet</p>
-                  <p className="text-[11px] text-text-tertiary mt-1">We&apos;ll notify you when something happens!</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-border/50">
-                  {notifications.map((notif) => (
-                    <motion.div
-                      key={notif.id}
-                      layout
-                      onClick={() => handleNotificationClick(notif)}
-                      className={cn(
-                        "p-3 cursor-pointer transition-colors hover:bg-bg-surface-alt/50",
-                        getNotificationBg(notif.type, notif.isRead)
-                      )}
-                    >
-                      <div className="flex gap-3">
-                        <div className={cn(
-                          "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                          notif.isRead ? "bg-bg-surface" : "bg-white shadow-sm"
-                        )}>
-                          {getNotificationIcon(notif.type)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className={cn(
-                              "text-sm font-semibold truncate",
-                              notif.isRead ? "text-text-secondary" : "text-text-primary"
-                            )}>
-                              {notif.title}
-                            </p>
-                            {!notif.isRead && (
-                              <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-brand-primary" />
-                            )}
-                          </div>
-                          <p className="text-[12px] text-text-secondary mt-0.5 line-clamp-2">
-                            {notif.message}
-                          </p>
-                          <p className="text-[10px] text-text-tertiary mt-1">
-                            {formatTimeAgo(notif.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+            <div className="flex items-center gap-1">
+              {unreadCount > 0 && (
+                <button
+                  onClick={() => markAllRead.mutate()}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-brand-primary hover:bg-brand-primary/10 transition-colors"
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  All read
+                </button>
               )}
-            </div>
-
-            {/* Footer */}
-            <div className="p-3 border-t border-border bg-bg-surface/30 flex items-center justify-between">
               <button
-                onClick={() => {
-                  if (confirm('Delete all notifications? This cannot be undone.')) {
-                    deleteAll.mutate();
-                  }
-                }}
-                disabled={deleteAll.isPending || notifications.length === 0}
-                className={cn(
-                  "flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium transition-colors",
-                  deleteAll.isPending || notifications.length === 0
-                    ? "text-text-tertiary cursor-not-allowed"
-                    : "text-loss-red hover:bg-loss-red/10"
-                )}
+                onClick={() => setIsOpen(false)}
+                className="p-1 rounded-lg hover:bg-bg-surface-alt transition-colors"
               >
-                <Trash2 className="h-4 w-4" />
-                {deleteAll.isPending ? 'Deleting...' : 'Clear All'}
+                <X className="h-4 w-4 text-text-secondary" />
               </button>
-              
-              <a
-                href="/settings/notifications"
-                className="flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface-alt transition-colors"
-              >
-                <Settings className="h-4 w-4" />
-                Settings
-              </a>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+
+          {/* Notifications List */}
+          <div className="max-h-80 overflow-y-auto">
+            {isLoading ? (
+              <div className="p-8 text-center">
+                <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-border border-t-brand-primary" />
+                <p className="mt-2 text-xs text-text-tertiary">Loading...</p>
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="p-8 text-center">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-bg-surface-alt mb-3">
+                  <Bell className="h-6 w-6 text-text-tertiary" />
+                </div>
+                <p className="text-sm font-medium text-text-secondary">No notifications yet</p>
+                <p className="text-[11px] text-text-tertiary mt-1">We&apos;ll notify you when something happens!</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border/50">
+                {notifications.map((notif) => (
+                  <div
+                    key={notif.id}
+                    onClick={() => handleNotificationClick(notif)}
+                    className={cn(
+                      "p-3 cursor-pointer transition-colors hover:bg-bg-surface-alt/50",
+                      getNotificationBg(notif.type, notif.isRead)
+                    )}
+                  >
+                    <div className="flex gap-3">
+                      <div className={cn(
+                        "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                        notif.isRead ? "bg-bg-surface" : "bg-white shadow-sm"
+                      )}>
+                        {getNotificationIcon(notif.type)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className={cn(
+                            "text-sm font-semibold truncate",
+                            notif.isRead ? "text-text-secondary" : "text-text-primary"
+                          )}>
+                            {notif.title}
+                          </p>
+                          {!notif.isRead && (
+                            <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-brand-primary" />
+                          )}
+                        </div>
+                        <p className="text-[12px] text-text-secondary mt-0.5 line-clamp-2">
+                          {notif.message}
+                        </p>
+                        <p className="text-[10px] text-text-tertiary mt-1">
+                          {formatTimeAgo(notif.createdAt)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="p-3 border-t border-border bg-bg-surface/30 flex items-center justify-between">
+            <button
+              onClick={() => {
+                if (confirm('Delete all notifications? This cannot be undone.')) {
+                  deleteAll.mutate();
+                }
+              }}
+              disabled={deleteAll.isPending || notifications.length === 0}
+              className={cn(
+                "flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium transition-colors",
+                deleteAll.isPending || notifications.length === 0
+                  ? "text-text-tertiary cursor-not-allowed"
+                  : "text-loss-red hover:bg-loss-red/10"
+              )}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleteAll.isPending ? 'Deleting...' : 'Clear All'}
+            </button>
+            
+            <a
+              href="/settings/notifications"
+              className="flex items-center gap-1.5 py-2 px-3 rounded-xl text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-bg-surface-alt transition-colors"
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

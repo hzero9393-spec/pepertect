@@ -8,7 +8,7 @@ import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, Calenda
 import React from 'react';
 import type { Position, Trade, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
-import { useLiveQuote } from '@/hooks/useLiveQuote';
+import { useLiveQuote, type LiveTick } from '@/hooks/useLiveQuote';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
 import { resolveOptionInstrumentKeys } from '@/lib/option-instrument-resolver';
 import { UpstoxReconnectBanner } from '@/components/UpstoxReconnectBanner';
@@ -38,6 +38,159 @@ function isToday(iso: string): boolean {
   );
 }
 
+/* ============================================================
+   Memoized PositionCard — only re-renders when LTP changes
+   ============================================================ */
+interface PositionCardProps {
+  pos: Position;
+  quotes: Record<string, LiveTick>;
+  exiting: boolean;
+  getLiveKey: (p: Position) => string | null;
+  onExit: (posId: string) => void;
+  onEditSLTarget: (pos: Position) => void;
+}
+
+const PositionCard = React.memo(
+  function PositionCardInner({ pos, quotes, exiting, getLiveKey, onExit, onEditSLTarget }: PositionCardProps) {
+    const liveKey = getLiveKey(pos);
+    const liveTick = liveKey ? quotes[liveKey] : undefined;
+    const liveLtp = liveTick?.ltp ?? pos.avgPrice;
+    const dirMult = pos.side === 'LONG' ? 1 : -1;
+    const livePnl = (liveLtp - pos.avgPrice) * pos.quantity * dirMult;
+    const livePnlPct = pos.avgPrice > 0 ? ((liveLtp - pos.avgPrice) / pos.avgPrice) * 100 * dirMult : 0;
+    const slDist = pos.stopLoss ? Math.abs(liveLtp - pos.stopLoss) / liveLtp * 100 : null;
+    const tgtDist = pos.target ? Math.abs(pos.target - liveLtp) / liveLtp * 100 : null;
+    const slNear = slDist != null && slDist < 1.5;
+    const tgtNear = tgtDist != null && tgtDist < 1.5;
+
+    return (
+      <div
+        className={cn(
+          'rounded-lg border bg-bg-base p-3 sm:p-4 transition-colors',
+          exiting ? 'opacity-50 pointer-events-none' : '',
+          slNear ? 'border-loss-red/50' : tgtNear ? 'border-profit-green/50' : 'border-border-default',
+        )}
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3 min-w-0">
+            <StockLogo symbol={pos.symbol} size="md" rounded="md" />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <a href={`/stock/${pos.symbol}`} className="font-heading text-sm sm:text-base font-semibold text-text-primary hover:text-brand-primary">{pos.symbol}</a>
+                <span className={cn(
+                  'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                  isIndexPosition(pos) ? 'bg-tint-purple text-info-purple' : 'bg-tint-blue text-brand-primary'
+                )}>
+                  {isIndexPosition(pos) ? 'INDEX' : 'STOCK'}
+                </span>
+                <span className="rounded bg-bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">{pos.segment}</span>
+                {pos.optionType && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${pos.optionType === 'CE' ? 'bg-profit-green/10 text-profit-green' : 'bg-loss-red/10 text-loss-red'}`}>{pos.optionType}</span>}
+                {pos.strikePrice != null && pos.strikePrice > 0 && (
+                  <span className="font-mono text-[10px] text-text-tertiary">Strike: {pos.strikePrice}</span>
+                )}
+                {liveTick && (
+                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase text-profit-green">
+                    <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
+                <span>{pos.side} · {pos.quantity} qty</span>
+                <span>Avg: ₹{formatNumber(pos.avgPrice)}</span>
+                <span className="font-mono">LTP: <span className={cn('font-semibold tabular-nums', liveTick ? 'text-text-primary' : 'text-text-secondary')}>₹{formatNumber(liveLtp, 2)}</span></span>
+              </div>
+              {/* SL / TGT badges */}
+              {(pos.stopLoss || pos.target) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  {pos.stopLoss && (
+                    <span className={cn(
+                      'inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold border',
+                      slNear ? 'bg-tint-red text-loss-red border-loss-red/40' : 'bg-bg-surface-alt text-text-secondary border-border'
+                    )} title={`Stop Loss · ${slDist != null ? slDist.toFixed(2) + '% away' : ''}`}>
+                      <Shield className="h-2.5 w-2.5" />
+                      SL ₹{formatNumber(pos.stopLoss, 2)}
+                    </span>
+                  )}
+                  {pos.target && (
+                    <span className={cn(
+                      'inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold border',
+                      tgtNear ? 'bg-tint-green text-profit-green border-profit-green/40' : 'bg-bg-surface-alt text-text-secondary border-border'
+                    )} title={`Target · ${tgtDist != null ? tgtDist.toFixed(2) + '% away' : ''}`}>
+                      <Crosshair className="h-2.5 w-2.5" />
+                      TGT ₹{formatNumber(pos.target, 2)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 sm:gap-4">
+            <div className="text-right">
+              <p className={`font-mono text-sm sm:text-base font-bold tabular-nums ${getPnlColor(livePnl)}`}>
+                {livePnl >= 0 ? '+' : ''}₹{formatNumber(livePnl)}
+              </p>
+              <p className={`font-mono text-xs tabular-nums ${getPnlColor(livePnlPct)}`}>
+                {livePnlPct >= 0 ? '+' : ''}{livePnlPct.toFixed(2)}%
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Edit SL/Target Button */}
+              <button
+                onClick={() => onEditSLTarget(pos)}
+                className={cn(
+                  "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                  "border hover:shadow-sm active:scale-95",
+                  (pos.stopLoss || pos.target)
+                    ? "bg-brand-primary/10 border-brand-primary/30 text-brand-primary hover:bg-brand-primary/20"
+                    : "bg-bg-surface-alt border-border text-text-secondary hover:bg-bg-surface hover:text-text-primary"
+                )}
+                title="Set or Edit Stop Loss & Target"
+              >
+                <Target className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{pos.stopLoss || pos.target ? 'Edit' : 'Set'} SL/TGT</span>
+                <span className="sm:hidden">{pos.stopLoss || pos.target ? 'Edit' : 'Set'}</span>
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-loss-red border-loss-red/30 hover:bg-loss-red/10 h-9"
+                onClick={() => onExit(pos.id)}
+                disabled={exiting}
+              >
+                {exiting ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <XCircle className="mr-1 h-3 w-3" />
+                )}
+                {exiting ? 'Exiting...' : 'Exit'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  },
+  /* Custom comparison: only re-render when this position's LTP or exit status changes */
+  (prev, next) => {
+    if (prev.exiting !== next.exiting) return false;
+    if (prev.pos.id !== next.pos.id) return false;
+    if (prev.pos.status !== next.pos.status) return false;
+    if (prev.pos.stopLoss !== next.pos.stopLoss) return false;
+    if (prev.pos.target !== next.pos.target) return false;
+    if (prev.pos.symbol !== next.pos.symbol) return false;
+    if (prev.pos.side !== next.pos.side) return false;
+    if (prev.pos.quantity !== next.pos.quantity) return false;
+    if (prev.pos.avgPrice !== next.pos.avgPrice) return false;
+    // Only re-render if the LTP for THIS position actually changed
+    const prevKey = prev.getLiveKey(prev.pos);
+    const nextKey = next.getLiveKey(next.pos);
+    const prevLtp = prevKey ? prev.quotes[prevKey]?.ltp : undefined;
+    const nextLtp = nextKey ? next.quotes[nextKey]?.ltp : undefined;
+    return prevLtp === nextLtp;
+  },
+);
+
 export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' | 'index' }) {
   const { token } = useAuthStore();
   /* Active monitor for auto-executing pending limit orders */
@@ -51,6 +204,8 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   const [activeTab, setActiveTab] = useState<'stock' | 'index'>(initialTab);
   const [exitingAll, setExitingAll] = useState(false);
   const [confirmExitAll, setConfirmExitAll] = useState(false);
+  /* ---------- Optimistic exit state: Set of position IDs currently exiting ---------- */
+  const [exitingIds, setExitingIds] = useState<Set<string>>(new Set());
   /* ---------- Live quotes via WebSocket ---------- */
   const { quotes, subscribe, unsubscribe, status: wsStatus } = useLiveQuote();
   /* Track which symbols we've already subscribed to (avoids re-subscribe loops) */
@@ -74,21 +229,28 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     onSwipeRight: () => { if (activeTab === 'index') switchTab('stock'); },
   });
 
-  /* ---------- Resolved instrument keys for OPTIONS positions ----------
-   * For an OPTIONS position, `getUpstoxKey(pos.symbol)` returns the underlying
-   * INDEX key (e.g. NSE_INDEX|Nifty 50) — NOT the strike's instrument key.
-   * Subscribing to the index spot price gives a wildly wrong "live LTP" for
-   * an option position (e.g. NIFTY spot ~24,000 instead of NIFTY 32900 CE
-   * premium ~₹100). We resolve the actual strike instrument_key by fetching
-   * the option chain for (symbol + expiry) on mount, then subscribe to that.
-   */
+  /* ---------- Resolved instrument keys for OPTIONS positions ---------- */
   const [optionKeyMap, setOptionKeyMap] = useState<Map<string, string | null>>(new Map());
-  /* True while we're resolving option keys (briefly shown as a loader) */
   const [resolvingOptionKeys, setResolvingOptionKeys] = useState(false);
 
+  /* ---------- Helper: fetch trades once (used after exits) ---------- */
+  const fetchTradesOnce = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/trades', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.success) setTrades(data.data);
+    } catch (err) {
+      console.error('Trades refetch error:', err);
+    }
+  }, [token]);
+
+  /* ---------- Initial data fetch (positions + trades) + 15s positions-only poll ---------- */
   useEffect(() => {
-    const fetchPositions = async () => {
-      if (!token) return;
+    if (!token) return;
+    let cancelled = false;
+
+    const fetchInitial = async () => {
       try {
         const [posRes, tradeRes] = await Promise.all([
           fetch('/api/positions', { headers: { Authorization: `Bearer ${token}` } }),
@@ -96,59 +258,69 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         ]);
         const posData = await posRes.json();
         const tradeData = await tradeRes.json();
+        if (cancelled) return;
         if (posData.success) {
-          // MERGE server data with local state instead of replacing.
-          // This prevents the 15s refresh from overwriting SL/Target values
-          // that were just set locally (if the server hasn't reflected them yet).
-          setPositions(prev => {
-            const serverMap = new Map<string, Position>((posData.data as Position[]).map((s: Position) => [s.id, s]));
-            // Keep positions that exist locally but not on server (about to be removed)
-            const serverIds = new Set(serverMap.keys());
-            // For positions on server, merge: use server data but preserve local SL/Target if server hasn't caught up
-            const merged = prev
-              .filter(p => serverIds.has(p.id)) // remove locally-deleted positions
-              .map(p => {
-                const sv = serverMap.get(p.id)!;
-                return {
-                  ...sv,
-                  // Preserve locally-set SL/Target if server returns null
-                  stopLoss: sv.stopLoss ?? p.stopLoss,
-                  target: sv.target ?? p.target,
-                };
-              });
-            // Add brand new positions from server (opened from another tab/device)
-            for (const [id, sp] of serverMap) {
-              if (!prev.find(p => p.id === id)) {
-                merged.push(sp);
-              }
-            }
-            return merged;
-          });
+          setPositions((posData.data as Position[]).map((s: Position) => ({
+            ...s,
+            stopLoss: s.stopLoss ?? null,
+            target: s.target ?? null,
+          })));
         }
         if (tradeData.success) setTrades(tradeData.data);
       } catch (err) {
-        console.error('Positions fetch error:', err);
+        console.error('Initial fetch error:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    fetchPositions();
-    // NOTE: This 15s interval ONLY refreshes position STATUS (open/closed).
-    // It does NOT affect P&L calculation — P&L updates in REAL-TIME via
-    // WebSocket ticks (~800ms) using the direct render computation above.
-    const id = setInterval(fetchPositions, 15000);
-    return () => clearInterval(id);
+
+    fetchInitial();
+
+    // 15s interval: ONLY positions (not trades — trades only change on exit)
+    const fetchPositionsOnly = async () => {
+      if (!token || cancelled) return;
+      try {
+        const res = await fetch('/api/positions', { headers: { Authorization: `Bearer ${token}` } });
+        const data = await res.json();
+        if (cancelled || !data.success) return;
+        // MERGE server data with local state (preserves locally-set SL/Target)
+        setPositions(prev => {
+          const serverMap = new Map<string, Position>((data.data as Position[]).map((s: Position) => [s.id, s]));
+          const serverIds = new Set(serverMap.keys());
+          const merged = prev
+            .filter(p => serverIds.has(p.id))
+            .map(p => {
+              const sv = serverMap.get(p.id)!;
+              return {
+                ...sv,
+                stopLoss: sv.stopLoss ?? p.stopLoss,
+                target: sv.target ?? p.target,
+              };
+            });
+          for (const [id, sp] of serverMap) {
+            if (!prev.find(p => p.id === id)) {
+              merged.push({
+                ...sp,
+                stopLoss: sp.stopLoss ?? null,
+                target: sp.target ?? null,
+              });
+            }
+          }
+          return merged;
+        });
+      } catch (err) {
+        console.error('Positions poll error:', err);
+      }
+    };
+
+    const id = setInterval(fetchPositionsOnly, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [token]);
 
-  /* ---------- Resolve instrument keys for OPTIONS positions ----------
-   * When positions change, fetch option chains to map each OPTIONS position
-   * to its actual Upstox instrument_key (e.g. NSE_FO|63811 for a real
-   * NIFTY strike). EQUITY positions skip this — they use getUpstoxKey(symbol).
-   *
-   * OPTIMIZATION: Positions created AFTER the instrumentKey field was added
-   * to the schema already have their key stored — we skip the option-chain
-   * fetch entirely for those. Only legacy positions (or rare edge cases where
-   * the client didn't pass instrumentKey) need to be resolved. */
+  /* ---------- Resolve instrument keys for OPTIONS positions ---------- */
   useEffect(() => {
     if (positions.length === 0) return;
     const optionPositions = positions.filter(
@@ -157,8 +329,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         p.strikePrice != null &&
         p.optionType &&
         p.expiry &&
-        /* Skip positions that already have a stored instrumentKey — they
-         * were created with the new code path and don't need resolution. */
         !p.instrumentKey
     );
     if (optionPositions.length === 0) {
@@ -184,35 +354,21 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       .finally(() => {
         if (!cancelled) setResolvingOptionKeys(false);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [positions]);
 
-  /* ---------- Helper: resolve the live-tick instrument key for a position ----------
-   * Returns the right Upstox key to subscribe to:
-   *   - EQUITY → getUpstoxKey(symbol) e.g. "NSE_EQ|INE002A01018"
-   *   - OPTIONS/FUTURES → pos.instrumentKey (stored at order time) if present,
-   *                       else fall back to resolved strike key from option chain.
-   *                       If neither is available yet, returns null so we don't
-   *                       accidentally subscribe to the underlying index spot
-   *                       price (which would show absurd P&L). */
-  function getLiveKeyForPosition(p: Position): string | null {
-    // For OPTIONS/FUTURES: prefer the stored instrumentKey (instant — no fetch).
+  /* ---------- Helper: resolve the live-tick instrument key for a position ---------- */
+  const getLiveKeyForPosition = useCallback((p: Position): string | null => {
     if (p.segment === 'OPTIONS' || p.segment === 'FUTURES') {
       if (p.instrumentKey) return p.instrumentKey;
-      // Fall back to resolved key from option chain (legacy positions).
       if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
         const resolved = optionKeyMap.get(p.id);
         if (resolved) return resolved;
       }
-      // While resolving, return null so we don't accidentally subscribe to the
-      // underlying index spot price (which would show absurd P&L).
       return null;
     }
-    // EQUITY: use stored key if present, else resolve from symbol.
     return p.instrumentKey ?? getUpstoxKey(p.symbol);
-  }
+  }, [optionKeyMap]);
 
   /* ---------- Subscribe to live quotes for all open positions ---------- */
   useEffect(() => {
@@ -220,8 +376,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     const newSyms: string[] = [];
     const newKeys: string[] = [];
     for (const p of positions) {
-      // Build a stable subscription-id per position so we can avoid re-subscribing.
-      // For OPTIONS we wait until optionKeyMap has resolved the strike's key.
       const key = getLiveKeyForPosition(p);
       if (!key) continue;
       const subId = `${p.id}::${key}`;
@@ -233,7 +387,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       subscribe(newKeys);
       newSyms.forEach((s) => subscribedSymsRef.current.add(s));
     }
-    // Cleanup on unmount: unsubscribe all
     return () => {
       if (newKeys.length > 0) {
         unsubscribe(newKeys);
@@ -243,28 +396,21 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [positions, optionKeyMap, subscribe, unsubscribe]);
 
-    /* ---------- Open SL/Target Modal ---------- */
+  /* ---------- Open SL/Target Modal ---------- */
   const openSLTargetModal = (pos: Position) => {
     setSelectedPosition(pos);
     setSlTargetModalOpen(true);
   };
 
   const handleUpdateSLTarget = async (stopLoss: number | null, target: number | null) => {
-    if (!selectedPosition) {
-      throw new Error('No position selected');
-    }
-    if (!token) {
-      throw new Error('Not authenticated. Please log in again.');
-    }
-
+    if (!selectedPosition) throw new Error('No position selected');
+    if (!token) throw new Error('Not authenticated. Please log in again.');
     try {
       const res = await fetch(`/api/positions/${selectedPosition.id}/sl-target`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ stopLoss, target }),
       });
-
-      // Handle non-JSON responses (e.g. 500 HTML page from DB disconnect)
       const contentType = res.headers.get('content-type') || '';
       let data: any;
       if (contentType.includes('application/json')) {
@@ -273,52 +419,33 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         const text = await res.text().catch(() => 'Unknown error');
         throw new Error(`Server error (${res.status}): ${text.slice(0, 200)}`);
       }
-
       if (data.success) {
-        // Optimistic update: immediately update local state
         const posId = selectedPosition.id;
         setPositions(prev => prev.map(p =>
           p.id === posId
             ? { ...p, stopLoss: stopLoss ?? undefined, target: target ?? undefined }
             : p
         ));
-        // Show success toast
         toast({
           title: '✅ SL & Target Updated',
           description: `${selectedPosition.symbol}: ${stopLoss ? 'SL ₹' + stopLoss.toFixed(2) : 'SL removed'}${stopLoss && target ? ' · ' : ''}${target ? 'Target ₹' + target.toFixed(2) : target === null ? 'Target removed' : ''}`,
           duration: 3000,
         });
       } else {
-        // Server returned an error — show full message
         throw new Error(data.error || `Server error (${res.status})`);
       }
     } catch (err) {
-      // Show error toast so user ALWAYS sees the problem
       const msg = err instanceof Error ? err.message : 'Network error. Check your connection.';
-      toast({
-        title: '❌ Failed to update SL/Target',
-        description: msg,
-        variant: 'destructive',
-        duration: 5000,
-      });
-      throw new Error(msg); // Re-throw so the modal also shows the error
+      toast({ title: '❌ Failed to update SL/Target', description: msg, variant: 'destructive', duration: 5000 });
+      throw new Error(msg);
     }
   };
 
   /* ---------- Auto-trigger SL / Target ---------- */
-  // For each open position, check if live LTP has hit SL or Target.
-  // If yes, call /api/positions/[id]/sl-target (POST) which:
-  //  1. Sets proper exitReason (SL_HIT / TARGET_HIT)
-  //  2. Creates Trade record
-  //  3. Updates portfolio balance + P&L
-  //  4. Sends notification (SL hit or Target achieved)
-  // We pass currentPrice so the server executes at the SL/Target price.
   const handleAutoSquareOff = async (pos: Position, reason: 'SL' | 'TARGET', ltp: number) => {
     if (exitedRef.current.has(pos.id)) return;
     exitedRef.current.add(pos.id);
     try {
-      // Use the dedicated SL/Target check endpoint — it handles everything:
-      // auto square-off, portfolio update, trade record, and notification
       const res = await fetch(`/api/positions/${pos.id}/sl-target`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -326,7 +453,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       });
       const data = await res.json();
       if (data.success && data.triggered) {
-        // Show toast notification for SL/Target hit
         toast({
           title: data.reason === 'SL_HIT' ? '⚠️ Stop Loss Triggered!' : '🎯 Target Achieved!',
           description: `${pos.symbol}: ${data.reason === 'SL_HIT' ? 'SL' : 'Target'} hit at ₹${(data.exitPrice ?? ltp).toFixed(2)} · P&L ${data.pnl >= 0 ? '+' : ''}₹${(data.pnl ?? 0).toFixed(2)}`,
@@ -337,8 +463,10 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           [{ symbol: pos.symbol, reason, ltp, level: reason === 'SL' ? (pos.stopLoss ?? 0) : (pos.target ?? 0), ts: Date.now() }, ...prev].slice(0, 10)
         );
         setPositions((prev) => prev.filter((p) => p.id !== pos.id));
+        // Refetch trades after auto-exit
+        fetchTradesOnce();
       } else {
-        exitedRef.current.delete(pos.id); // allow retry if no trigger
+        exitedRef.current.delete(pos.id);
       }
     } catch {
       exitedRef.current.delete(pos.id);
@@ -355,7 +483,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       const tick = quotes[key];
       if (!tick || tick.ltp == null) continue;
       const ltp = tick.ltp;
-      // For LONG positions: SL triggers when LTP ≤ stopLoss, TGT when LTP ≥ target
       if (p.stopLoss && ltp <= p.stopLoss) {
         handleAutoSquareOff(p, 'SL', ltp);
       } else if (p.target && ltp >= p.target) {
@@ -365,15 +492,15 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quotes, positions, optionKeyMap]);
 
+  /* ---------- Optimistic Exit (single position) ---------- */
   const handleSquareOff = async (posId: string) => {
-    // Look up the LIVE LTP for this position from the WebSocket quotes store.
-    // We send it as `exitPrice` in the POST body so the server uses the real
-    // market price at square-off time — NOT MOCK_LTP[symbol] (which was stale
-    // and missing for NIFTY, causing sell price = 0 → huge fake loss).
+    // INSTANTLY mark as exiting — 0ms perceived delay
+    setExitingIds(prev => new Set(prev).add(posId));
+
     const pos = positions.find((p) => p.id === posId);
     const liveKey = pos ? getLiveKeyForPosition(pos) : null;
     const liveTick = liveKey ? quotes[liveKey] : undefined;
-    const exitPrice = liveTick?.ltp ?? pos?.avgPrice; // fallback to avgPrice if no live tick yet
+    const exitPrice = liveTick?.ltp ?? pos?.avgPrice;
     try {
       const res = await fetch(`/api/positions/${posId}`, {
         method: 'POST',
@@ -382,74 +509,116 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       });
       const data = await res.json();
       if (data.success) {
-        setMessage(`Position squared off successfully`);
         setPositions(positions.filter((p) => p.id !== posId));
-        setTimeout(() => setMessage(''), 3000);
+        toast({
+          title: '✅ Position Exited',
+          description: `${pos?.symbol ?? posId} squared off successfully`,
+          duration: 3000,
+        });
+        // Refetch trades after successful exit
+        fetchTradesOnce();
       } else {
-        setMessage(data.error || 'Failed to square off');
+        toast({
+          title: '❌ Exit Failed',
+          description: data.error || 'Failed to square off',
+          variant: 'destructive',
+          duration: 4000,
+        });
       }
     } catch {
-      setMessage('Network error');
+      toast({
+        title: '❌ Network Error',
+        description: 'Failed to reach server. Please try again.',
+        variant: 'destructive',
+        duration: 4000,
+      });
+    } finally {
+      // Always remove exiting state
+      setExitingIds(prev => {
+        const next = new Set(prev);
+        next.delete(posId);
+        return next;
+      });
     }
   };
 
-  /* ---------- Exit All (visible tab only) ---------- */
+  /* ---------- Exit All (batch endpoint) ---------- */
   const handleExitAll = async () => {
     const targets = filteredPositions;
     if (targets.length === 0) return;
+
+    // INSTANTLY mark all as exiting
     setExitingAll(true);
-    let okCount = 0;
-    let failCount = 0;
-    // Sequentially square off to avoid race conditions on portfolio margin.
-    // For each position, send the LIVE LTP as exitPrice so the server uses
-    // the real market price (not stale MOCK_LTP).
-    for (const p of targets) {
-      const liveKey = getLiveKeyForPosition(p);
-      const liveTick = liveKey ? quotes[liveKey] : undefined;
-      const exitPrice = liveTick?.ltp ?? p.avgPrice;
-      try {
-        const res = await fetch(`/api/positions/${p.id}`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ exitPrice }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          okCount++;
-          setPositions((prev) => prev.filter((x) => x.id !== p.id));
-        } else {
-          failCount++;
-        }
-      } catch {
-        failCount++;
+    const targetIds = new Set(targets.map(p => p.id));
+    setExitingIds(prev => {
+      const next = new Set(prev);
+      targetIds.forEach(id => next.add(id));
+      return next;
+    });
+
+    try {
+      // Build exitPrices map from live quotes
+      const exitPrices: Record<string, number> = {};
+      for (const p of targets) {
+        const liveKey = getLiveKeyForPosition(p);
+        const liveTick = liveKey ? quotes[liveKey] : undefined;
+        exitPrices[p.id] = liveTick?.ltp ?? p.avgPrice;
       }
+
+      const res = await fetch('/api/positions/batch-exit', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ positionIds: targets.map(p => p.id), exitPrices }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        const okCount = data.results?.filter((r: any) => r.success).length ?? 0;
+        const failCount = (data.results?.length ?? 0) - okCount;
+        // Remove successfully exited positions
+        const successIds = new Set(
+          (data.results ?? []).filter((r: any) => r.success).map((r: any) => r.id),
+        );
+        setPositions(prev => prev.filter(p => !successIds.has(p.id)));
+        setConfirmExitAll(false);
+        setMessage(
+          failCount === 0
+            ? `Successfully exited ${okCount} position${okCount !== 1 ? 's' : ''}`
+            : `Exited ${okCount}, failed ${failCount}`
+        );
+        setTimeout(() => setMessage(''), 4000);
+        // Refetch trades after batch exit
+        fetchTradesOnce();
+      } else {
+        setMessage(data.error || 'Batch exit failed');
+        setTimeout(() => setMessage(''), 4000);
+      }
+    } catch {
+      setMessage('Network error during batch exit');
+      setTimeout(() => setMessage(''), 4000);
+    } finally {
+      setExitingAll(false);
+      // Remove all exiting states for the target IDs
+      setExitingIds(prev => {
+        const next = new Set(prev);
+        targetIds.forEach(id => next.delete(id));
+        return next;
+      });
     }
-    setExitingAll(false);
-    setConfirmExitAll(false);
-    setMessage(
-      failCount === 0
-        ? `Successfully exited ${okCount} position${okCount !== 1 ? 's' : ''}`
-        : `Exited ${okCount}, failed ${failCount}`
-    );
-    setTimeout(() => setMessage(''), 4000);
   };
 
-  /* ---------- Filter by active tab ---------- */
-  const stockPositions = positions.filter((p) => !isIndexPosition(p));
-  const indexPositions = positions.filter((p) => isIndexPosition(p));
-  const filteredPositions = activeTab === 'stock' ? stockPositions : indexPositions;
+  /* ---------- Filter by active tab (memoized) ---------- */
+  const { stockPositions, indexPositions, filteredPositions } = useMemo(() => {
+    const sp = positions.filter((p) => !isIndexPosition(p));
+    const ip = positions.filter((p) => isIndexPosition(p));
+    return {
+      stockPositions: sp,
+      indexPositions: ip,
+      filteredPositions: activeTab === 'stock' ? sp : ip,
+    };
+  }, [positions, activeTab]);
 
-  /* ---------- Live LTP per position (from WebSocket) ----------
-   * Build a map of { positionId: liveLtp } using the same key-resolution
-   * logic as getLiveKeyForPosition. This is used to compute REAL-TIME
-   * unrealized P&L for the hero card — instead of using the stale `p.pnl`
-   * field returned by the API (which used to be computed from a hard-coded
-   * MOCK_LTP table that was months out of date, e.g. RELIANCE 1882.75 vs
-   * real ~1278 → showed +₹1,207 the moment a trade was placed).
-   *
-   * If no live tick is available yet (still resolving or WS not connected),
-   * we fall back to pos.avgPrice → P&L = 0, which is the correct
-   * paper-trading UX until the real LTP arrives. */
+  /* ---------- Live LTP per position (memoized) ---------- */
   const liveLtpByPosId = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of positions) {
@@ -459,111 +628,86 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       map.set(p.id, ltp);
     }
     return map;
-  }, [positions, quotes, optionKeyMap]);
+  }, [positions, quotes, getLiveKeyForPosition]);
 
-  /* ---------- LIVE total invested / P&L for the active tab (REAL-TIME) ----------
-   * Computed on every render using live WebSocket LTP — no memo, no delay. */
-  const totalInvested = filteredPositions.reduce((sum, p) => sum + p.investedAmt, 0);
-  // Use LIVE LTP (from WebSocket) — computed directly on each render
-  let totalPnlLive = 0;
-  try {
+  /* ---------- Summary stats (memoized) ---------- */
+  const { totalInvested, totalPnl, totalQty } = useMemo(() => {
+    let invested = 0;
+    let pnl = 0;
+    let qty = 0;
     for (const p of filteredPositions) {
+      invested += p.investedAmt;
       const key = getLiveKeyForPosition(p);
       const tick = key ? quotes[key] : undefined;
       const liveLtp = tick?.ltp ?? p.avgPrice;
-      totalPnlLive += (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+      pnl += (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+      qty += p.quantity;
     }
-  } catch (e) { /* ignore */ }
-  const totalPnl = totalPnlLive;
-  const totalQty = filteredPositions.reduce((s, p) => s + p.quantity, 0);
+    return { totalInvested: invested, totalPnl: pnl, totalQty: qty };
+  }, [filteredPositions, quotes, getLiveKeyForPosition]);
 
-  /* ---------- LIVE Today's P&L (realized + unrealized) for active tab (REAL-TIME) ----------
-   * Computed on every render — updates instantly when WebSocket ticks arrive. */
-  const todayRealizedTab = trades
-    .filter((t) => isToday(t.createdAt) && (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
-    .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+  /* ---------- Per-tab today's P&L (memoized) ---------- */
+  const todayStats = useMemo(() => {
+    const realized = trades
+      .filter((t) => isToday(t.createdAt) && (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
+      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
 
-  let todayUnrealizedTab = 0;
-  try {
+    let unrealized = 0;
     for (const p of filteredPositions) {
-      if (!isToday(p.openedAt)) continue;
-      if (p.status !== 'OPEN') continue;
+      if (!isToday(p.openedAt) || p.status !== 'OPEN') continue;
       const key = getLiveKeyForPosition(p);
       const tick = key ? quotes[key] : undefined;
       const liveLtp = tick?.ltp ?? p.avgPrice;
-      todayUnrealizedTab += (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
+      unrealized += (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
     }
-  } catch (e) { /* ignore */ }
 
-  const todayStats = {
-    realized: todayRealizedTab,
-    unrealized: todayUnrealizedTab,
-    total: todayRealizedTab + todayUnrealizedTab,
-  };
+    return { realized, unrealized, total: realized + unrealized };
+  }, [trades, filteredPositions, activeTab, quotes, getLiveKeyForPosition]);
 
-  /* ---------- LIVE COMBINED Today's P&L (stock + index, REAL-TIME) ----------
-   * CRITICAL: Computed on EVERY RENDER (not useMemo) to guarantee instant
-   * updates when WebSocket quotes change. The `quotes` object from useLiveQuote
-   * triggers re-renders via setVersion() on every tick (~800ms), so this
-   * code runs with fresh LTP values every time — NO 15s delay!
-   *
-   * User requirement: "today p&l same ho stock and index dono ka jaise
-   * stock main 1200 profite hua or index main 500 loss toh total today
-   * p&l 700 ho". So we compute a combined total across BOTH tabs using
-   * live WebSocket LTP for each open position. */
-  // Compute realized P&L from today's closed trades (changes less frequently)
-  const todayRealizedAll = trades
-    .filter((t) => isToday(t.createdAt))
-    .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+  /* ---------- Combined today's P&L across Stock + Index (memoized) ---------- */
+  const combinedTodayStats = useMemo(() => {
+    const realized = trades
+      .filter((t) => isToday(t.createdAt))
+      .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
 
-  // Compute unrealized P&L from OPEN positions using LIVE WebSocket LTP
-  // This runs on EVERY render — updates in real-time as ticks arrive
-  let todayUnrealizedAll = 0;
-  let stockUnrealizedLive = 0;
-  let indexUnrealizedLive = 0;
+    let unrealizedAll = 0;
+    let stockUnrealized = 0;
+    let indexUnrealized = 0;
 
-  try {
     for (const p of positions) {
-      if (!p || !isToday(p.openedAt)) continue;
-      if (p.status !== 'OPEN') continue;
-      // Get live LTP from WebSocket quotes (same as DashboardPage approach)
+      if (!p || !isToday(p.openedAt) || p.status !== 'OPEN') continue;
       const key = getLiveKeyForPosition(p);
       const tick = key ? quotes[key] : undefined;
       const liveLtp = tick?.ltp ?? p.avgPrice;
       const pnl = (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-      todayUnrealizedAll += pnl;
-      // Separate Stock vs Index
+      unrealizedAll += pnl;
       if (isIndexPosition(p)) {
-        indexUnrealizedLive += pnl;
+        indexUnrealized += pnl;
       } else {
-        stockUnrealizedLive += pnl;
+        stockUnrealized += pnl;
       }
     }
-  } catch (e) { /* ignore calc errors */ }
 
-  // Combined today stats object (recreated on each render with fresh values)
-  const combinedTodayStats = {
-    realized: todayRealizedAll,
-    unrealized: todayUnrealizedAll,
-    total: todayRealizedAll + todayUnrealizedAll,
-    stockUnrealized: stockUnrealizedLive,
-    indexUnrealized: indexUnrealizedLive,
-  };
+    return {
+      realized,
+      unrealized: unrealizedAll,
+      total: realized + unrealizedAll,
+      stockUnrealized,
+      indexUnrealized,
+    };
+  }, [positions, trades, quotes, getLiveKeyForPosition]);
 
-  /* ---------- All-time realized P&L ---------- */
-  // Per-tab (kept for backward compat if needed elsewhere).
+  /* ---------- All-time realized P&L (memoized) ---------- */
   const allTimeRealized = useMemo(() => {
     return trades
       .filter((t) => (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)))
       .reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
   }, [trades, activeTab]);
 
-  // Combined (Stock + Index) — shown in the single P&L hero card.
   const allTimeRealizedCombined = useMemo(() => {
     return trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
   }, [trades]);
 
-  // Filtered trades for current tab (Stock or Index)
   const tabTrades = useMemo(() => {
     return trades.filter((t) => (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)));
   }, [trades, activeTab]);
@@ -708,12 +852,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         </div>
       )}
 
-      {/* ============== TODAY'S P&L HERO CARD (combined Stock + Index, real-time) ==============
-       * User requirement: "sirf ek today p&l banane ko do nahi" — only ONE P&L card.
-       * Also: "stock and index dono ka profite loss ek main hi dekhe same time" —
-       * combined Stock + Index P&L in one card.
-       * This card shows the COMBINED total across both tabs in real-time using
-       * live WebSocket LTP for each open position. No separate per-tab card. */}
+      {/* ============== TODAY'S P&L HERO CARD (combined Stock + Index, real-time) ============== */}
       <div className="card-soft p-4 relative overflow-hidden border-2 border-brand-primary/30">
         <div className="absolute -right-2 -top-2 opacity-40 pointer-events-none">
           <Layers className="h-20 w-20 text-brand-primary/20" />
@@ -864,7 +1003,9 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
           </div>
         </div>
         {loading ? (
-          <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-bg-surface-alt" />)}</div>
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-bg-surface-alt" />)}
+          </div>
         ) : filteredPositions.length === 0 ? (
           <div className="flex flex-col items-center py-6 text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-bg-surface-alt mb-2">
@@ -885,128 +1026,17 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
                   Resolving live option-strike instrument keys…
                 </div>
               )}
-              {filteredPositions.map((pos) => {
-                /* Look up live LTP from WebSocket quotes.
-                 * For OPTIONS positions we use the resolved strike instrument_key
-                 * (e.g. NSE_FO|63811) — NOT the underlying index spot price.
-                 * For EQUITY positions we use the symbol's instrument_key.
-                 * If we don't yet have a live tick (still resolving, or WS not
-                 * connected), we fall back to pos.currentPrice (which the API
-                 * now sets to avgPrice for OPTIONS — so P&L shows as 0 until
-                 * the live tick arrives, instead of showing absurd spot-based P&L).
-                 */
-                const liveKey = getLiveKeyForPosition(pos);
-                const liveTick = liveKey ? quotes[liveKey] : undefined;
-                // CRITICAL: Use live WebSocket LTP. Fall back to avgPrice (not
-                // pos.currentPrice) so P&L = 0 until the live tick arrives —
-                // matches the hero card and avoids the absurd +₹1,207 P&L bug
-                // that was caused by stale hard-coded MOCK_LTP values.
-                const liveLtp = liveTick?.ltp ?? pos.avgPrice;
-                // Account for LONG vs SHORT — SHORT positions profit when price falls.
-                const dirMult = pos.side === 'LONG' ? 1 : -1;
-                const livePnl = (liveLtp - pos.avgPrice) * pos.quantity * dirMult;
-                const livePnlPct = pos.avgPrice > 0 ? ((liveLtp - pos.avgPrice) / pos.avgPrice) * 100 * dirMult : 0;
-                /* SL/TGT proximity check (for visual cue) */
-                const slDist = pos.stopLoss ? Math.abs(liveLtp - pos.stopLoss) / liveLtp * 100 : null;
-                const tgtDist = pos.target ? Math.abs(pos.target - liveLtp) / liveLtp * 100 : null;
-                const slNear = slDist != null && slDist < 1.5;
-                const tgtNear = tgtDist != null && tgtDist < 1.5;
-                return (
-                <div key={pos.id} className={cn('rounded-lg border bg-bg-base p-3 sm:p-4 transition-colors', slNear ? 'border-loss-red/50' : tgtNear ? 'border-profit-green/50' : 'border-border-default')}>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex items-start gap-3 min-w-0">
-                      <StockLogo symbol={pos.symbol} size="md" rounded="md" />
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <a href={`/stock/${pos.symbol}`} className="font-heading text-sm sm:text-base font-semibold text-text-primary hover:text-brand-primary">{pos.symbol}</a>
-                          <span className={cn(
-                            'rounded px-1.5 py-0.5 text-[10px] font-medium',
-                            isIndexPosition(pos) ? 'bg-tint-purple text-info-purple' : 'bg-tint-blue text-brand-primary'
-                          )}>
-                            {isIndexPosition(pos) ? 'INDEX' : 'STOCK'}
-                          </span>
-                          <span className="rounded bg-bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">{pos.segment}</span>
-                          {pos.optionType && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${pos.optionType === 'CE' ? 'bg-profit-green/10 text-profit-green' : 'bg-loss-red/10 text-loss-red'}`}>{pos.optionType}</span>}
-                          {pos.strikePrice != null && pos.strikePrice > 0 && (
-                            <span className="font-mono text-[10px] text-text-tertiary">Strike: {pos.strikePrice}</span>
-                          )}
-                          {liveTick && (
-                            <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase text-profit-green">
-                              <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
-                              LIVE
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
-                          <span>{pos.side} · {pos.quantity} qty</span>
-                          <span>Avg: ₹{formatNumber(pos.avgPrice)}</span>
-                          <span className="font-mono">LTP: <span className={cn('font-semibold tabular-nums', liveTick ? 'text-text-primary' : 'text-text-secondary')}>₹{formatNumber(liveLtp, 2)}</span></span>
-                        </div>
-                        {/* SL / TGT badges */}
-                        {(pos.stopLoss || pos.target) && (
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            {pos.stopLoss && (
-                              <span className={cn(
-                                'inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold border',
-                                slNear ? 'bg-tint-red text-loss-red border-loss-red/40' : 'bg-bg-surface-alt text-text-secondary border-border'
-                              )} title={`Stop Loss · ${slDist != null ? slDist.toFixed(2) + '% away' : ''}`}>
-                                <Shield className="h-2.5 w-2.5" />
-                                SL ₹{formatNumber(pos.stopLoss, 2)}
-                              </span>
-                            )}
-                            {pos.target && (
-                              <span className={cn(
-                                'inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold border',
-                                tgtNear ? 'bg-tint-green text-profit-green border-profit-green/40' : 'bg-bg-surface-alt text-text-secondary border-border'
-                              )} title={`Target · ${tgtDist != null ? tgtDist.toFixed(2) + '% away' : ''}`}>
-                                <Crosshair className="h-2.5 w-2.5" />
-                                TGT ₹{formatNumber(pos.target, 2)}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 sm:gap-4">
-                      <div className="text-right">
-                        <p className={`font-mono text-sm sm:text-base font-bold tabular-nums ${getPnlColor(livePnl)}`}>
-                          {livePnl >= 0 ? '+' : ''}₹{formatNumber(livePnl)}
-                        </p>
-                        <p className={`font-mono text-xs tabular-nums ${getPnlColor(livePnlPct)}`}>
-                          {livePnlPct >= 0 ? '+' : ''}{livePnlPct.toFixed(2)}%
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {/* Edit SL/Target Button */}
-                        <button
-                          onClick={() => openSLTargetModal(pos)}
-                          className={cn(
-                            "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                            "border hover:shadow-sm active:scale-95",
-                            (pos.stopLoss || pos.target)
-                              ? "bg-brand-primary/10 border-brand-primary/30 text-brand-primary hover:bg-brand-primary/20"
-                              : "bg-bg-surface-alt border-border text-text-secondary hover:bg-bg-surface hover:text-text-primary"
-                          )}
-                          title="Set or Edit Stop Loss & Target"
-                        >
-                          <Target className="h-3.5 w-3.5" />
-                          <span className="hidden sm:inline">{pos.stopLoss || pos.target ? 'Edit' : 'Set'} SL/TGT</span>
-                          <span className="sm:hidden">{pos.stopLoss || pos.target ? 'Edit' : 'Set'}</span>
-                        </button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-loss-red border-loss-red/30 hover:bg-loss-red/10 h-9"
-                          onClick={() => handleSquareOff(pos.id)}
-                        >
-                          <XCircle className="mr-1 h-3 w-3" /> Exit
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                );
-              })}
+              {filteredPositions.map((pos) => (
+                <PositionCard
+                  key={pos.id}
+                  pos={pos}
+                  quotes={quotes}
+                  exiting={exitingIds.has(pos.id)}
+                  getLiveKey={getLiveKeyForPosition}
+                  onExit={handleSquareOff}
+                  onEditSLTarget={openSLTargetModal}
+                />
+              ))}
             </div>
           )}
       </div>

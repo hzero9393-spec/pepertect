@@ -42,6 +42,19 @@ function getMiniSeries(symbol: string, positive: boolean): number[] {
   return out;
 }
 
+// Helper: get the right Upstox key to subscribe to for a position.
+// Extracted to module scope for stable reference — takes optionKeyMap as param.
+function getLiveKeyForPosition(
+  p: { id: string; instrumentKey?: string | null; segment?: string; strikePrice?: number | null; optionType?: string | null; expiry?: string | null; symbol: string },
+  optionKeyMap: Map<string, string | null>,
+): string | null {
+  if (p.instrumentKey) return p.instrumentKey;
+  if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
+    return optionKeyMap.get(p.id) ?? null;
+  }
+  return getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol] || null;
+}
+
 // T+0 Trading Day Model: Dashboard resets at midnight, shows only TODAY's data
 const getTodayStart = () => {
   const now = new Date();
@@ -153,15 +166,6 @@ export function DashboardPage() {
     return () => { cancelled = true; };
   }, [positions]);
 
-  // Helper: get the right Upstox key to subscribe to for a position.
-  function getLiveKeyForPosition(p: Position): string | null {
-    if (p.instrumentKey) return p.instrumentKey;
-    if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
-      return optionKeyMap.get(p.id) ?? null;
-    }
-    return getUpstoxKey(p.symbol) || INDEX_TO_UPSTOX_KEY[p.symbol] || null;
-  }
-
   // Compute Upstox instrument keys for the loaded indices + open positions + movers
   const allKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -171,7 +175,7 @@ export function DashboardPage() {
     }
     for (const p of positions) {
       if (p.status !== 'OPEN') continue;
-      const k = getLiveKeyForPosition(p);
+      const k = getLiveKeyForPosition(p, optionKeyMap);
       if (k) keys.add(k);
     }
     // Subscribe to movers symbols (4 gainers + 4 losers)
@@ -230,19 +234,23 @@ export function DashboardPage() {
   
   const todaysRealizedPnl = portfolio?.realizedPnl ?? 0;
   
-  let todaysUnrealizedPnl = 0;
-  try {
-    for (const p of positions) {
-      if (!p || p.status !== 'OPEN') continue;
-      const key = getLiveKeyForPosition(p);
-      if (key && quotes[key]) {
-        const ltp = quotes[key].ltp ?? 0;
-        const avg = p.avgPrice ?? 0;
-        const qty = p.quantity ?? 0;
-        todaysUnrealizedPnl += (ltp - avg) * qty * (p.side === 'LONG' ? 1 : -1);
+  // Memoize unrealized P&L computation — iterates all positions on every quote tick
+  const todaysUnrealizedPnl = useMemo(() => {
+    let pnl = 0;
+    try {
+      for (const p of positions) {
+        if (!p || p.status !== 'OPEN') continue;
+        const key = getLiveKeyForPosition(p, optionKeyMap);
+        if (key && quotes[key]) {
+          const ltp = quotes[key].ltp ?? 0;
+          const avg = p.avgPrice ?? 0;
+          const qty = p.quantity ?? 0;
+          pnl += (ltp - avg) * qty * (p.side === 'LONG' ? 1 : -1);
+        }
       }
-    }
-  } catch(e) { /* ignore */ }
+    } catch(e) { /* ignore */ }
+    return pnl;
+  }, [positions, quotes, optionKeyMap]);
   
   const todaysTotalPnl = todaysRealizedPnl + todaysUnrealizedPnl;
   
@@ -444,7 +452,7 @@ export function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {positions.slice(0, 3).map((pos) => {
-                const liveKey = getLiveKeyForPosition(pos);
+                const liveKey = getLiveKeyForPosition(pos, optionKeyMap);
                 const tick = liveKey ? quotes[liveKey] : undefined;
                 const liveLtp = tick?.ltp ?? pos.currentPrice ?? pos.avgPrice;
                 const livePnl = (liveLtp - pos.avgPrice) * pos.quantity * (pos.side === 'LONG' ? 1 : -1);

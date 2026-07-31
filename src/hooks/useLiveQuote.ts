@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useSyncExternalStore } from 'react';
 import { getUpstoxKey } from '@/lib/upstox-instruments';
 
 /**
@@ -14,11 +14,18 @@ import { getUpstoxKey } from '@/lib/upstox-instruments';
  * for all currently-subscribed instrument keys. The moment the WebSocket
  * reconnects, polling stops.
  *
+ * Per-key change detection: Each hook instance only re-renders when the
+ * specific keys it subscribes to actually change. Ticks for other symbols
+ * are ignored by that consumer's React reconciliation.
+ *
  * Usage:
- *   const { quotes, status, subscribe, unsubscribe } = useLiveQuote();
- *   useEffect(() => { subscribe(['NSE_EQ|INE002A01018', 'NSE_INDEX|Nifty 50']); }, []);
+ *   // Auto-subscribe via keys param (preferred):
+ *   const { quotes, status } = useLiveQuote(['NSE_EQ|INE002A01018']);
  *   const reliance = quotes['NSE_EQ|INE002A01018'];
- *   // reliance.ltp, reliance.change, reliance.changePct, etc.
+ *
+ *   // Manual subscribe (backward compat):
+ *   const { quotes, subscribe, unsubscribe, status } = useLiveQuote();
+ *   useEffect(() => { subscribe(['NSE_EQ|INE002A01018']); return () => unsubscribe([...]); }, []);
  */
 
 export interface LiveTick {
@@ -87,6 +94,22 @@ let consecutiveReconnectFailures = 0;
 const MAX_CLIENT_RECONNECT_FAILURES = 3; // After 3 failures, try server-side reconnect
 let serverReconnecting = false;
 let serverReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+// ---------------------------------------------------------------------------
+// Per-key change detection infrastructure
+// ---------------------------------------------------------------------------
+
+/** Stable empty object returned when no keys are subscribed. */
+const EMPTY_QUOTES: Record<string, LiveTick> = {};
+
+/**
+ * Registry: maps each quotesListener callback to the set of instrument keys
+ * that listener instance cares about. Used for future per-key notification
+ * optimization (e.g. only calling listeners whose keys actually changed).
+ *
+ * WeakMap allows automatic cleanup when a listener callback is garbage-collected.
+ */
+const interestedKeysMap = new WeakMap<() => void, Set<string>>();
 
 function setStatus(s: ConnectionStatus) {
   lastStatus = s;
@@ -348,11 +371,11 @@ function scheduleReconnect() {
   if (reconnectTimer) return;
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
   reconnectAttempts++;
-  
+
   // Track consecutive failures for server-side reconnect trigger
   if (reconnectAttempts > 2) {
     consecutiveReconnectFailures++;
-    
+
     // If too many client-side failures, trigger server-side reconnect
     if (consecutiveReconnectFailures >= MAX_CLIENT_RECONNECT_FAILURES && !serverReconnecting) {
       console.warn('[useLiveQuote] Too many reconnect failures, triggering server-side reconnect');
@@ -360,7 +383,7 @@ function scheduleReconnect() {
       return;
     }
   }
-  
+
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     ensureWs();
@@ -372,7 +395,7 @@ async function triggerServerReconnect() {
   if (serverReconnecting) return;
   serverReconnecting = true;
   console.log('[useLiveQuote] Triggering server-side worker reconnect...');
-  
+
   try {
     const res = await fetch('/api/upstox/worker-reconnect', {
       method: 'POST',
@@ -380,12 +403,12 @@ async function triggerServerReconnect() {
     });
     const data = await res.json();
     console.log('[useLiveQuote] Server reconnect result:', data);
-    
+
     if (data.success) {
       // Reset counters on success
       consecutiveReconnectFailures = 0;
       reconnectAttempts = 0;
-      
+
       // Try connecting again after a short delay
       serverReconnectTimer = setTimeout(() => {
         serverReconnecting = false;
@@ -452,6 +475,10 @@ function unsubscribeKeys(keys: string[], cb: (tick: LiveTick) => void) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// React hook — per-key change detection via useSyncExternalStore
+// ---------------------------------------------------------------------------
+
 export interface UseLiveQuoteResult {
   quotes: Record<string, LiveTick>;
   status: ConnectionStatus;
@@ -460,24 +487,105 @@ export interface UseLiveQuoteResult {
   ready: boolean;
 }
 
-export function useLiveQuote(): UseLiveQuoteResult {
-  // useSyncExternalStore-like pattern: subscribe to changes via listeners
-  const [, setVersion] = useState(0);
-  const [status, setStatusState] = useState<ConnectionStatus>(lastStatus);
-  const subscribedRef = useRef<Set<string>>(new Set());
-  const cbRef = useRef<(tick: LiveTick) => void>(() => {});
+/**
+ * Subscribe to live quotes for the given instrument keys.
+ *
+ * @param keys - Optional array of instrument keys to auto-subscribe. When
+ *   provided, the hook automatically subscribes on mount and unsubscribes on
+ *   unmount. The component only re-renders when one of THESE keys changes.
+ *   If omitted, use the returned `subscribe`/`unsubscribe` methods manually.
+ */
+export function useLiveQuote(keys?: string[]): UseLiveQuoteResult {
+  // --- Refs for per-key change detection ---
+  const caredKeysRef = useRef<Set<string>>(new Set(keys ?? []));
+  const cachedSnapshotRef = useRef<Record<string, LiveTick> | null>(null);
+  const onStoreChangeRef = useRef<() => void>(() => {});
   const mountedRef = useRef(true);
+  const subscribedRef = useRef<Set<string>>(new Set());
+  // Stable no-op tick callback — each hook instance gets its own stable ref
+  // so subscribeKeys/unsubscribeKeys can add/remove it from per-key sets.
+  // Re-rendering is now driven by useSyncExternalStore, not by this callback.
+  const stableTickCb = useRef<(_tick: LiveTick) => void>(() => {});
+  const [status, setStatusState] = useState<ConnectionStatus>(lastStatus);
 
-  // Force re-render whenever quotes change (but throttled)
-  useEffect(() => {
-    const listener = () => {
-      if (mountedRef.current) setVersion((v) => v + 1);
-    };
-    quotesListeners.add(listener);
-    return () => { quotesListeners.delete(listener); };
+  // --- useSyncExternalStore: per-key change detection ---
+  //
+  // getSnapshot compares the current quotesStore timestamps for this
+  // consumer's cared keys against the cached snapshot. If none changed,
+  // it returns the SAME object reference, which tells React to skip
+  // the re-render. If any changed, it builds a new derived snapshot
+  // containing only this consumer's keys.
+  const getSnapshot = useCallback((): Record<string, LiveTick> => {
+    const cared = caredKeysRef.current;
+    if (cared.size === 0) return EMPTY_QUOTES;
+
+    const cached = cachedSnapshotRef.current;
+    if (cached) {
+      // Check if any cared key's timestamp changed
+      let changed = false;
+      for (const k of cared) {
+        if (cached[k]?.timestamp !== quotesStore[k]?.timestamp) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return cached;
+    }
+
+    // Build new derived snapshot with only the cared keys
+    const snapshot: Record<string, LiveTick> = {};
+    for (const k of cared) {
+      if (quotesStore[k]) snapshot[k] = quotesStore[k];
+    }
+    cachedSnapshotRef.current = snapshot;
+    return snapshot;
   }, []);
 
-  // Subscribe to status changes
+  // subscribe function for useSyncExternalStore.
+  // Registers this consumer's onStoreChange with the global quotesListeners
+  // and tracks which keys it cares about in the interestedKeysMap.
+  const subscribeToStore = useCallback((onStoreChange: () => void) => {
+    onStoreChangeRef.current = onStoreChange;
+    interestedKeysMap.set(onStoreChange, new Set(caredKeysRef.current));
+    quotesListeners.add(onStoreChange);
+    return () => {
+      quotesListeners.delete(onStoreChange);
+      interestedKeysMap.delete(onStoreChange);
+    };
+  }, []);
+
+  // Stable server snapshot for SSR hydration
+  const getServerSnapshot = useCallback((): Record<string, LiveTick> => EMPTY_QUOTES, []);
+
+  const quotes = useSyncExternalStore(subscribeToStore, getSnapshot, getServerSnapshot);
+
+  // --- Helper: update the interestedKeysMap when cared keys change ---
+  const updateInterestedKeys = useCallback(() => {
+    const cb = onStoreChangeRef.current;
+    if (cb) {
+      interestedKeysMap.set(cb, new Set(caredKeysRef.current));
+    }
+  }, []);
+
+  // --- Auto-subscribe when keys param changes ---
+  useEffect(() => {
+    const keyArr = keys ?? [];
+    if (keyArr.length === 0) return;
+    const fresh = keyArr.filter((k) => !subscribedRef.current.has(k));
+    if (fresh.length === 0) return;
+    fresh.forEach((k) => {
+      subscribedRef.current.add(k);
+      caredKeysRef.current.add(k);
+    });
+    // Invalidate snapshot cache so getSnapshot rebuilds with new keys
+    cachedSnapshotRef.current = null;
+    subscribeKeys(fresh, stableTickCb.current);
+    updateInterestedKeys();
+    // Trigger React to re-evaluate the snapshot
+    onStoreChangeRef.current();
+  }, [keys]);
+
+  // --- Subscribe to status changes (unchanged from original) ---
   useEffect(() => {
     const listener = (s: ConnectionStatus) => {
       if (mountedRef.current) setStatusState(s);
@@ -486,25 +594,7 @@ export function useLiveQuote(): UseLiveQuoteResult {
     return () => { statusListeners.delete(listener); };
   }, []);
 
-  // Update callback ref each render so we always have fresh closure
-  cbRef.current = (tick: LiveTick) => {
-    // Quotes are stored in module-level quotesStore; we just trigger re-render
-    setVersion((v) => v + 1);
-  };
-
-  const subscribe = useCallback((keys: string[]) => {
-    const newKeys = keys.filter((k) => !subscribedRef.current.has(k));
-    if (newKeys.length === 0) return;
-    newKeys.forEach((k) => subscribedRef.current.add(k));
-    subscribeKeys(newKeys, cbRef.current);
-  }, []);
-
-  const unsubscribe = useCallback((keys: string[]) => {
-    keys.forEach((k) => subscribedRef.current.delete(k));
-    unsubscribeKeys(keys, cbRef.current);
-  }, []);
-
-  // Keep WS alive while mounted
+  // --- Keep WS alive while mounted (unchanged from original) ---
   useEffect(() => {
     mountedRef.current = true;
     wsRefcount++;
@@ -512,10 +602,10 @@ export function useLiveQuote(): UseLiveQuoteResult {
     return () => {
       mountedRef.current = false;
       wsRefcount--;
-      // Unsubscribe all keys this hook subscribed to
+      // Unsubscribe all keys this hook instance subscribed to
       const all = Array.from(subscribedRef.current);
       if (all.length > 0) {
-        unsubscribeKeys(all, cbRef.current);
+        unsubscribeKeys(all, stableTickCb.current);
         subscribedRef.current.clear();
       }
       if (wsRefcount === 0 && wsSingleton) {
@@ -529,8 +619,36 @@ export function useLiveQuote(): UseLiveQuoteResult {
     };
   }, []);
 
+  // --- Manual subscribe (backward compatible) ---
+  const subscribe = useCallback((newKeys: string[]) => {
+    const fresh = newKeys.filter((k) => !subscribedRef.current.has(k));
+    if (fresh.length === 0) return;
+    fresh.forEach((k) => {
+      subscribedRef.current.add(k);
+      caredKeysRef.current.add(k);
+    });
+    // Invalidate snapshot cache so getSnapshot rebuilds with new keys
+    cachedSnapshotRef.current = null;
+    subscribeKeys(fresh, stableTickCb.current);
+    updateInterestedKeys();
+    // Trigger React to re-evaluate the snapshot
+    onStoreChangeRef.current();
+  }, [updateInterestedKeys]);
+
+  // --- Manual unsubscribe (backward compatible) ---
+  const unsubscribe = useCallback((rmKeys: string[]) => {
+    rmKeys.forEach((k) => subscribedRef.current.delete(k));
+    rmKeys.forEach((k) => caredKeysRef.current.delete(k));
+    // Invalidate snapshot cache so getSnapshot rebuilds without removed keys
+    cachedSnapshotRef.current = null;
+    unsubscribeKeys(rmKeys, stableTickCb.current);
+    updateInterestedKeys();
+    // Trigger React to re-evaluate the snapshot
+    onStoreChangeRef.current();
+  }, [updateInterestedKeys]);
+
   return {
-    quotes: quotesStore,
+    quotes,
     status,
     subscribe,
     unsubscribe,
@@ -538,16 +656,9 @@ export function useLiveQuote(): UseLiveQuoteResult {
   };
 }
 
-// Convenience: auto-subscribe on mount
+// Convenience: auto-subscribe on mount via keys param
 export function useLiveQuotesFor(instrumentKeys: string[]): Record<string, LiveTick> {
-  const { quotes, subscribe, unsubscribe } = useLiveQuote();
-  const keyStr = instrumentKeys.join(',');
-  useEffect(() => {
-    if (instrumentKeys.length === 0) return;
-    subscribe(instrumentKeys);
-    return () => unsubscribe(instrumentKeys);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keyStr]);
+  const { quotes } = useLiveQuote(instrumentKeys);
   return quotes;
 }
 
@@ -556,13 +667,7 @@ export function useLiveQuotesFor(instrumentKeys: string[]): Record<string, LiveT
  * Returns the live tick for that symbol, or undefined.
  */
 export function useLiveTick(symbol: string | null | undefined): LiveTick | undefined {
-  const { quotes, subscribe, unsubscribe } = useLiveQuote();
   const key = symbol ? getUpstoxKey(symbol) : null;
-  useEffect(() => {
-    if (!key) return;
-    subscribe([key]);
-    return () => unsubscribe([key]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  const { quotes } = useLiveQuote(key ? [key] : []);
   return key ? quotes[key] : undefined;
 }

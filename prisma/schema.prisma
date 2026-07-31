@@ -187,6 +187,7 @@ model Order {
   stock Stock  @relation(fields: [stockId], references: [id])
   trade Trade?
 
+  @@index([userId, status])
   @@map("orders")
 }
 
@@ -227,6 +228,8 @@ model Position {
   stock Stock  @relation(fields: [stockId], references: [id])
   trade Trade?
 
+  @@index([userId, status])
+  @@index([userId, status, openedAt])
   @@map("positions")
 }
 
@@ -254,6 +257,7 @@ model Trade {
   order    Order?  @relation(fields: [orderId], references: [id])
   position Position? @relation(fields: [positionId], references: [id])
 
+  @@index([userId, createdAt])
   @@map("trades")
 }
 

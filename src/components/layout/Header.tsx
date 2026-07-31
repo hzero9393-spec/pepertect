@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { useTheme } from 'next-themes';
 import { usePathname } from 'next/navigation';
@@ -9,8 +9,58 @@ import {
 } from 'lucide-react';
 import { getInitials } from '@/lib/utils';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
-import { StockSearch } from '@/components/shared/StockSearch';
 import { NotificationBell } from '@/components/shared/NotificationBell';
+
+// Lazy-load StockSearch — it pulls in instrument data on mount
+const StockSearch = lazy(() => import('@/components/shared/StockSearch').then((m) => ({ default: m.StockSearch })));
+
+// ── Module-scope page title resolver (no re-creation per render) ──
+const PAGE_TITLES: Record<string, string> = {
+  dashboard: 'Dashboard',
+  market: 'Markets',
+  trade: 'Trade',
+  optionchain: 'Option Chain',
+  basket: 'Basket Order',
+  positions: 'Positions',
+  history: 'Wallet History',
+  'wallet-history': 'Wallet History',
+  watchlist: 'Watchlist',
+  learning: 'Learning',
+  support: 'Support',
+  profile: 'Profile',
+  settings: 'Settings',
+  notifications: 'Notifications',
+  stock: 'Stock',
+  portfolio: 'Portfolio',
+};
+
+const SETTINGS_SUBTITLES: Record<string, string> = {
+  'change-password': 'Change Password',
+  '2fa': 'Two-Factor Auth',
+  'login-activity': 'Login Activity',
+  'language': 'Language',
+  'notifications': 'Notification Settings',
+};
+
+function getPageTitle(pathname: string): string {
+  const parts = pathname === '/' ? ['dashboard'] : pathname.replace('/', '').split('/');
+  const segment = parts[0];
+  // Settings sub-pages — show specific title
+  if (segment === 'settings' && parts.length > 1) {
+    const sub = SETTINGS_SUBTITLES[parts[1]];
+    if (sub) return sub;
+  }
+  return PAGE_TITLES[segment] || 'Pepertect';
+}
+
+// Skeleton placeholder shown while StockSearch loads
+function StockSearchSkeleton({ className }: { className?: string }) {
+  return (
+    <div className={className}>
+      <div className="h-9 rounded-lg animate-pulse bg-bg-surface-alt" />
+    </div>
+  );
+}
 
 export function Header() {
   const { isAuthenticated, user } = useAuthStore();
@@ -21,41 +71,6 @@ export function Header() {
   const mounted = typeof window !== 'undefined';
 
   if (!isAuthenticated) return null;
-
-  const getPageTitle = () => {
-    const parts = pathname === '/' ? ['dashboard'] : pathname.replace('/', '').split('/');
-    const segment = parts[0];
-    const titles: Record<string, string> = {
-      dashboard: 'Dashboard',
-      market: 'Markets',
-      trade: 'Trade',
-      optionchain: 'Option Chain',
-      basket: 'Basket Order',
-      positions: 'Positions',
-      history: 'Wallet History',
-      'wallet-history': 'Wallet History',
-      watchlist: 'Watchlist',
-      learning: 'Learning',
-      support: 'Support',
-      profile: 'Profile',
-      settings: 'Settings',
-      notifications: 'Notifications',
-      stock: 'Stock',
-      portfolio: 'Portfolio',
-    };
-    // Settings sub-pages — show specific title
-    if (segment === 'settings' && parts.length > 1) {
-      const subTitles: Record<string, string> = {
-        'change-password': 'Change Password',
-        '2fa': 'Two-Factor Auth',
-        'login-activity': 'Login Activity',
-        'language': 'Language',
-        'notifications': 'Notification Settings',
-      };
-      if (subTitles[parts[1]]) return subTitles[parts[1]];
-    }
-    return titles[segment] || 'Pepertect';
-  };
 
   // Mobile search overlay — uses universal StockSearch
   if (mobileSearchOpen) {
@@ -72,11 +87,13 @@ export function Header() {
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div className="flex-1 min-w-0">
-          <StockSearch
-            autoFocus
-            placeholder="Search any stock / index…"
-            className="w-full"
-          />
+          <Suspense fallback={<StockSearchSkeleton className="w-full" />}>
+            <StockSearch
+              autoFocus
+              placeholder="Search any stock / index…"
+              className="w-full"
+            />
+          </Suspense>
         </div>
       </header>
     );
@@ -109,7 +126,7 @@ export function Header() {
             <Zap className="h-4 w-4 text-white" fill="currentColor" />
           </div>
           <h1 className="font-heading text-base md:text-lg font-bold text-text-primary truncate">
-            {getPageTitle()}
+            {getPageTitle(pathname)}
           </h1>
         </div>
 
@@ -117,10 +134,12 @@ export function Header() {
 
         {/* Universal desktop search — appears in header on every page */}
         <div className="hidden sm:block w-64 lg:w-80">
-          <StockSearch
-            placeholder="Search any stock / index…"
-            className="w-full"
-          />
+          <Suspense fallback={<StockSearchSkeleton className="w-full" />}>
+            <StockSearch
+              placeholder="Search any stock / index…"
+              className="w-full"
+            />
+          </Suspense>
         </div>
 
         {/* Mobile search trigger */}
