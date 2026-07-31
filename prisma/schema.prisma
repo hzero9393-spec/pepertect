@@ -179,6 +179,7 @@ model Order {
   optionType   String?                        // CE, PE (for options)
   strikePrice  Float?                         // (for options)
   expiry       DateTime?                      // (for derivatives)
+  instrumentKey String?                        // Upstox instrument key for the exact instrument
   reason       String?                        // cancellation/rejection reason
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

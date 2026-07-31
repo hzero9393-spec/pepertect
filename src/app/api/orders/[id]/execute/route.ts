@@ -107,6 +107,7 @@ export async function POST(
             optionType,
             strikePrice,
             expiry,
+            instrumentKey: order.instrumentKey,
             stopLoss: null,
             target: null,
           },

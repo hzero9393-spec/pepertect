@@ -792,3 +792,29 @@ Stage Summary:
 - 2 new hooks: limit order monitor, market status
 - 1 new component: LimitOrderModal
 - Live: https://pepertect.vercel.app
+
+---
+Task ID: 4
+Agent: main
+Task: Fix 4 Bugs in PositionsPage + Related Files
+
+Work Log:
+- **Bug 1a**: Added `instrumentKey String?` to Order model in `prisma/schema.prisma` (after `expiry` field)
+- **Bug 1b**: Added `instrumentKey: string | null;` to Order interface in `src/types/index.ts` (after `expiry`)
+- **Bug 1c**: Added `instrumentKey: instrumentKey ?? null` to `db.order.create()` data in `src/app/api/orders/route.ts`
+- **Bug 1d**: GET response mapper uses `...o` spread — automatically includes new field from Prisma
+- **Bug 1e**: Changed `PendingLimitPositions` to use `ord.instrumentKey ?? getUpstoxKey(ord.symbol)` instead of always falling back to index key
+- **Bug 1f**: Added `NSE_FO|` prefix validation in `getLiveKeyForPosition` — OPTIONS/FUTURES keys must start with `NSE_FO|` to prevent using wrong INDEX keys
+- **Bug 1g**: Updated option key resolution filter to also resolve positions with non-`NSE_FO|` keys: `(!p.instrumentKey || !p.instrumentKey.startsWith('NSE_FO|'))`
+- **Bug 1h**: Added `instrumentKey: order.instrumentKey` to position creation in `src/app/api/orders/[id]/execute/route.ts`
+- **Bug 2**: Wrapped Start Trading CTA in `{positions.length === 0 && (...)}` condition
+- **Bug 3a**: Removed WebSocket info text block (6 lines)
+- **Bug 3b**: Removed Trade History link block (18 lines)
+- **Bug 4**: Replaced PositionCard badge section for OPTIONS — consolidated format: `NIFTY 24350 CE · Exp 28 Jul [LIVE]` instead of 5 separate badges. Non-EQUITY positions no longer link to `/stock/`.
+- Added `formatExpiry()` helper function for clean date formatting
+- Cleaned up unused imports: `History`, `ChevronDown`, `Briefcase`, `CalendarDays`
+- Removed unused `tabTrades` memoized variable
+- Note: `prisma db push` could not be run in sandbox (no DATABASE_URL), but schema change is correct
+
+Stage Summary:
+All 4 bugs fixed across 5 files. The Order model now stores `instrumentKey`, which flows to Position on limit execution. PositionsPage validates key format, shows clean OPTIONS labels, hides Start Trading when positions exist, and removes Trade History link + WebSocket info text.

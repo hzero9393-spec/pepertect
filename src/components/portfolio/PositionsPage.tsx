@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
-import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap, ChevronDown, History, Target, Edit3 } from 'lucide-react';
+import { XCircle, Layers, TrendingUp, AlertTriangle, Loader2, Shield, Crosshair, Zap, Target, Edit3 } from 'lucide-react';
 import React from 'react';
 import type { Position, Trade, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -36,6 +36,13 @@ function isToday(iso: string): boolean {
     d.getMonth() === now.getMonth() &&
     d.getFullYear() === now.getFullYear()
   );
+}
+
+function formatExpiry(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${d.getDate()} ${months[d.getMonth()]}`;
 }
 
 /* ============================================================
@@ -76,23 +83,38 @@ const PositionCard = React.memo(
             <StockLogo symbol={pos.symbol} size="md" rounded="md" />
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <a href={`/stock/${pos.symbol}`} className="font-heading text-sm sm:text-base font-semibold text-text-primary hover:text-brand-primary">{pos.symbol}</a>
-                <span className={cn(
-                  'rounded px-1.5 py-0.5 text-[10px] font-medium',
-                  isIndexPosition(pos) ? 'bg-tint-purple text-info-purple' : 'bg-tint-blue text-brand-primary'
-                )}>
-                  {isIndexPosition(pos) ? 'INDEX' : 'STOCK'}
-                </span>
-                <span className="rounded bg-bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">{pos.segment}</span>
-                {pos.optionType && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${pos.optionType === 'CE' ? 'bg-profit-green/10 text-profit-green' : 'bg-loss-red/10 text-loss-red'}`}>{pos.optionType}</span>}
-                {pos.strikePrice != null && pos.strikePrice > 0 && (
-                  <span className="font-mono text-[10px] text-text-tertiary">Strike: {pos.strikePrice}</span>
-                )}
-                {liveTick && (
-                  <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase text-profit-green">
-                    <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
-                    LIVE
-                  </span>
+                {pos.segment === 'OPTIONS' && pos.optionType && pos.strikePrice ? (
+                  <>
+                    <span className="font-heading text-sm sm:text-base font-bold text-text-primary">
+                      {pos.symbol} {Math.round(pos.strikePrice)} {pos.optionType}
+                    </span>
+                    {pos.expiry && (
+                      <span className="font-mono text-[10px] text-text-tertiary">· Exp {formatExpiry(pos.expiry)}</span>
+                    )}
+                    {liveTick && (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase text-profit-green">
+                        <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                        LIVE
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <a href={pos.segment === 'EQUITY' ? `/stock/${pos.symbol}` : undefined} className="font-heading text-sm sm:text-base font-semibold text-text-primary hover:text-brand-primary">{pos.symbol}</a>
+                    <span className={cn(
+                      'rounded px-1.5 py-0.5 text-[10px] font-medium',
+                      isIndexPosition(pos) ? 'bg-tint-purple text-info-purple' : 'bg-tint-blue text-brand-primary'
+                    )}>
+                      {isIndexPosition(pos) ? 'INDEX' : 'STOCK'}
+                    </span>
+                    <span className="rounded bg-bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-text-secondary">{pos.segment}</span>
+                    {liveTick && (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase text-profit-green">
+                        <span className="inline-flex h-1 w-1 rounded-full bg-profit-green animate-pulse" />
+                        LIVE
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
@@ -329,7 +351,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         p.strikePrice != null &&
         p.optionType &&
         p.expiry &&
-        !p.instrumentKey
+        (!p.instrumentKey || !p.instrumentKey.startsWith('NSE_FO|'))
     );
     if (optionPositions.length === 0) {
       setOptionKeyMap(new Map());
@@ -360,7 +382,8 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   /* ---------- Helper: resolve the live-tick instrument key for a position ---------- */
   const getLiveKeyForPosition = useCallback((p: Position): string | null => {
     if (p.segment === 'OPTIONS' || p.segment === 'FUTURES') {
-      if (p.instrumentKey) return p.instrumentKey;
+      // Validate: OPTIONS/FUTURES must have NSE_FO| key, not NSE_INDEX| or NSE_EQ|
+      if (p.instrumentKey && p.instrumentKey.startsWith('NSE_FO|')) return p.instrumentKey;
       if (p.segment === 'OPTIONS' && p.strikePrice != null && p.optionType && p.expiry) {
         const resolved = optionKeyMap.get(p.id);
         if (resolved) return resolved;
@@ -708,10 +731,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     return trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
   }, [trades]);
 
-  const tabTrades = useMemo(() => {
-    return trades.filter((t) => (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)));
-  }, [trades, activeTab]);
-
   return (
     <div className="space-y-3">
       {/* Upstox reconnect banner (shown when token is expired) */}
@@ -927,14 +946,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         </div>
       </div>
 
-      {/* 24h retention notice */}
-      <div className="rounded-lg bg-tint-blue/60 border border-brand-primary/20 px-3 py-2 text-xs text-text-secondary flex items-center gap-2">
-        <span className={cn('inline-flex h-1.5 w-1.5 rounded-full', wsStatus === 'upstox_connected' ? 'bg-profit-green animate-pulse' : 'bg-text-tertiary')} />
-        {wsStatus === 'upstox_connected'
-          ? <span>Live LTP streaming via Upstox WebSocket · Stop Loss & Target auto-triggered when hit.</span>
-          : <span>Live LTP refreshes automatically · Market data updates in real-time.</span>}
-      </div>
-
       {/* ---------- Auto-exit log (recent SL/TGT triggers) ---------- */}
       {autoExitLog.length > 0 && (
         <div className="rounded-lg border border-accent-gold/30 bg-tint-yellow/40 p-3 space-y-1.5">
@@ -959,25 +970,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       {message && (
         <p className={`text-sm text-center font-medium ${message.includes('success') || message.includes('Exited') || message.includes('Successfully') ? 'text-profit-green' : 'text-loss-red'}`}>{message}</p>
       )}
-
-      {/* ============== TRADE HISTORY LINK ============== */}
-      <a href="/trade-history" className="block group">
-        <div className="card-soft p-3 sm:p-4 flex items-center justify-between transition-all hover:bg-bg-surface-alt/60">
-          <div className="flex items-center gap-2">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-purple">
-              <History className="h-3.5 w-3.5 text-info-purple" />
-            </div>
-            <div>
-              <h3 className="font-heading text-sm font-semibold text-text-primary">Trade History</h3>
-              <p className="text-[10px] text-text-secondary">{tabTrades.length} trade{tabTrades.length !== 1 ? 's' : ''} recorded</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5 text-brand-primary opacity-0 group-hover:opacity-100 transition-opacity">
-            <span className="text-[11px] font-semibold">View All</span>
-            <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
-          </div>
-        </div>
-      </a>
 
       {/* ============== PENDING LIMIT ORDERS (Pending Positions) ============== */}
       {ordersData && ordersData.filter((o) => o.status === 'PENDING' && o.orderType === 'LIMIT').length > 0 && (
@@ -1042,12 +1034,14 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
       </div>
 
       {/* ============== START TRADING CTA (bottom) ============== */}
-      <a href="/trade" className="block">
-        <div className="flex items-center justify-center gap-2 rounded-xl bg-brand-primary py-3 text-sm font-bold text-white hover:bg-brand-primary-hover transition-colors shadow-lg shadow-brand-primary/20">
-          <Zap className="h-4 w-4" />
-          Start Trading
-        </div>
-      </a>
+      {positions.length === 0 && (
+        <a href="/trade" className="block">
+          <div className="flex items-center justify-center gap-2 rounded-xl bg-brand-primary py-3 text-sm font-bold text-white hover:bg-brand-primary-hover transition-colors shadow-lg shadow-brand-primary/20">
+            <Zap className="h-4 w-4" />
+            Start Trading
+          </div>
+        </a>
+      )}
 
       {/* ============== SL/TARGET MODAL ============== */}
       {selectedPosition && (
@@ -1150,7 +1144,7 @@ function PendingLimitPositions({
           const limitPrice = ord.price ?? 0;
 
           // Try to get live LTP
-          const upstoxKey = getUpstoxKey(ord.symbol);
+          const upstoxKey = ord.instrumentKey ?? getUpstoxKey(ord.symbol);
           const liveTick = upstoxKey ? quotes[upstoxKey] : undefined;
           const liveLtp = liveTick?.ltp ?? 0;
 

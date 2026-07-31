@@ -84,6 +84,7 @@ export interface Order {
   optionType: OptionType | null;
   strikePrice: number | null;
   expiry: string | null;
+  instrumentKey: string | null;
   reason: string | null;
   createdAt: string;
   updatedAt: string;

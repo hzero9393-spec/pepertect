@@ -123,6 +123,7 @@ export async function POST(req: NextRequest) {
         optionType: optionType ?? null,
         strikePrice: strikePrice ?? null,
         expiry: expiry ? new Date(expiry) : null,
+        instrumentKey: instrumentKey ?? null,
       },
     });
 
