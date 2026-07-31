@@ -327,7 +327,6 @@ export function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  autoFocus
                   className="pl-9 h-11 rounded-lg border-border bg-bg-surface text-sm"
                 />
               </div>

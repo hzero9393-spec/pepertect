@@ -55,13 +55,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
   viewportFit: "cover",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#F7F8FA" },
     { media: "(prefers-color-scheme: dark)", color: "#0B0F17" },
   ],
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({

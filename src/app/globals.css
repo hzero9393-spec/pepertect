@@ -966,3 +966,17 @@
 .animate-slide-down {
   animation: slide-down 0.3s ease-out;
 }
+
+/* ---------- PWA Mobile Viewport Lock ---------- */
+/* Prevents viewport from getting stuck in desktop mode when keyboard opens in PWA */
+html {
+  overflow-x: hidden;
+  width: 100%;
+}
+
+body {
+  width: 100%;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
