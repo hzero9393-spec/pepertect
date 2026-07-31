@@ -5,20 +5,15 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator } from '@/components/ui/input-otp';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import {
   Zap, Loader2, Mail, ArrowRight, ArrowLeft, CheckCircle2,
-  Shield, RefreshCw, Fingerprint, TrendingUp, Lock,
+  Shield, RefreshCw, Fingerprint,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { isDisposableEmail } from '@/lib/temp-email-domains';
 
 type AuthStep = 'email' | 'otp' | 'success';
-
-const KEYFRAMES_CSS =
-  '@keyframes pepDrawChart{to{stroke-dashoffset:0}}' +
-  '@keyframes pepScaleIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}' +
-  '@keyframes pepOtpPulse{0%{transform:scale(1)}50%{transform:scale(1.02)}100%{transform:scale(1)}}';
 
 /* ── Google SVG Icon ── */
 function GoogleIcon({ className = 'h-4 w-4' }: { className?: string }) {
@@ -48,39 +43,6 @@ function buildGoogleAuthUrl(state: string) {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 
-/* ── Animated SVG Stock Chart (background decoration) ── */
-function AnimatedStockChart() {
-  return (
-    <svg
-      className="absolute bottom-0 left-0 w-full h-2/5 opacity-[0.08]"
-      viewBox="0 0 600 200"
-      preserveAspectRatio="none"
-      fill="none"
-    >
-      <path
-        d="M0 180 L40 160 L80 170 L120 120 L160 140 L200 90 L240 110 L280 60 L320 80 L360 40 L400 70 L440 30 L480 50 L520 20 L560 45 L600 10"
-        stroke="white"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray="1200"
-        strokeDashoffset="1200"
-        style={{ animation: 'pepDrawChart 3s ease-in-out forwards', animationDelay: '0.5s' }}
-      />
-      <path
-        d="M0 190 L40 180 L80 185 L120 160 L160 170 L200 140 L240 155 L280 120 L320 135 L360 100 L400 120 L440 90 L480 105 L520 80 L560 95 L600 60"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeDasharray="1200"
-        strokeDashoffset="1200"
-        style={{ animation: 'pepDrawChart 3s ease-in-out forwards', animationDelay: '1s' }}
-      />
-    </svg>
-  );
-}
-
 export function LoginPage() {
   const { login } = useAuthStore();
   const [step, setStep] = useState<AuthStep>('email');
@@ -92,16 +54,6 @@ export function LoginPage() {
   const [maskedEmail, setMaskedEmail] = useState('');
   const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
   const otpInputRef = useRef<HTMLDivElement>(null);
-
-  /* ── Inject login page keyframes ── */
-  useEffect(() => {
-    const id = 'pep-login-keyframes';
-    if (document.getElementById(id)) return;
-    const el = document.createElement('style');
-    el.id = id;
-    el.textContent = KEYFRAMES_CSS;
-    document.head.appendChild(el);
-  }, []);
 
   /* ── Countdown timers ── */
   useEffect(() => {
@@ -297,284 +249,201 @@ export function LoginPage() {
     setResendTimer(0);
   };
 
-  const otpPulseStyle = (otp.length === 6 && loading)
-    ? { animation: 'pepOtpPulse 0.8s ease-in-out' }
-    : undefined;
-
-  const successIconStyle = { animation: 'pepScaleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards' };
-
-  const leftPanelStyle: React.CSSProperties = {
-    background: 'linear-gradient(160deg, color-mix(in srgb, var(--brand-primary) 90%, transparent), var(--brand-primary-hover))',
-  };
-
-  const rightPanelStyle: React.CSSProperties = {
-    background: 'radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--brand-primary) 5%, transparent), transparent 70%), var(--bg-base)',
-  };
-
   return (
-    <div className="flex min-h-screen bg-bg-base">
-      {/* Left Branded Panel (desktop only) */}
-      <div className="hidden md:flex md:w-1/2 relative overflow-hidden" style={leftPanelStyle}>
-        <AnimatedStockChart />
-
-        <div className="relative z-10 flex flex-col items-center justify-center w-full px-12 text-center">
-          {/* Large Logo */}
-          <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm shadow-2xl shadow-black/20 mb-8">
-            <Zap className="h-10 w-10 text-white" />
+    <div className="flex min-h-screen items-center justify-center bg-bg-base px-4">
+      <div className="w-full max-w-[400px] space-y-6">
+        {/* Logo and Title */}
+        <div className="text-center space-y-2">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-primary-hover shadow-lg shadow-brand-primary/25">
+            <Zap className="h-6 w-6 text-white" />
           </div>
-
-          <h1 className="text-3xl font-bold text-white mb-3 font-heading tracking-tight">
-            Pepertect
-          </h1>
-          <p className="text-white/75 text-base mb-12 max-w-xs leading-relaxed">
-            India&apos;s Smartest Paper Trading Platform
-          </p>
-
-          {/* Feature Highlights */}
-          <div className="space-y-5 w-full max-w-xs">
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">
-                <Shield className="h-4.5 w-4.5 text-white" />
-              </div>
-              <div className="text-left">
-                <p className="text-white text-sm font-semibold">Bank-grade Security</p>
-                <p className="text-white/60 text-xs">Enterprise-level data protection</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">
-                <Zap className="h-4.5 w-4.5 text-white" />
-              </div>
-              <div className="text-left">
-                <p className="text-white text-sm font-semibold">Instant OTP Login</p>
-                <p className="text-white/60 text-xs">No passwords, just a quick code</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/15">
-                <TrendingUp className="h-4.5 w-4.5 text-white" />
-              </div>
-              <div className="text-left">
-                <p className="text-white text-sm font-semibold">Real-time Markets</p>
-                <p className="text-white/60 text-xs">Live data from NSE &amp; BSE</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Form Panel */}
-      <div className="flex w-full md:w-1/2 items-center justify-center px-4 py-8 relative" style={rightPanelStyle}>
-        <div className="w-full max-w-[400px] space-y-6 md:border md:border-border/50 md:shadow-lg md:shadow-black/5 md:rounded-xl md:p-8">
-          {/* Logo and Title */}
-          <div className="text-center space-y-2">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-primary to-brand-primary-hover shadow-lg shadow-brand-primary/25">
-              <Zap className="h-6 w-6 text-white" />
-            </div>
-            {step === 'email' && (
-              <>
-                <h1 className="font-heading text-xl font-bold text-text-primary">Welcome to Pepertect</h1>
-                <p className="text-xs text-text-secondary">Sign in with your email — no password needed</p>
-              </>
-            )}
-            {step === 'otp' && (
-              <>
-                <h1 className="font-heading text-xl font-bold text-text-primary">Check your email</h1>
-                <p className="text-xs text-text-secondary">
-                  We sent a 6-digit code to <span className="font-semibold text-text-primary">{maskedEmail}</span>
-                </p>
-              </>
-            )}
-            {step === 'success' && (
-              <>
-                <div
-                  className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-profit-green/10"
-                  style={successIconStyle}
-                >
-                  <CheckCircle2 className="h-8 w-8 text-profit-green" />
-                </div>
-                <h1 className="font-heading text-xl font-bold text-text-primary">You&apos;re in!</h1>
-                <p className="text-xs text-text-secondary">Redirecting to dashboard...</p>
-              </>
-            )}
-          </div>
-
-          {/* Google Sign-In Button - not shown during OTP/success steps */}
           {step === 'email' && (
             <>
-              <a
-                href="#"
-                onClick={(e) => { e.preventDefault(); triggerGoogleLogin(); }}
-                className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-surface-alt hover:shadow-md hover:shadow-brand-primary/10 active:scale-[0.98]"
-              >
-                <GoogleIcon className="h-4 w-4" />
-                Continue with Google
-              </a>
-
-              {/* Divider */}
-              <div className="relative flex items-center gap-3 py-1">
-                <div className="flex-1 border-t border-border" />
-                <span className="text-xs font-medium text-text-tertiary uppercase tracking-wider">or sign in with email</span>
-                <div className="flex-1 border-t border-border" />
-              </div>
+              <h1 className="font-heading text-xl font-bold text-text-primary">Welcome to Pepertect</h1>
+              <p className="text-xs text-text-secondary">Sign in with your email — no password needed</p>
             </>
           )}
-
-          {/* Error display */}
-          {error && (
-            <div className="rounded-lg border border-loss-red/20 bg-loss-red/5 px-3.5 py-2.5 text-xs text-loss-red font-medium flex items-start gap-2">
-              <span className="shrink-0 mt-0.5">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
-              </span>
-              {error}
-            </div>
-          )}
-
-          {/* Step 1: Email Form */}
-          {step === 'email' && (
-            <form onSubmit={handleSendOtp} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="email" className="text-[11px] font-medium text-text-secondary">Email Address</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                    className="pl-9 h-11 rounded-lg border-border bg-bg-surface text-sm"
-                  />
-                </div>
-              </div>
-
-              <Button
-                type="submit"
-                className="w-full h-11 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold text-sm transition-all hover:shadow-lg hover:shadow-brand-primary/20 active:scale-[0.98]"
-                disabled={loading || rateLimitCooldown > 0}
-              >
-                {loading ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending OTP...</>
-                ) : rateLimitCooldown > 0 ? (
-                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Wait {rateLimitCooldown}s...</>
-                ) : (
-                  <>Send Login Code <ArrowRight className="ml-1 h-4 w-4" /></>
-                )}
-              </Button>
-
-              {/* Trust Indicators */}
-              <div className="flex items-center justify-center gap-4 pt-2">
-                <div className="flex items-center gap-1.5">
-                  <Lock className="h-3 w-3 text-text-tertiary" />
-                  <span className="text-[10px] text-text-tertiary">256-bit Encrypted</span>
-                </div>
-                <div className="h-2.5 w-px bg-border" />
-                <div className="flex items-center gap-1.5">
-                  <Zap className="h-3 w-3 text-text-tertiary" />
-                  <span className="text-[10px] text-text-tertiary">No Password Stored</span>
-                </div>
-                <div className="h-2.5 w-px bg-border" />
-                <div className="flex items-center gap-1.5">
-                  <Shield className="h-3 w-3 text-text-tertiary" />
-                  <span className="text-[10px] text-text-tertiary">Secure OTP</span>
-                </div>
-              </div>
-            </form>
-          )}
-
-          {/* Step 2: OTP Verification */}
           {step === 'otp' && (
-            <div className="space-y-5">
-              {/* OTP Input */}
-              <div ref={otpInputRef} className="flex justify-center" style={otpPulseStyle}>
-                <InputOTP
-                  maxLength={6}
-                  value={otp}
-                  onChange={handleOtpChange}
-                  disabled={loading}
-                  containerClassName="gap-2"
-                >
-                  <InputOTPGroup>
-                    <InputOTPSlot index={0} className="h-12 w-12 rounded-lg text-lg font-semibold border-border focus-visible:ring-2 focus-visible:ring-brand-primary/40" />
-                    <InputOTPSlot index={1} className="h-12 w-12 rounded-lg text-lg font-semibold border-border focus-visible:ring-2 focus-visible:ring-brand-primary/40" />
-                    <InputOTPSlot index={2} className="h-12 w-12 rounded-lg text-lg font-semibold border-border focus-visible:ring-2 focus-visible:ring-brand-primary/40" />
-                  </InputOTPGroup>
-                  <InputOTPSeparator className="mx-1 text-text-tertiary/40" />
-                  <InputOTPGroup>
-                    <InputOTPSlot index={3} className="h-12 w-12 rounded-lg text-lg font-semibold border-border focus-visible:ring-2 focus-visible:ring-brand-primary/40" />
-                    <InputOTPSlot index={4} className="h-12 w-12 rounded-lg text-lg font-semibold border-border focus-visible:ring-2 focus-visible:ring-brand-primary/40" />
-                    <InputOTPSlot index={5} className="h-12 w-12 rounded-lg text-lg font-semibold border-border focus-visible:ring-2 focus-visible:ring-brand-primary/40" />
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
-
-              {loading && (
-                <div className="flex items-center justify-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-brand-primary" />
-                  <span className="text-xs text-text-secondary">Verifying...</span>
-                </div>
-              )}
-
-              {/* Resend + Back */}
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  type="button"
-                  onClick={goBack}
-                  disabled={loading}
-                  className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
-                >
-                  <ArrowLeft className="h-3 w-3" />
-                  Change email
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleResendOtp}
-                  disabled={resendTimer > 0 || loading}
-                  className="flex items-center gap-1 text-xs text-brand-primary hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {resendTimer > 0 ? (
-                    `Resend in ${resendTimer}s`
-                  ) : (
-                    <>
-                      <RefreshCw className="h-3 w-3" />
-                      Resend code
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Help text */}
-              <p className="text-center text-[10px] text-text-tertiary leading-relaxed">
-                Didn&apos;t receive the code? Check your spam folder or{' '}
-                <button onClick={handleResendOtp} disabled={resendTimer > 0 || loading} className="text-brand-primary hover:underline disabled:opacity-50">
-                  try again
-                </button>
+            <>
+              <h1 className="font-heading text-xl font-bold text-text-primary">Check your email</h1>
+              <p className="text-xs text-text-secondary">
+                We sent a 6-digit code to <span className="font-semibold text-text-primary">{maskedEmail}</span>
               </p>
-            </div>
+            </>
           )}
-
-          {/* Step 3: Success (auto-redirects) */}
           {step === 'success' && (
-            <div className="flex justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-brand-primary" />
-            </div>
-          )}
-
-          {/* Footer - only on email step */}
-          {step === 'email' && (
-            <p className="text-center text-xs text-text-secondary">
-              By continuing, you agree to our{' '}
-              <a href="/legal/terms" className="text-brand-primary hover:underline">Terms</a>
-              {' '}and{' '}
-              <a href="/legal/privacy" className="text-brand-primary hover:underline">Privacy Policy</a>
-            </p>
+            <>
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-profit-green/10">
+                <CheckCircle2 className="h-8 w-8 text-profit-green" />
+              </div>
+              <h1 className="font-heading text-xl font-bold text-text-primary">You&apos;re in!</h1>
+              <p className="text-xs text-text-secondary">Redirecting to dashboard...</p>
+            </>
           )}
         </div>
+
+        {/* Google Sign-In Button - not shown during OTP/success steps */}
+        {step === 'email' && (
+          <>
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); triggerGoogleLogin(); }}
+              className="flex w-full items-center justify-center gap-2.5 rounded-lg border border-border bg-bg-surface px-4 py-2.5 text-sm font-medium text-text-primary transition-all hover:bg-bg-surface-alt hover:shadow-sm active:scale-[0.98]"
+            >
+              <GoogleIcon className="h-4 w-4" />
+              Continue with Google
+            </a>
+
+            {/* Divider */}
+            <div className="relative flex items-center gap-3">
+              <div className="flex-1 border-t border-border" />
+              <span className="text-[10px] font-medium text-text-tertiary uppercase tracking-wider">or sign in with email</span>
+              <div className="flex-1 border-t border-border" />
+            </div>
+          </>
+        )}
+
+        {/* Error display */}
+        {error && (
+          <div className="rounded-lg border border-loss-red/20 bg-loss-red/5 px-3.5 py-2.5 text-xs text-loss-red font-medium flex items-start gap-2">
+            <span className="shrink-0 mt-0.5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+            </span>
+            {error}
+          </div>
+        )}
+
+        {/* ═══ Step 1: Email Form ═══ */}
+        {step === 'email' && (
+          <form onSubmit={handleSendOtp} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="email" className="text-[11px] font-medium text-text-secondary">Email Address</Label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-tertiary" />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoFocus
+                  className="pl-9 h-11 rounded-lg border-border bg-bg-surface text-sm"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              className="w-full h-11 rounded-lg bg-brand-primary hover:bg-brand-primary-hover text-white font-semibold text-sm transition-all hover:shadow-lg hover:shadow-brand-primary/20 active:scale-[0.98]"
+              disabled={loading || rateLimitCooldown > 0}
+            >
+              {loading ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Sending OTP...</>
+              ) : rateLimitCooldown > 0 ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Wait {rateLimitCooldown}s...</>
+              ) : (
+                <>Send Login Code <ArrowRight className="ml-1 h-4 w-4" /></>
+              )}
+            </Button>
+
+            {/* Security note */}
+            <div className="flex items-center gap-2 justify-center pt-1">
+              <Shield className="h-3 w-3 text-text-tertiary" />
+              <span className="text-[10px] text-text-tertiary">
+                Secure login — no password stored. OTP expires in 5 minutes.
+              </span>
+            </div>
+          </form>
+        )}
+
+        {/* ═══ Step 2: OTP Verification ═══ */}
+        {step === 'otp' && (
+          <div className="space-y-5">
+            {/* OTP Input */}
+            <div ref={otpInputRef} className="flex justify-center">
+              <InputOTP
+                maxLength={6}
+                value={otp}
+                onChange={handleOtpChange}
+                disabled={loading}
+                containerClassName="gap-2"
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                  <InputOTPSlot index={1} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                  <InputOTPSlot index={2} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                </InputOTPGroup>
+                <InputOTPGroup>
+                  <InputOTPSlot index={3} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                  <InputOTPSlot index={4} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                  <InputOTPSlot index={5} className="h-12 w-12 rounded-lg text-lg font-semibold border-border" />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
+
+            {loading && (
+              <div className="flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-brand-primary" />
+                <span className="text-xs text-text-secondary">Verifying...</span>
+              </div>
+            )}
+
+            {/* Resend + Back */}
+            <div className="flex items-center justify-between pt-1">
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={loading}
+                className="flex items-center gap-1 text-xs text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                Change email
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={resendTimer > 0 || loading}
+                className="flex items-center gap-1 text-xs text-brand-primary hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {resendTimer > 0 ? (
+                  `Resend in ${resendTimer}s`
+                ) : (
+                  <>
+                    <RefreshCw className="h-3 w-3" />
+                    Resend code
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Help text */}
+            <p className="text-center text-[10px] text-text-tertiary leading-relaxed">
+              Didn&apos;t receive the code? Check your spam folder or{' '}
+              <button onClick={handleResendOtp} disabled={resendTimer > 0 || loading} className="text-brand-primary hover:underline disabled:opacity-50">
+                try again
+              </button>
+            </p>
+          </div>
+        )}
+
+        {/* ═══ Step 3: Success (auto-redirects) ═══ */}
+        {step === 'success' && (
+          <div className="flex justify-center">
+            <Loader2 className="h-5 w-5 animate-spin text-brand-primary" />
+          </div>
+        )}
+
+        {/* Footer — only on email step */}
+        {step === 'email' && (
+          <p className="text-center text-xs text-text-secondary">
+            By continuing, you agree to our{' '}
+            <a href="/legal/terms" className="text-brand-primary hover:underline">Terms</a>
+            {' '}and{' '}
+            <a href="/legal/privacy" className="text-brand-primary hover:underline">Privacy Policy</a>
+          </p>
+        )}
       </div>
     </div>
   );

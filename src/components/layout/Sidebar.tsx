@@ -22,23 +22,19 @@ interface NavItem {
   activeMatchers?: string[];
 }
 
-const TRADING_ITEMS: NavItem[] = [
+const NAV_ITEMS: NavItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'market', label: 'Markets', icon: TrendingUp },
   { id: 'trade', label: 'Trade', icon: BarChart3 },
   { id: 'optionchain', label: 'Option Chain', icon: ListTree },
   { id: 'positions', label: 'Positions', icon: Briefcase, href: '/positions', activeMatchers: ['/positions', '/position'] },
-];
-
-const ANALYSIS_ITEMS: NavItem[] = [
   { id: 'trade-history', label: 'Trade History', icon: History, href: '/trade-history' },
   { id: 'history', label: 'Wallet History', icon: Wallet },
   { id: 'watchlist', label: 'Watchlist', icon: Eye },
-];
-
-const MORE_ITEMS: NavItem[] = [
-  { id: 'learning', label: 'Learning', icon: GraduationCap },
+  { id: 'learning', label: 'Learn', icon: GraduationCap },
   { id: 'support', label: 'Support', icon: HelpCircle },
+  { id: 'profile', label: 'Profile', icon: User },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 export function Sidebar() {
@@ -47,52 +43,13 @@ export function Sidebar() {
   const pathname = usePathname();
 
   // Use shared React Query hook — reads from the same cache as Dashboard
+  // No separate fetch, no 30s interval. The data is kept fresh by the
+  // hook's own refetchInterval or by invalidation from other pages.
   const { data: portfolio } = usePortfolio();
 
   if (!isAuthenticated) return null;
 
   const activePath = pathname === '/' ? 'dashboard' : pathname.replace('/', '').split('/')[0];
-
-  const renderNavItem = (item: NavItem) => {
-    const itemHref = item.href ?? `/${item.id}`;
-    const isActive = activePath === item.id ||
-      (item.activeMatchers?.some((m) => pathname.startsWith(m)) ?? false);
-    const Icon = item.icon;
-    return (
-      <a
-        key={item.id}
-        href={itemHref}
-        className={cn(
-          'group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-          isActive
-            ? 'border-l-[3px] border-l-brand-primary bg-brand-primary/10 text-brand-primary'
-            : 'border-l-[3px] border-l-transparent text-text-secondary hover:bg-bg-surface-alt hover:text-text-primary'
-        )}
-        title={!sidebarOpen ? item.label : undefined}
-      >
-        <Icon className="h-5 w-5 shrink-0" />
-        {sidebarOpen && (
-          <span className="truncate">{item.label}</span>
-        )}
-        {!sidebarOpen && (
-          <span className="pointer-events-none absolute left-full ml-2 rounded-md bg-text-primary px-2 py-1 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">{item.label}</span>
-        )}
-      </a>
-    );
-  };
-
-  const renderSection = (title: string, items: NavItem[], isFirst: boolean) => (
-    <div key={title}>
-      {isFirst ? null : <div className="border-t border-border mt-3" />}
-      {sidebarOpen && (
-        <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">{title}</p>
-      )}
-      {!sidebarOpen && (
-        <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-text-tertiary">{title}</p>
-      )}
-      {items.map(renderNavItem)}
-    </div>
-  );
 
   return (
     <aside
@@ -127,20 +84,36 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-        {renderSection('TRADING', TRADING_ITEMS, true)}
-        {renderSection('ANALYSIS', ANALYSIS_ITEMS, false)}
-        {renderSection('MORE', MORE_ITEMS, false)}
+        {NAV_ITEMS.map((item) => {
+          const itemHref = item.href ?? `/${item.id}`;
+          const isActive = activePath === item.id ||
+            (item.activeMatchers?.some((m) => pathname.startsWith(m)) ?? false);
+          const Icon = item.icon;
+          return (
+            <a
+              key={item.id}
+              href={itemHref}
+              className={cn(
+                'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                isActive
+                  ? 'bg-brand-primary/10 text-brand-primary'
+                  : 'text-text-secondary hover:bg-bg-surface-alt hover:text-text-primary'
+              )}
+              title={!sidebarOpen ? item.label : undefined}
+            >
+              <Icon className="h-5 w-5 shrink-0" />
+              {sidebarOpen && (
+                <span className="truncate">{item.label}</span>
+              )}
+
+            </a>
+          );
+        })}
       </nav>
 
-      {/* Bottom section: P&L + User info */}
+      {/* User section with Balance */}
       {sidebarOpen && user && (
         <div className="border-t border-border-default p-3 space-y-3">
-          {/* Day P&L mini widget */}
-          <div className="px-3 pb-2">
-            <p className="text-[10px] text-text-tertiary font-medium">Day P&L</p>
-            <p className="text-sm font-bold text-profit-green font-mono">+₹0.00</p>
-          </div>
-
           {/* Balance Card */}
           <div className="rounded-xl bg-gradient-to-r from-brand-primary/10 to-accent-gold/10 p-3 border border-brand-primary/20">
             <div className="flex items-center gap-2 mb-1">

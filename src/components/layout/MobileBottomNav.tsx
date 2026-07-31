@@ -3,7 +3,6 @@
 import { cn } from '@/lib/utils';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/stores/useAuthStore';
-import { usePositions } from '@/hooks/useApi';
 import {
   LayoutDashboard, TrendingUp, Briefcase, Eye, BarChart3,
 } from 'lucide-react';
@@ -12,8 +11,8 @@ interface MobileNavItem {
   id: string;
   label: string;
   icon: React.ElementType;
-  href?: string;
-  activeMatchers?: string[];
+  href?: string; // overrides the default `/${id}` href
+  activeMatchers?: string[]; // additional path prefixes that mark this item active
 }
 
 // Order: Home, Markets, [Trade FAB], Positions, Watchlist
@@ -28,13 +27,10 @@ const MOBILE_NAV_ITEMS: MobileNavItem[] = [
 export function MobileBottomNav() {
   const pathname = usePathname();
   const { isAuthenticated } = useAuthStore();
-  const { data: positions } = usePositions();
   const activePath = pathname === '/' ? 'dashboard' : pathname.replace('/', '').split('/')[0];
 
-  // Don't render the bottom nav on public pages
+  // Don't render the bottom nav on public pages (landing / login / register)
   if (!isAuthenticated) return null;
-
-  const positionCount = positions?.length ?? 0;
 
   return (
     <nav
@@ -57,11 +53,11 @@ export function MobileBottomNav() {
               <a
                 key={item.id}
                 href={itemHref}
-                className="flex flex-1 flex-col items-center justify-end pb-1.5 animate-pulse"
+                className="flex flex-1 flex-col items-center justify-end pb-1.5"
                 aria-current={isActive ? 'page' : undefined}
                 aria-label="Trade"
               >
-                <div className="fab-trade" style={{ width: '48px', height: '48px', boxShadow: '0 4px 20px rgba(37, 99, 235, 0.3)' }} aria-hidden>
+                <div className="fab-trade" aria-hidden>
                   <Icon className="h-6 w-6" strokeWidth={2.4} />
                 </div>
                 <span
@@ -81,26 +77,17 @@ export function MobileBottomNav() {
               key={item.id}
               href={itemHref}
               className={cn(
-                'flex flex-1 flex-col items-center justify-center gap-0.5 transition-transform active:scale-95',
+                'flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors',
                 isActive
                   ? 'text-brand-primary'
                   : 'text-text-secondary hover:text-text-primary'
               )}
               aria-current={isActive ? 'page' : undefined}
             >
-              <div className="relative">
-                <Icon
-                  className="h-5 w-5"
-                  strokeWidth={isActive ? 2.5 : 2}
-                />
-                {isActive && (
-                  <span className="absolute -top-1 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-brand-primary" />
-                )}
-                {/* Positions badge */}
-                {item.id === 'positions' && positionCount > 0 && (
-                  <span className="absolute -top-1 -right-1 h-4 min-w-4 flex items-center justify-center rounded-full bg-loss-red text-[9px] font-bold text-white">{positionCount}</span>
-                )}
-              </div>
+              <Icon
+                className="h-5 w-5"
+                strokeWidth={isActive ? 2.5 : 2}
+              />
               <span className={cn('text-[10px] font-medium', isActive && 'font-semibold')}>
                 {item.label}
               </span>

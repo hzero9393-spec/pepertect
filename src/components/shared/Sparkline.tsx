@@ -13,16 +13,13 @@ export function Sparkline({
   width = 80,
   height = 32,
   className,
-  color,
 }: {
   data: number[];
   positive?: boolean;
   width?: number;
   height?: number;
   className?: string;
-  color?: string;
 }) {
-  const resolvedColor = color || (positive ? '#10B981' : '#EF4444');
   if (!data || data.length < 2) {
     // Fallback: flat baseline
     return (
@@ -39,7 +36,7 @@ export function Sparkline({
           y1={height / 2}
           x2={width}
           y2={height / 2}
-          stroke={resolvedColor}
+          stroke={positive ? '#10B981' : '#EF4444'}
           strokeWidth="1.5"
           strokeDasharray="2 3"
           opacity="0.5"
@@ -74,7 +71,7 @@ export function Sparkline({
   const last = points[points.length - 1];
   d += ` L ${last[0]} ${last[1]}`;
 
-  const strokeColor = resolvedColor;
+  const color = positive ? '#10B981' : '#EF4444';
   const fillId = `spark-${positive ? 'g' : 'r'}-${Math.round(data[0] + data[data.length - 1])}`;
 
   const areaPath = `${d} L ${last[0]} ${height - pad} L ${pad} ${height - pad} Z`;
@@ -90,12 +87,12 @@ export function Sparkline({
     >
       <defs>
         <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={strokeColor} stopOpacity="0.25" />
-          <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
       <path d={areaPath} fill={`url(#${fillId})`} />
-      <path d={d} stroke={strokeColor} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={d} stroke={color} strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

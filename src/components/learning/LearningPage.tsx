@@ -4,16 +4,16 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Play, CheckCircle, Lock, Trophy, Flame, Zap, ChevronRight,
-  Star, Target, BookOpen, Brain, Crown, Loader2,
-  X, ChevronDown, RotateCcw,
+  GraduationCap, Play, CheckCircle, Lock, Trophy, Flame, Zap, ChevronRight,
+  Coins, Star, Target, Clock, BookOpen, Brain, Crown, Shield, Loader2,
+  X, ChevronDown, RotateCcw, Gift, TrendingUp, Medal, Award, Sparkles,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn, formatNumber } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
-// ── Types ────────────────────────────────────────────────────────
+// ── Types ────────────────────────────────────────────────────
 interface ModuleInfo {
   id: string;
   title: string;
@@ -113,7 +113,7 @@ interface BadgeInfo {
   earnedAt: string;
 }
 
-// ── XP Level Labels ──────────────────────────────────────
+// ── XP Level Labels ───────────────────────────────────────────
 const LEVEL_LABELS: Record<number, { name: string; icon: string; color: string }> = {
   1: { name: 'Rookie Trader', icon: '🥉', color: 'text-amber-600' },
   2: { name: 'Beginner', icon: '🥈', color: 'text-gray-500' },
@@ -123,7 +123,7 @@ const LEVEL_LABELS: Record<number, { name: string; icon: string; color: string }
   6: { name: 'Expert', icon: '🚀', color: 'text-red-500' },
 };
 
-// ── Main Component ───────────────────────────────────
+// ── Main Component ───────────────────────────────────────────
 export function LearningPage() {
   const { token } = useAuthStore();
   const [paths, setPaths] = useState<LearningPathInfo[]>([]);
@@ -306,7 +306,7 @@ export function LearningPage() {
         setQuizResult(data.data);
         setQuizState('result');
         if (data.data.passed) {
-          toast({ title: 'Quiz Passed!', description: `+${data.data.xpEarned} XP, +${data.data.coinsEarned} Coins` });
+          toast({ title: '🎉 Quiz Passed!', description: `+${data.data.xpEarned} XP, +${data.data.coinsEarned} Coins` });
           fetchAll();
         }
       }
@@ -343,7 +343,7 @@ export function LearningPage() {
         setDcResult(data.data);
         setDcQuizState('result');
         if (data.data.xpEarned > 0) {
-          toast({ title: 'Daily Challenge Complete!', description: `+${data.data.xpEarned} XP, +${data.data.coinsEarned} Coins` });
+          toast({ title: 'Daily Challenge Complete! 🏆', description: `+${data.data.xpEarned} XP, +${data.data.coinsEarned} Coins` });
           fetchAll();
         }
       }
@@ -363,14 +363,14 @@ export function LearningPage() {
   if (error && paths.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 space-y-4">
-        <div className="text-5xl">ðट</div>
+        <div className="text-5xl">😕</div>
         <h3 className="font-heading text-lg font-bold text-text-primary">Something went wrong</h3>
         <p className="text-sm text-text-secondary text-center max-w-sm">{error}</p>
         <button
           onClick={() => { setLoading(true); setError(null); fetchAll(); }}
           className="px-6 py-2.5 rounded-xl bg-brand-primary text-white font-semibold text-sm hover:bg-brand-primary-hover transition-colors"
         >
-          Retry
+          🔄 Retry
         </button>
       </div>
     );
@@ -415,7 +415,7 @@ export function LearningPage() {
   const xpProgress = gam ? Math.min(Math.max(((gam.xp - currentThreshold) / (nextThreshold - currentThreshold)) * 100, 0), 100) : 0;
 
   return (
-    <div className="space-y-6 page-enter">
+    <div className="space-y-6">
       {/* ── Error banner (non-blocking, shown when data partially loaded) ── */}
       {error && paths.length > 0 && (
         <div className="flex items-center justify-between rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
@@ -424,35 +424,65 @@ export function LearningPage() {
         </div>
       )}
 
-      {/* ── Header with simplified level + XP ── */}
+      {/* ── Header with gamification stats ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="font-heading text-2xl font-bold text-text-primary">Learn</h2>
-          <p className="text-sm text-text-secondary mt-1">Video lessons and quizzes to build your trading knowledge</p>
+          <h2 className="font-heading text-2xl font-bold text-text-primary">Learn & Earn 📚</h2>
+          <p className="text-sm text-text-secondary mt-1">Video lessons + MCQ quizzes → XP, badges, streaks!</p>
         </div>
         {gam && (
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-bg-surface px-3 py-1.5 text-xs font-semibold text-text-primary">
-              Level {gam.level}
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-text-secondary">XP: {formatNumber(gam.xp)}</span>
-              <div className="w-20 h-1.5 rounded-full bg-bg-surface-alt overflow-hidden">
-                <div className="h-full rounded-full bg-brand-primary transition-all" style={{ width: `${xpProgress}%` }} />
-              </div>
+            <div className="flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 px-3 py-1.5">
+              <Flame className="h-4 w-4 text-orange-500" />
+              <span className="text-sm font-bold text-orange-600">{gam.streak}</span>
+              <span className="text-xs text-orange-400">day streak</span>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-full bg-yellow-100 dark:bg-yellow-900/30 px-3 py-1.5">
+              <Zap className="h-4 w-4 text-yellow-500" />
+              <span className="text-sm font-bold text-yellow-600">{formatNumber(gam.xp)}</span>
+              <span className="text-xs text-yellow-400">XP</span>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-full bg-purple-100 dark:bg-purple-900/30 px-3 py-1.5">
+              <Coins className="h-4 w-4 text-purple-500" />
+              <span className="text-sm font-bold text-purple-600">{gam.coins}</span>
+              <span className="text-xs text-purple-400">coins</span>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-full bg-brand-primary/10 px-3 py-1.5">
+              <Trophy className="h-4 w-4 text-brand-primary" />
+              <span className="text-sm font-bold text-brand-primary">Lv.{gam.level}</span>
+              <span className="text-xs text-brand-primary/60">{getLevelInfo(gam.level).icon}</span>
             </div>
           </div>
         )}
       </div>
 
+      {/* ── XP Progress Bar ── */}
+      {gam && (
+        <div className="rounded-xl border border-border bg-bg-surface p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">{getLevelInfo(gam.level).icon}</span>
+              <span className={cn('font-bold text-sm', getLevelInfo(gam.level).color)}>{getLevelInfo(gam.level).name}</span>
+            </div>
+            <span className="text-xs text-text-secondary">{formatNumber(gam.xp)} / {safeLevel < 6 ? nextThreshold.toLocaleString() : '∞'} XP</span>
+          </div>
+          <Progress value={Math.min(Math.max(xpProgress, 0), 100)} className="h-2" />
+          <div className="flex items-center justify-between mt-2 text-[10px] text-text-tertiary">
+            <span>{gam.lessonsCompleted} lessons done</span>
+            <span>{gam.quizzesPassed} quizzes passed</span>
+            <span>{gam.badgesEarned} badges</span>
+          </div>
+        </div>
+      )}
+
       {/* ── Tab Navigation ── */}
       <div className="flex gap-1 p-1 rounded-xl bg-bg-surface-alt overflow-x-auto">
         {([
-          { key: 'paths' as const, label: 'Learning Paths' },
-          { key: 'daily' as const, label: 'Daily Challenge' },
-          { key: 'word' as const, label: 'Word of Day' },
-          { key: 'leaderboard' as const, label: 'Leaderboard' },
-          { key: 'profile' as const, label: 'My Profile' },
+          { key: 'paths' as const, label: '📚 Learning Paths', },
+          { key: 'daily' as const, label: '⚡ Daily Challenge', },
+          { key: 'word' as const, label: '📖 Word of Day', },
+          { key: 'leaderboard' as const, label: '🏆 Leaderboard', },
+          { key: 'profile' as const, label: '🎖️ My Profile', },
         ]).map(tab => (
           <button
             key={tab.key}
@@ -475,6 +505,7 @@ export function LearningPage() {
           <motion.div key="paths" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-4">
             {paths.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 space-y-3">
+                <div className="text-5xl">📚</div>
                 <h3 className="font-heading text-lg font-bold text-text-primary">No learning paths yet</h3>
                 <p className="text-sm text-text-secondary text-center max-w-sm">Learning content is being prepared. Check back soon!</p>
                 <button onClick={fetchAll} className="px-4 py-2 rounded-xl bg-brand-primary text-white text-sm font-medium hover:bg-brand-primary-hover transition-colors">Refresh</button>
@@ -526,7 +557,7 @@ export function LearningPage() {
   );
 }
 
-// ── Path Card ───────────────────────────────────
+// ── Path Card ───────────────────────────────────────────────
 function PathCard({ path, isExpanded, onToggle, onStart }: {
   path: LearningPathInfo;
   isExpanded: boolean;
@@ -534,12 +565,10 @@ function PathCard({ path, isExpanded, onToggle, onStart }: {
   onStart: (pathId: string, moduleId: string) => void;
 }) {
   const levelColors: Record<string, string> = {
-    BEGINNER: 'bg-tint-green text-profit-green',
-    INTERMEDIATE: 'bg-tint-yellow text-accent-gold',
-    ADVANCED: 'bg-tint-red text-loss-red',
+    BEGINNER: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    INTERMEDIATE: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    ADVANCED: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   };
-
-  const totalProgress = path.totalModules > 0 ? Math.round((path.completedModules / path.totalModules) * 100) : 0;
 
   return (
     <div className="rounded-xl border border-border bg-bg-surface overflow-hidden transition-all">
@@ -550,15 +579,12 @@ function PathCard({ path, isExpanded, onToggle, onStart }: {
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-heading font-bold text-text-primary truncate">{path.title}</h3>
             <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold', levelColors[path.level] || '')}>{path.level}</span>
-            {path.isPremium && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-accent-gold/10 px-2 py-0.5 text-[10px] font-semibold text-accent-gold"><Crown className="h-3 w-3" />Premium</span>
-            )}
-            {totalProgress === 100 && <CheckCircle className="h-4 w-4 text-profit-green shrink-0" />}
+            {path.completedModules === path.totalModules && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
           </div>
           <p className="text-xs text-text-secondary mt-0.5 line-clamp-1">{path.description}</p>
           <div className="flex items-center gap-3 mt-2">
-            <Progress value={totalProgress} className="h-1.5 flex-1 max-w-[200px]" />
-            <span className="text-[10px] text-text-tertiary font-mono">{path.completedModules}/{path.totalModules} modules</span>
+            <Progress value={path.progress} className="h-1.5 flex-1 max-w-[200px]" />
+            <span className="text-[10px] text-text-tertiary font-mono">{path.completedModules}/{path.totalModules} · {path.totalXP} XP</span>
           </div>
         </div>
         <ChevronDown className={cn('h-5 w-5 text-text-tertiary transition-transform shrink-0', isExpanded && 'rotate-180')} />
@@ -568,45 +594,35 @@ function PathCard({ path, isExpanded, onToggle, onStart }: {
       <AnimatePresence>
         {isExpanded && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="border-t border-border px-4 py-3 grid gap-3 sm:grid-cols-2">
+            <div className="border-t border-border px-4 py-3 space-y-2">
               {path.modules.map((mod, idx) => {
                 const unlocked = isModuleUnlocked(path, mod, idx);
                 const isCompleted = mod.status === 'COMPLETED';
-                const modProgress = isCompleted ? 100 : (unlocked && mod.status === 'IN_PROGRESS' ? 50 : 0);
                 return (
                   <button
                     key={mod.id}
                     disabled={!unlocked}
                     onClick={() => unlocked && onStart(path.id, mod.id)}
                     className={cn(
-                      'rounded-xl border border-border bg-bg-surface overflow-hidden hover:shadow-md hover:shadow-black/5 transition-all duration-200 text-left',
-                      unlocked ? 'cursor-pointer hover:border-brand-primary/30' : 'opacity-60 cursor-not-allowed'
+                      'w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all',
+                      unlocked ? 'hover:bg-bg-surface-alt cursor-pointer' : 'opacity-50 cursor-not-allowed'
                     )}
                   >
-                    {/* Gradient header based on progress */}
-                    <div className={cn('h-2', modProgress === 100 ? 'bg-profit-green' : 'bg-brand-primary')} />
-                    <div className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-text-primary truncate">{mod.title}</p>
-                          <p className="text-xs text-text-secondary mt-0.5">{mod.duration}m {mod.videoUrl ? '· Video' : ''}</p>
-                        </div>
-                        {isCompleted && <CheckCircle className="h-5 w-5 text-profit-green shrink-0" />}
-                        {!unlocked && <Lock className="h-5 w-5 text-text-tertiary shrink-0" />}
-                      </div>
-                      <div className="mt-3 flex items-center justify-between">
-                        <div className="flex-1 h-1.5 rounded-full bg-bg-surface-alt overflow-hidden mr-3">
-                          <div className="h-full rounded-full bg-brand-primary transition-all" style={{ width: `${modProgress}%` }} />
-                        </div>
-                        <span className="text-[10px] text-text-secondary">{modProgress}%</span>
-                      </div>
-                      {isCompleted && mod.score != null && (
-                        <p className="text-[10px] text-text-tertiary mt-2">Score: {mod.score}% · +{mod.xpReward} XP</p>
-                      )}
-                      {unlocked && !isCompleted && (
-                        <p className="text-[10px] text-text-tertiary mt-2">+{mod.xpReward} XP reward</p>
-                      )}
+                    <div className={cn(
+                      'flex h-8 w-8 items-center justify-center rounded-lg shrink-0 text-sm font-bold',
+                      isCompleted ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' :
+                      unlocked ? 'bg-brand-primary/10 text-brand-primary' : 'bg-bg-surface-alt text-text-tertiary'
+                    )}>
+                      {isCompleted ? <CheckCircle className="h-4 w-4" /> :
+                       unlocked ? <Play className="h-3.5 w-3.5" /> :
+                       <Lock className="h-3.5 w-3.5" />}
                     </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">{idx + 1}. {mod.title}</p>
+                      <p className="text-[10px] text-text-tertiary">{mod.duration}m · +{mod.xpReward} XP{mod.videoUrl ? ' · 📹 Video' : ''}</p>
+                    </div>
+                    {isCompleted && <span className="text-[10px] font-bold text-green-500">{mod.score}%</span>}
+                    {unlocked && !isCompleted && <ChevronRight className="h-4 w-4 text-text-tertiary shrink-0" />}
                   </button>
                 );
               })}
@@ -618,7 +634,7 @@ function PathCard({ path, isExpanded, onToggle, onStart }: {
   );
 }
 
-// ── Lesson View ───────────────────────────────────
+// ── Lesson View ──────────────────────────────────────────────
 function LessonView({ module, challenge, quizState, currentQ, selectedAnswer, showExplanation, quizResult, submitting, onStartQuiz, onAnswer, onNext, onClose }: {
   module: ModuleInfo;
   challenge: ChallengeInfo;
@@ -637,7 +653,7 @@ function LessonView({ module, challenge, quizState, currentQ, selectedAnswer, sh
   const currentQuestion = questions[currentQ];
 
   return (
-    <div className="space-y-6 page-enter">
+    <div className="space-y-6">
       {/* Back button */}
       <button onClick={onClose} className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors">
         <RotateCcw className="h-4 w-4" /> Back to Learning Paths
@@ -689,36 +705,37 @@ function LessonView({ module, challenge, quizState, currentQ, selectedAnswer, sh
             <Badge variant="secondary" className="text-xs">Question {currentQ + 1} of {questions.length}</Badge>
             <Progress value={((currentQ + 1) / questions.length) * 100} className="h-1.5 w-24" />
           </div>
-          <h4 className="text-base font-semibold text-text-primary">{currentQuestion.question}</h4>
+          <h4 className="font-semibold text-text-primary">{currentQuestion.question}</h4>
           <div className="space-y-2">
             {currentQuestion.options.map((opt, idx) => {
               const isCorrect = idx === currentQuestion.correct;
               const isSelected = selectedAnswer === idx;
+              let optClass = 'border-border hover:border-brand-primary/50 hover:bg-brand-primary/5';
+              if (selectedAnswer !== null) {
+                if (isCorrect) optClass = 'border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400';
+                else if (isSelected && !isCorrect) optClass = 'border-red-500 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400';
+                else optClass = 'opacity-50';
+              } else {
+                optClass = 'border-border hover:border-brand-primary/50 hover:bg-brand-primary/5';
+              }
               return (
                 <button
                   key={idx}
                   disabled={selectedAnswer !== null}
                   onClick={() => onAnswer(idx)}
-                  className={cn(
-                    'w-full text-left rounded-xl border p-3.5 transition-all duration-150',
-                    selectedAnswer === null
-                      ? 'border-border bg-bg-surface hover:border-brand-primary/30 hover:bg-bg-surface-alt'
-                      : '',
-                    selectedAnswer !== null && isSelected && isCorrect && 'border-profit-green bg-tint-green',
-                    selectedAnswer !== null && isCorrect && !isSelected && 'border-profit-green bg-tint-green',
-                    selectedAnswer !== null && isSelected && !isCorrect && 'border-loss-red bg-tint-red',
-                    selectedAnswer !== null && !isSelected && !isCorrect && 'opacity-50'
-                  )}
+                  className={cn('w-full p-3 rounded-xl border text-left text-sm transition-all', optClass)}
                 >
-                  <span className={cn('text-sm', isSelected && 'font-medium')}>{opt}</span>
+                  <span className="font-medium">{String.fromCharCode(65 + idx)}.</span> {opt}
+                  {selectedAnswer !== null && isCorrect && <CheckCircle className="inline h-4 w-4 ml-2 text-green-500" />}
+                  {selectedAnswer !== null && isSelected && !isCorrect && <X className="inline h-4 w-4 ml-2 text-red-500" />}
                 </button>
               );
             })}
           </div>
           {showExplanation && (
-            <div className="rounded-lg bg-bg-surface-alt p-3 border-l-[3px] border-brand-primary">
-              <p className="text-xs text-text-secondary">{currentQuestion.explanation}</p>
-            </div>
+            <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <p className="text-xs text-blue-700 dark:text-blue-300"><strong>💡 Explanation:</strong> {currentQuestion.explanation}</p>
+            </motion.div>
           )}
           {selectedAnswer !== null && (
             <button onClick={onNext} className="w-full py-3 rounded-xl bg-brand-primary text-white font-semibold hover:bg-brand-primary-hover transition-colors">
@@ -730,7 +747,8 @@ function LessonView({ module, challenge, quizState, currentQ, selectedAnswer, sh
 
       {/* Quiz Result */}
       {quizState === 'result' && quizResult && (
-        <div className="rounded-xl border border-border bg-bg-surface p-6 text-center space-y-4">
+        <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="rounded-xl border border-border bg-bg-surface p-6 text-center space-y-4">
+          <div className="text-5xl">{quizResult.perfect ? '🏆' : quizResult.passed ? '🎉' : '😞'}</div>
           <h3 className="font-heading text-xl font-bold text-text-primary">
             {quizResult.perfect ? 'Perfect Score!' : quizResult.passed ? 'Quiz Passed!' : 'Try Again!'}
           </h3>
@@ -744,25 +762,25 @@ function LessonView({ module, challenge, quizState, currentQ, selectedAnswer, sh
               <p className="text-[10px] text-text-tertiary">XP Earned</p>
             </div>
             <div className="rounded-lg bg-bg-surface-alt p-3">
-              <p className="text-lg font-bold text-accent-gold">+{quizResult.coinsEarned}</p>
+              <p className="text-lg font-bold text-purple-600">+{quizResult.coinsEarned}</p>
               <p className="text-[10px] text-text-tertiary">Coins</p>
             </div>
           </div>
           {quizResult.newBadges && quizResult.newBadges.length > 0 && (
-            <div className="p-3 rounded-xl bg-tint-yellow border border-border">
-              <p className="text-sm font-bold text-accent-gold">New Badges: {quizResult.newBadges.join(', ')}</p>
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200">
+              <p className="text-sm font-bold text-amber-700">🏅 New Badges: {quizResult.newBadges.join(', ')}</p>
             </div>
           )}
           <button onClick={onClose} className="w-full py-3 rounded-xl bg-brand-primary text-white font-semibold hover:bg-brand-primary-hover transition-colors">
             Continue Learning →
           </button>
-        </div>
+        </motion.div>
       )}
     </div>
   );
 }
 
-// ── Daily Challenge ───────────────────────────────────
+// ── Daily Challenge ──────────────────────────────────────────
 function DailyChallengeView({ data, quizState, currentQ, selectedAnswer, showExplanation, result, submitting, onStart, onAnswer, onNext }: {
   data: DailyChallengeData;
   quizState: 'idle' | 'active' | 'result';
@@ -781,6 +799,7 @@ function DailyChallengeView({ data, quizState, currentQ, selectedAnswer, showExp
   if (data.alreadyAttempted) {
     return (
       <div className="rounded-xl border border-border bg-bg-surface p-6 text-center space-y-4">
+        <div className="text-4xl">🎯</div>
         <h3 className="font-heading text-lg font-bold text-text-primary">Today&apos;s Challenge Done!</h3>
         <div className="grid grid-cols-3 gap-4">
           <div className="rounded-lg bg-bg-surface-alt p-3">
@@ -792,11 +811,11 @@ function DailyChallengeView({ data, quizState, currentQ, selectedAnswer, showExp
             <p className="text-[10px] text-text-tertiary">XP</p>
           </div>
           <div className="rounded-lg bg-bg-surface-alt p-3">
-            <p className="text-lg font-bold text-accent-gold">+{data.coinsEarned}</p>
+            <p className="text-lg font-bold text-purple-600">+{data.coinsEarned}</p>
             <p className="text-[10px] text-text-tertiary">Coins</p>
           </div>
         </div>
-        <p className="text-sm text-text-secondary">Come back tomorrow for a new challenge!</p>
+        <p className="text-sm text-text-secondary">Come back tomorrow for a new challenge! 🔥</p>
       </div>
     );
   }
@@ -804,8 +823,8 @@ function DailyChallengeView({ data, quizState, currentQ, selectedAnswer, showExp
   return (
     <div className="rounded-xl border border-border bg-bg-surface p-5 space-y-4">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-tint-yellow">
-          <Target className="h-5 w-5 text-accent-gold" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+          <Target className="h-5 w-5 text-amber-600" />
         </div>
         <div>
           <h3 className="font-heading font-bold text-text-primary">Daily Challenge</h3>
@@ -814,8 +833,8 @@ function DailyChallengeView({ data, quizState, currentQ, selectedAnswer, showExp
       </div>
 
       {quizState === 'idle' && (
-        <button onClick={onStart} className="w-full py-3 rounded-xl bg-brand-primary text-white font-semibold hover:bg-brand-primary-hover transition-all">
-          Start Daily Challenge
+        <button onClick={onStart} className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold hover:from-amber-600 hover:to-orange-600 transition-all">
+          ⚡ Start Daily Challenge
         </button>
       )}
 
@@ -825,39 +844,31 @@ function DailyChallengeView({ data, quizState, currentQ, selectedAnswer, showExp
             <Badge variant="secondary" className="text-xs">Q{currentQ + 1}/{questions.length}</Badge>
             <Progress value={((currentQ + 1) / questions.length) * 100} className="h-1.5 w-24" />
           </div>
-          <h4 className="text-base font-semibold text-text-primary">{currentQuestion.question}</h4>
+          <h4 className="font-semibold text-text-primary">{currentQuestion.question}</h4>
           <div className="space-y-2">
             {currentQuestion.options.map((opt, idx) => {
               const isCorrect = idx === currentQuestion.correct;
               const isSelected = selectedAnswer === idx;
+              let cls = 'border-border hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/10';
+              if (selectedAnswer !== null) {
+                if (isCorrect) cls = 'border-green-500 bg-green-50 dark:bg-green-900/20';
+                else if (isSelected && !isCorrect) cls = 'border-red-500 bg-red-50 dark:bg-red-900/20';
+                else cls = 'opacity-50';
+              }
               return (
-                <button
-                  key={idx}
-                  disabled={selectedAnswer !== null}
-                  onClick={() => onAnswer(idx)}
-                  className={cn(
-                    'w-full text-left rounded-xl border p-3.5 transition-all duration-150',
-                    selectedAnswer === null
-                      ? 'border-border bg-bg-surface hover:border-brand-primary/30 hover:bg-bg-surface-alt'
-                      : '',
-                    selectedAnswer !== null && isSelected && isCorrect && 'border-profit-green bg-tint-green',
-                    selectedAnswer !== null && isCorrect && !isSelected && 'border-profit-green bg-tint-green',
-                    selectedAnswer !== null && isSelected && !isCorrect && 'border-loss-red bg-tint-red',
-                    selectedAnswer !== null && !isSelected && !isCorrect && 'opacity-50'
-                  )}
-                >
-                  <span className={cn('text-sm', isSelected && 'font-medium')}>{opt}</span>
+                <button key={idx} disabled={selectedAnswer !== null} onClick={() => onAnswer(idx)} className={cn('w-full p-3 rounded-xl border text-left text-sm transition-all', cls)}>
+                  {String.fromCharCode(65 + idx)}. {opt}
                 </button>
               );
             })}
           </div>
           {showExplanation && (
-            <div className="rounded-lg bg-bg-surface-alt p-3 border-l-[3px] border-brand-primary">
-              <p className="text-xs text-text-secondary">{currentQuestion.explanation}</p>
+            <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 text-xs text-blue-700 dark:text-blue-300">
+              💡 {currentQuestion.explanation}
             </div>
           )}
           {selectedAnswer !== null && (
-            <button onClick={onNext} className="w-full py-3 rounded-xl bg-brand-primary text-white font-semibold hover:bg-brand-primary-hover transition-colors">
+            <button onClick={onNext} className="w-full py-3 rounded-xl bg-amber-500 text-white font-semibold hover:bg-amber-600 transition-colors">
               {currentQ < questions.length - 1 ? 'Next →' : (submitting ? 'Submitting...' : 'Submit')}
             </button>
           )}
@@ -866,11 +877,12 @@ function DailyChallengeView({ data, quizState, currentQ, selectedAnswer, showExp
 
       {quizState === 'result' && result && (
         <div className="text-center space-y-3">
+          <div className="text-4xl">{result.perfect ? '🏆' : result.scorePct >= 60 ? '🎉' : '😅'}</div>
           <h3 className="font-bold text-text-primary">{result.perfect ? 'Perfect!' : result.scorePct >= 60 ? 'Well Done!' : 'Better luck tomorrow!'}</h3>
           <div className="flex justify-center gap-4">
             <div><span className="text-xl font-bold">{result.correct}/{result.total}</span><p className="text-[10px] text-text-tertiary">Correct</p></div>
             <div><span className="text-xl font-bold text-brand-primary">+{result.xpEarned}</span><p className="text-[10px] text-text-tertiary">XP</p></div>
-            <div><span className="text-xl font-bold text-accent-gold">+{result.coinsEarned}</span><p className="text-[10px] text-text-tertiary">Coins</p></div>
+            <div><span className="text-xl font-bold text-purple-600">+{result.coinsEarned}</span><p className="text-[10px] text-text-tertiary">Coins</p></div>
           </div>
         </div>
       )}
@@ -878,13 +890,13 @@ function DailyChallengeView({ data, quizState, currentQ, selectedAnswer, showExp
   );
 }
 
-// ── Word of Day ───────────────────────────────────
+// ── Word of Day ─────────────────────────────────────────────
 function WordOfDayView({ data }: { data: WordOfDayData }) {
   return (
     <div className="rounded-xl border border-border bg-bg-surface overflow-hidden">
-      <div className="bg-gradient-to-br from-brand-primary/10 to-transparent p-5 space-y-3">
+      <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 p-5 space-y-3">
         <div className="flex items-center gap-2">
-          <BookOpen className="h-5 w-5 text-brand-primary" />
+          <BookOpen className="h-5 w-5 text-purple-500" />
           <Badge variant="secondary">{data.category}</Badge>
           <span className="text-[10px] text-text-tertiary ml-auto">{data.date}</span>
         </div>
@@ -900,7 +912,7 @@ function WordOfDayView({ data }: { data: WordOfDayData }) {
   );
 }
 
-// ── Leaderboard ───────────────────────────────────
+// ── Leaderboard ─────────────────────────────────────────────
 function LeaderboardView({ leaderboard, userRank }: {
   leaderboard: Array<{ rank: number; name: string; avatar?: string | null; xp: number; level: number; streak: number; isCurrentUser: boolean }>;
   userRank: number | null;
@@ -926,7 +938,7 @@ function LeaderboardView({ leaderboard, userRank }: {
               </div>
               <div className="flex-1 min-w-0">
                 <p className={cn('text-sm font-medium truncate', entry.isCurrentUser && 'text-brand-primary')}>{entry.name}</p>
-                <p className="text-[10px] text-text-tertiary">Lv.{entry.level} · {entry.streak} day streak</p>
+                <p className="text-[10px] text-text-tertiary">Lv.{entry.level} · 🔥{entry.streak} days</p>
               </div>
               <div className="text-right">
                 <p className="text-sm font-bold text-text-primary">{formatNumber(entry.xp)}</p>
@@ -940,17 +952,17 @@ function LeaderboardView({ leaderboard, userRank }: {
   );
 }
 
-// ── Profile View ───────────────────────────────────
+// ── Profile View ──────────────────────────────────────────────
 function ProfileView({ gam, badges, levelInfo }: { gam: GamificationInfo; badges: BadgeInfo[]; levelInfo: { name: string; icon: string; color: string } }) {
   return (
     <div className="space-y-4">
       {/* Stats Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { icon: <Zap className="h-4 w-4" />, label: 'Total XP', value: formatNumber(gam.xp), color: 'text-text-primary' },
-          { icon: <Flame className="h-4 w-4" />, label: 'Best Streak', value: `${gam.longestStreak} days`, color: 'text-text-primary' },
-          { icon: <Brain className="h-4 w-4" />, label: 'Quizzes Passed', value: String(gam.quizzesPassed), color: 'text-text-primary' },
-          { icon: <Star className="h-4 w-4" />, label: 'Perfect Scores', value: String(gam.perfectQuizzes), color: 'text-text-primary' },
+          { icon: <Zap className="h-4 w-4" />, label: 'Total XP', value: formatNumber(gam.xp), color: 'text-yellow-600' },
+          { icon: <Flame className="h-4 w-4" />, label: 'Best Streak', value: `${gam.longestStreak} days`, color: 'text-orange-600' },
+          { icon: <Brain className="h-4 w-4" />, label: 'Quizzes Passed', value: String(gam.quizzesPassed), color: 'text-blue-600' },
+          { icon: <Star className="h-4 w-4" />, label: 'Perfect Scores', value: String(gam.perfectQuizzes), color: 'text-purple-600' },
         ].map((stat) => (
           <div key={stat.label} className="rounded-xl border border-border bg-bg-surface p-4 text-center">
             <div className="flex justify-center text-text-tertiary mb-2">{stat.icon}</div>
@@ -973,7 +985,7 @@ function ProfileView({ gam, badges, levelInfo }: { gam: GamificationInfo; badges
 
       {/* Badges */}
       <div className="rounded-xl border border-border bg-bg-surface p-5 space-y-3">
-        <h3 className="font-heading font-bold text-text-primary">Badges ({badges.length})</h3>
+        <h3 className="font-heading font-bold text-text-primary">🏅 Badges ({badges.length})</h3>
         {badges.length === 0 ? (
           <p className="text-sm text-text-secondary">No badges yet. Complete lessons and quizzes to earn badges!</p>
         ) : (
@@ -987,6 +999,21 @@ function ProfileView({ gam, badges, levelInfo }: { gam: GamificationInfo; badges
             ))}
           </div>
         )}
+      </div>
+
+      {/* Streak Freeze */}
+      <div className="rounded-xl border border-border bg-bg-surface p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Shield className="h-5 w-5 text-blue-500" />
+          <div>
+            <p className="text-sm font-medium text-text-primary">Streak Freezes</p>
+            <p className="text-[10px] text-text-secondary">Protect your streak when you miss a day</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold text-blue-600">{gam.streakFreeze}</span>
+          <span className="text-[10px] text-text-tertiary">available</span>
+        </div>
       </div>
     </div>
   );

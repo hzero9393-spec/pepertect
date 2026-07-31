@@ -4,13 +4,14 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { cn, formatINR, formatNumber } from '@/lib/utils';
 import {
-  TrendingUp, TrendingDown, Trophy, PieChart,
-  BarChart3, Target, Briefcase, Receipt,
-  ChevronRight, Clock, Percent, DollarSign, Sparkles,
+  Wallet, TrendingUp, TrendingDown, Activity, Trophy, PieChart,
+  BarChart3, Target, AlertCircle, Briefcase, Receipt, Layers,
+  Download, Filter, ChevronRight, Clock, ArrowUpRight, ArrowDownRight,
+  Percent, DollarSign, Sparkles, BookOpen,
 } from 'lucide-react';
-import type { Portfolio, Position, Order, Trade } from '@/types';
+import type { Portfolio, Position, IndexData, Order, Trade } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
-// FreeTrialWidget removed — clutters portfolio page
+import { FreeTrialWidget } from '@/components/shared/FreeTrialWidget';
 import { Sparkline } from '@/components/shared/Sparkline';
 import { useLiveQuote } from '@/hooks/useLiveQuote';
 import { getUpstoxKey, INDEX_TO_UPSTOX_KEY } from '@/lib/upstox-instruments';
@@ -44,63 +45,8 @@ const SECTOR_COLORS = [
   'bg-teal-500', 'bg-violet-500', 'bg-rose-500', 'bg-amber-500',
 ];
 
-const SECTOR_SOLID_COLORS = [
-  '#0ea5e9', '#22c55e', '#eab308', '#a855f7',
-  '#ef4444', '#06b6d4', '#ec4899', '#f97316',
-  '#14b8a6', '#8b5cf6', '#f43f5e', '#f59e0b',
-];
-
-// Deterministic monthly returns based on user ID hash
-function getMonthlyReturns(userId: string) {
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const now = new Date();
-  let h = 0;
-  for (let i = 0; i < userId.length; i++) h = (Math.imul(31, h) + userId.charCodeAt(i)) | 0;
-  const result: { month: string; pct: number }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const idx = (d.getMonth() + h * (i + 1)) & 0xffff;
-    const raw = (Math.abs(Math.sin(idx)) * 8) - 3; // range roughly -3 to +5
-    const pct = Math.round(raw * 100) / 100;
-    result.push({ month: months[d.getMonth()], pct });
-  }
-  return result.map((m) => {
-    const positive = m.pct >= 0;
-    return (
-      <div key={m.month} className="flex items-center gap-3">
-        <span className="text-xs text-text-secondary w-10 shrink-0">{m.month}</span>
-        <div className="flex-1 h-6 bg-bg-surface-alt rounded-full overflow-hidden">
-          <div
-            className={cn('h-full rounded-full transition-all', positive ? 'bg-profit-green' : 'bg-loss-red')}
-            style={{ width: `${Math.min(Math.abs(m.pct) * 10, 100)}%` }}
-          />
-        </div>
-        <span className={cn('text-xs font-semibold font-mono w-16 text-right tabular-nums', positive ? 'text-profit-green' : 'text-loss-red')}>
-          {positive ? '+' : ''}{m.pct.toFixed(1)}%
-        </span>
-      </div>
-    );
-  });
-}
-
-// Top holdings sorted by absolute value descending
-function getTopHoldings(positions: Position[], quotes: Record<string, any>, getLiveKeyForPosition: (p: Position) => string | null, limit = 5) {
-  return [...positions]
-    .map((p) => {
-      const liveKey = getLiveKeyForPosition(p);
-      const tick = liveKey ? quotes[liveKey] : undefined;
-      const ltp = tick?.ltp ?? p.currentPrice ?? p.avgPrice;
-      const value = ltp * p.quantity;
-      const pnl = (ltp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-      const pnlPct = p.avgPrice > 0 ? (pnl / (p.avgPrice * p.quantity)) * 100 : 0;
-      return { pos: p, value, pnl, pnlPct };
-    })
-    .sort((a, b) => b.value - a.value)
-    .slice(0, limit);
-}
-
 export function PortfolioPage() {
-  const { token, user } = useAuthStore();
+  const { token } = useAuthStore();
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [recentTrades, setRecentTrades] = useState<Trade[]>([]);
@@ -297,7 +243,7 @@ export function PortfolioPage() {
   const diversificationScore = Math.min(100, openPositionsCount * 12);
 
   return (
-    <div className="page-enter space-y-5">
+    <div className="space-y-5">
       {/* ============== HEADER ============== */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
@@ -308,118 +254,51 @@ export function PortfolioPage() {
         </div>
       </div>
 
-      {/* ============== HERO PORTFOLIO VALUE ============== */}
-      <div className="rounded-2xl bg-gradient-to-br from-brand-primary/10 via-bg-surface to-accent-gold/5 border border-brand-primary/10 p-5 md:p-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          {/* Left side: values */}
-          <div className="flex-1">
-            <p className="text-xs font-medium text-text-secondary mb-1">Total Portfolio Value</p>
-            <p className="text-2xl md:text-3xl font-bold font-mono text-text-primary">
-              {formatINR(totalBalance)}
+      {/* ============== FREE TRIAL BANNER ============== */}
+      <FreeTrialWidget variant="banner" />
+
+      {/* ============== TOP METRICS GRID ============== */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <MetricCard
+          icon={Wallet}
+          iconBg="bg-tint-blue"
+          iconColor="text-brand-primary"
+          label="Total Balance"
+          value={formatINR(totalBalance)}
+          subtext="Virtual Capital"
+        />
+        <MetricCard
+          icon={totalPnlPositive ? TrendingUp : TrendingDown}
+          iconBg={totalPnlPositive ? 'bg-tint-green' : 'bg-tint-red'}
+          iconColor={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
+          label={livePnl.anyLive ? 'Total P&L · LIVE' : 'Total P&L'}
+          value={
+            <span className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}>
+              {totalPnlPositive ? '+' : ''}{formatINR(livePnl.anyLive ? (realized + livePnl.total) : totalPnl)}
               {livePnl.anyLive && (
-                <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-profit-green animate-pulse align-middle" />
+                <span className="ml-1 inline-flex h-1.5 w-1.5 rounded-full bg-profit-green animate-pulse align-middle" />
               )}
-            </p>
-            {(portfolio?.todayPnl ?? portfolio?.dayPnl ?? 0) !== 0 && (
-              <p className={cn(
-                'text-sm font-semibold mt-1',
-                (portfolio?.todayPnl ?? portfolio?.dayPnl ?? 0) >= 0 ? 'text-profit-green' : 'text-loss-red'
-              )}>
-                Today {(portfolio?.todayPnl ?? portfolio?.dayPnl ?? 0) >= 0 ? '+' : ''}₹{formatNumber(Math.abs(portfolio?.todayPnl ?? portfolio?.dayPnl ?? 0), 2)}
-                {invested > 0 && (
-                  <> ({(portfolio?.todayPnl ?? portfolio?.dayPnl ?? 0) >= 0 ? '+' : ''}{(((portfolio?.todayPnl ?? portfolio?.dayPnl ?? 0)) / invested * 100).toFixed(2)}%)</>
-                )}
-              </p>
-            )}
-            <p className="text-xs text-text-secondary mt-1">Total Invested: {formatINR(invested)}</p>
-          </div>
-          {/* Right side: total return indicator */}
-          <div className="flex flex-col items-center justify-center shrink-0">
-            <div className="relative h-24 w-24 md:h-28 md:w-28">
-              <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="42" fill="none" stroke="currentColor" className="text-bg-surface-alt" strokeWidth="8" />
-                <circle
-                  cx="50" cy="50" r="42" fill="none"
-                  className={totalPnlPositive ? 'text-profit-green' : 'text-loss-red'}
-                  strokeWidth="8"
-                  strokeDasharray={`${Math.min(Math.abs(totalPnlPct) * 2.5, 100 * Math.PI * 0.42 / (2 * Math.PI * 42) * 100)} ${2 * Math.PI * 42}`}
-                  strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className={cn('font-mono text-lg md:text-xl font-bold', totalPnlPositive ? 'text-profit-green' : 'text-loss-red')}>
-                  {totalPnlPositive ? '+' : ''}{totalPnlPct.toFixed(1)}%
-                </span>
-                <span className="text-[10px] text-text-tertiary">Total Return</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        {/* Quick stats row */}
-        <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-border/50">
-          <div>
-            <p className="text-[10px] text-text-tertiary uppercase tracking-wide">Invested</p>
-            <p className="font-mono text-sm font-semibold text-text-primary mt-0.5">{formatINR(invested)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-text-tertiary uppercase tracking-wide">Available</p>
-            <p className="font-mono text-sm font-semibold text-text-primary mt-0.5">{formatINR(available)}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-text-tertiary uppercase tracking-wide">Win Rate</p>
-            <p className="font-mono text-sm font-semibold text-brand-primary mt-0.5">{winRate.toFixed(1)}%</p>
-          </div>
-        </div>
+            </span>
+          }
+          subtext={`${totalPnlPositive ? '+' : ''}${totalPnlPct.toFixed(2)}% return`}
+        />
+        <MetricCard
+          icon={Activity}
+          iconBg="bg-tint-purple"
+          iconColor="text-info-purple"
+          label="Invested"
+          value={formatINR(invested)}
+          subtext={`Available: ${formatINR(available)}`}
+        />
+        <MetricCard
+          icon={Trophy}
+          iconBg="bg-tint-yellow"
+          iconColor="text-accent-gold"
+          label="Win Rate"
+          value={<span className="text-brand-primary">{winRate.toFixed(1)}%</span>}
+          subtext={`${wins}W · ${losses}L · ${totalTrades} trades`}
+        />
       </div>
-
-      {/* ============== MONTHLY RETURNS ============== */}
-      <div className="rounded-xl bg-bg-surface border border-border p-4 md:p-5">
-        <h3 className="font-heading text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-brand-primary" />
-          Monthly Returns
-        </h3>
-        <div className="space-y-3">
-          {getMonthlyReturns(user?.id ?? '')}
-        </div>
-      </div>
-
-      {/* ============== TOP HOLDINGS ============== */}
-      {(() => {
-        const topHoldings = getTopHoldings(positions, quotes, getLiveKeyForPosition);
-        return topHoldings.length > 0 && (
-          <div className="rounded-xl bg-bg-surface border border-border p-4 md:p-5">
-            <h3 className="font-heading text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-accent-gold" />
-              Top Holdings
-            </h3>
-            <div className="space-y-1">
-              {topHoldings.map((h, idx) => {
-                const positive = h.pnl >= 0;
-                return (
-                  <a
-                    key={h.pos.id}
-                    href={`/stock/${h.pos.symbol}`}
-                    className="flex items-center gap-3 rounded-lg p-2 hover:bg-bg-surface-alt transition-colors"
-                  >
-                    <span className="text-xs font-bold text-text-tertiary w-5 text-center shrink-0">{idx + 1}</span>
-                    <StockLogo symbol={h.pos.symbol} size="sm" rounded="md" />
-                    <div className="min-w-0 flex-1">
-                      <p className="font-mono text-sm font-semibold text-text-primary truncate">{h.pos.symbol}</p>
-                      <p className="text-[10px] text-text-secondary">{h.pos.quantity} qty</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-mono text-sm font-semibold text-text-primary tabular-nums">₹{formatNumber(h.value, 0)}</p>
-                      <p className={cn('font-mono text-[10px] font-semibold tabular-nums', positive ? 'text-profit-green' : 'text-loss-red')}>
-                        {positive ? '+' : ''}{h.pnlPct.toFixed(2)}%
-                      </p>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* ============== TABS ============== */}
       <div className="card-soft p-1 flex gap-1 overflow-x-auto">
@@ -570,9 +449,9 @@ export function PortfolioPage() {
       {/* ============== ANALYTICS TAB ============== */}
       {activeTab === 'analytics' && (
         <div className="space-y-4">
-          {/* Sector allocation - Donut */}
-          <div className="rounded-xl bg-bg-surface border border-border p-4 md:p-5">
-            <h3 className="font-heading text-sm font-semibold text-text-primary mb-4 flex items-center gap-2">
+          {/* Sector allocation */}
+          <div className="card-soft p-4">
+            <h3 className="font-heading text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
               <PieChart className="h-4 w-4 text-brand-primary" />
               Sector Allocation
             </h3>
@@ -581,51 +460,29 @@ export function PortfolioPage() {
                 Open positions to see your sector exposure breakdown.
               </p>
             ) : (
-              <div className="flex flex-col sm:flex-row items-center gap-5">
-                {/* Donut SVG */}
-                <div className="relative h-36 w-36 shrink-0">
-                  <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
-                    {(() => {
-                      let offset = 0;
-                      const circumference = 2 * Math.PI * 38;
-                      return sectorAlloc.map((s, i) => {
-                        const dashLen = (s.pct / 100) * circumference;
-                        const dashOffset = -offset;
-                        offset += dashLen;
-                        return (
-                          <circle
-                            key={s.sector}
-                            cx="50" cy="50" r="38" fill="none"
-                            stroke={SECTOR_SOLID_COLORS[i % SECTOR_SOLID_COLORS.length]}
-                            strokeWidth="12"
-                            strokeDasharray={`${dashLen} ${circumference - dashLen}`}
-                            strokeDashoffset={dashOffset}
-                            strokeLinecap="butt"
-                          />
-                        );
-                      });
-                    })()}
-                  </svg>
-                  {/* Center text */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="font-mono text-sm font-bold text-text-primary">{sectorAlloc[0]?.pct.toFixed(1)}%</span>
-                    <span className="text-[9px] text-text-tertiary leading-tight text-center max-w-[60px] truncate">{sectorAlloc[0]?.sector}</span>
-                  </div>
+              <>
+                {/* Stacked bar */}
+                <div className="h-3 w-full rounded-full overflow-hidden bg-bg-surface-alt flex">
+                  {sectorAlloc.map((s, i) => (
+                    <div
+                      key={s.sector}
+                      className={cn('h-full transition-all', s.color)}
+                      style={{ width: `${s.pct}%` }}
+                      title={`${s.sector}: ${s.pct.toFixed(1)}%`}
+                    />
+                  ))}
                 </div>
                 {/* Legend */}
-                <div className="flex-1 w-full space-y-2">
-                  {sectorAlloc.map((s, i) => (
-                    <div key={s.sector} className="flex items-center gap-2.5 text-xs">
-                      <span
-                        className="h-3 w-3 rounded-sm shrink-0"
-                        style={{ backgroundColor: SECTOR_SOLID_COLORS[i % SECTOR_SOLID_COLORS.length] }}
-                      />
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
+                  {sectorAlloc.map((s) => (
+                    <div key={s.sector} className="flex items-center gap-2 text-xs">
+                      <span className={cn('h-2.5 w-2.5 rounded-sm shrink-0', s.color)} />
                       <span className="text-text-secondary truncate flex-1">{s.sector}</span>
                       <span className="font-mono font-semibold text-text-primary tabular-nums">{s.pct.toFixed(1)}%</span>
                     </div>
                   ))}
                 </div>
-              </div>
+              </>
             )}
           </div>
 
@@ -841,6 +698,35 @@ export function PortfolioPage() {
 }
 
 // ---------- Sub-components ----------
+
+function MetricCard({
+  icon: Icon,
+  iconBg,
+  iconColor,
+  label,
+  value,
+  subtext,
+}: {
+  icon: React.ElementType;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  value: React.ReactNode;
+  subtext?: string;
+}) {
+  return (
+    <div className="card-soft p-4">
+      <div className="flex items-start justify-between">
+        <p className="text-[12px] font-medium text-text-secondary">{label}</p>
+        <div className={cn('icon-tile', iconBg)}>
+          <Icon className={cn('h-[18px] w-[18px]', iconColor)} />
+        </div>
+      </div>
+      <p className="mt-2 font-mono text-xl font-bold tabular-nums text-text-primary">{value}</p>
+      {subtext && <p className="mt-0.5 text-[11px] text-text-tertiary">{subtext}</p>}
+    </div>
+  );
+}
 
 function PnlBlock({
   label,

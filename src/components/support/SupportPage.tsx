@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { cn } from '@/lib/utils';
 import {
-  Plus, Send, MessageSquare, Headphones, Sparkles,
-  ChevronRight, Mail, FileText,
-  Filter, Loader2, X, ChevronDown,
+  HelpCircle, Plus, Send, MessageSquare, Headphones, Sparkles,
+  Ticket as TicketIcon, ChevronRight, Mail, FileText,
+  Search, Filter, Loader2, X,
 } from 'lucide-react';
 import type { SupportTicket } from '@/types';
 
@@ -17,14 +17,6 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'OPEN', label: 'Open' },
   { key: 'IN_PROGRESS', label: 'In Progress' },
   { key: 'RESOLVED', label: 'Closed' },
-];
-
-const FAQS = [
-  { q: 'How do I place a trade?', a: 'Go to the Trade page, select your stock/index, choose BUY or SELL, set quantity, and click Place Order. All trades use virtual capital.' },
-  { q: 'Is this real money?', a: 'No, Pepertect is a paper trading platform. All trades use virtual capital (\u20B91,00,000 for free accounts). No real money is involved.' },
-  { q: 'How are market prices updated?', a: 'We use real-time data from NSE via Upstox API. Prices stream live during market hours (9:15 AM - 3:30 PM IST).' },
-  { q: 'What is Option Chain?', a: 'Option Chain shows all available call and put options for an index with their prices, Open Interest, and Greeks (Delta, Gamma, Theta, Vega).' },
-  { q: 'How do I reset my portfolio?', a: 'Go to Profile \u2192 Danger Zone \u2192 Reset Portfolio. This will close all positions and reset your balance to \u20B91,00,000.' },
 ];
 
 export function SupportPage() {
@@ -41,10 +33,6 @@ export function SupportPage() {
   const [newDescription, setNewDescription] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-
-  /* FAQ accordion */
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const toggleFaq = (i: number) => setOpenFaq(openFaq === i ? null : i);
 
   const fetchTickets = async () => {
     if (!token) return;
@@ -128,50 +116,38 @@ export function SupportPage() {
   const filteredTickets = statusFilter === 'ALL' ? tickets : tickets.filter((t) => t.status === statusFilter);
 
   return (
-    <div className="space-y-4 page-enter">
+    <div className="space-y-4">
       {/* ============== HERO CARD ============== */}
-      <div className="card-soft p-5 relative overflow-hidden bg-gradient-to-br from-brand-primary/10 to-transparent">
+      <div className="card-soft hero-support p-5 relative overflow-hidden">
+        {/* Decorative chat bubble */}
+        <svg
+          className="absolute right-4 top-4 opacity-40 pointer-events-none"
+          width="80"
+          height="80"
+          viewBox="0 0 80 80"
+          fill="none"
+          aria-hidden
+        >
+          <path
+            d="M16 12 C 8 12 4 16 4 24 L 4 44 C 4 52 8 56 16 56 L 22 56 L 22 66 L 36 56 L 60 56 C 68 56 72 52 72 44 L 72 24 C 72 16 68 12 60 12 Z"
+            fill="#2563EB"
+            opacity="0.25"
+          />
+          <circle cx="22" cy="34" r="3" fill="#2563EB" opacity="0.6" />
+          <circle cx="36" cy="34" r="3" fill="#2563EB" opacity="0.6" />
+          <circle cx="50" cy="34" r="3" fill="#2563EB" opacity="0.6" />
+        </svg>
+
         <div className="relative">
           <div className="flex items-center gap-2">
             <div className="icon-tile bg-tint-blue-strong">
               <Headphones className="h-5 w-5 text-brand-primary" />
             </div>
-            <h2 className="font-heading text-lg md:text-xl font-bold text-text-primary">How can we help you?</h2>
+            <h2 className="font-heading text-xl font-bold text-text-primary">How can we help you?</h2>
           </div>
           <p className="mt-2 text-sm text-text-secondary max-w-[80%]">
             Browse our help center or create a support ticket. Our team is here to assist you with any questions.
           </p>
-          <div className="mt-3 flex items-center gap-2">
-            <span className="inline-flex items-center rounded-md bg-bg-surface-alt px-2.5 py-1 text-[11px] font-medium text-text-secondary">
-              Avg Response: 2 hours
-            </span>
-            <span className="inline-flex items-center rounded-md bg-bg-surface-alt px-2.5 py-1 text-[11px] font-medium text-text-secondary">
-              Resolved: 90%+
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ============== FAQ ACCORDION ============== */}
-      <div>
-        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Frequently Asked Questions</h3>
-        <div className="card-soft divide-y divide-border">
-          {FAQS.map((faq, i) => (
-            <div key={i} className="">
-              <button
-                onClick={() => toggleFaq(i)}
-                className="w-full flex items-center justify-between px-4 py-3 text-left"
-              >
-                <span className="text-sm font-medium text-text-primary">{faq.q}</span>
-                <ChevronDown className={cn('h-4 w-4 text-text-tertiary transition-transform', openFaq === i && 'rotate-180')} />
-              </button>
-              {openFaq === i && (
-                <div className="px-4 pb-3">
-                  <p className="text-sm text-text-secondary">{faq.a}</p>
-                </div>
-              )}
-            </div>
-          ))}
         </div>
       </div>
 
@@ -319,38 +295,30 @@ export function SupportPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                {filteredTickets.map((t) => {
-                  const lastMsg = t.messages?.[t.messages.length - 1];
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => setSelectedTicket(t.id)}
-                      className={cn(
-                        'w-full rounded-xl border p-3 text-left transition-colors',
-                        selectedTicket === t.id
-                          ? 'border-brand-primary bg-tint-blue'
-                          : 'border-border hover:bg-bg-surface-alt'
-                      )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-semibold text-text-primary truncate flex-1">{t.subject}</p>
-                        <span className={cn('pill shrink-0 ml-2', getStatusColor(t.status))}>
-                          {t.status === 'IN_PROGRESS' ? 'In Progress' : t.status.charAt(0) + t.status.slice(1).toLowerCase()}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-text-secondary mt-1">
-                        {new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        <span className="mx-1">·</span>
-                        {t.messages?.length || 0} messages
-                      </p>
-                      {lastMsg?.content && (
-                        <p className="text-[11px] text-text-tertiary mt-1 truncate">
-                          {lastMsg.senderType === 'USER' ? 'You: ' : ''}{lastMsg.content.slice(0, 50)}{lastMsg.content.length > 50 ? '...' : ''}
-                        </p>
-                      )}
-                    </button>
-                  );
-                })}
+                {filteredTickets.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setSelectedTicket(t.id)}
+                    className={cn(
+                      'w-full rounded-xl border p-3 text-left transition-colors',
+                      selectedTicket === t.id
+                        ? 'border-brand-primary bg-tint-blue'
+                        : 'border-border hover:bg-bg-surface-alt'
+                    )}
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold text-text-primary truncate flex-1">{t.subject}</p>
+                      <span className={cn('pill shrink-0 ml-2', getStatusColor(t.status))}>
+                        {t.status === 'IN_PROGRESS' ? 'In Progress' : t.status.charAt(0) + t.status.slice(1).toLowerCase()}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-text-secondary mt-1">
+                      {new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      <span className="mx-1">·</span>
+                      {t.messages?.length || 0} messages
+                    </p>
+                  </button>
+                ))}
               </div>
             )}
           </div>
@@ -435,6 +403,43 @@ export function SupportPage() {
             href="mailto:support@pepertect.com"
             last
           />
+        </div>
+      </div>
+
+      {/* ============== QUICK ACTIONS (3 main buttons) ============== */}
+      <div>
+        <h3 className="font-heading text-sm font-semibold text-text-primary px-1 mb-2">Need more help?</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button
+            onClick={() => setShowCreateForm(true)}
+            className="card-soft p-4 hover:shadow-md transition-shadow group text-left"
+          >
+            <div className="icon-tile bg-tint-blue mb-3">
+              <Plus className="h-5 w-5 text-brand-primary" />
+            </div>
+            <p className="font-semibold text-sm text-text-primary">Create a Ticket</p>
+            <p className="text-[11px] text-text-secondary mt-0.5">Open the inline ticket form above</p>
+          </button>
+          <a
+            href="/support/help-center"
+            className="card-soft p-4 hover:shadow-md transition-shadow group"
+          >
+            <div className="icon-tile bg-tint-purple mb-3">
+              <Sparkles className="h-5 w-5 text-info-purple" />
+            </div>
+            <p className="font-semibold text-sm text-text-primary">Help Center</p>
+            <p className="text-[11px] text-text-secondary mt-0.5">Browse FAQs &amp; guides</p>
+          </a>
+          <a
+            href="/support/live-chat"
+            className="card-soft p-4 hover:shadow-md transition-shadow group"
+          >
+            <div className="icon-tile bg-tint-green mb-3">
+              <MessageSquare className="h-5 w-5 text-profit-green" />
+            </div>
+            <p className="font-semibold text-sm text-text-primary">Live Chat</p>
+            <p className="text-[11px] text-text-secondary mt-0.5">Chat with our team instantly</p>
+          </a>
         </div>
       </div>
 

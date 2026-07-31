@@ -18,7 +18,6 @@ import {
   Plus,
   ChevronLeft,
   Maximize2,
-  Info,
 } from 'lucide-react';
 import type { Stock } from '@/types';
 import { StockLogo, isIndexSymbol } from '@/components/shared/StockLogo';
@@ -432,17 +431,17 @@ export function StockDetailPage() {
             </button>
           </div>
         </div>
-        {/* Time period pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+        {/* Time period tabs */}
+        <div className="flex items-center gap-1 border-b border-border overflow-x-auto no-scrollbar">
           {TIMEFRAMES.map((tf) => (
             <button
               key={tf}
               onClick={() => setTimeframe(tf)}
               className={cn(
-                'rounded-full px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap',
+                'px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors whitespace-nowrap',
                 timeframe === tf
-                  ? 'bg-brand-primary text-white font-semibold'
-                  : 'text-text-secondary hover:bg-bg-surface-alt'
+                  ? 'border-brand-primary text-brand-primary'
+                  : 'border-transparent text-text-secondary hover:text-text-primary'
               )}
             >
               {tf}
@@ -493,23 +492,23 @@ export function StockDetailPage() {
       {/* ============== FUNDAMENTALS ============== */}
       <div className="card-soft p-4">
         <h3 className="font-heading text-sm font-semibold text-text-primary mb-3">Fundamentals</h3>
-        <div className="flex items-center gap-1.5 mb-3">
-          <Info className="h-3.5 w-3.5 text-text-tertiary" />
-          <span className="text-[10px] text-text-tertiary">Simulated reference data for learning purposes</span>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-bg-surface-alt">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-tint-blue"><DollarSign className="h-4 w-4 text-brand-primary" /></div>
-            <div><p className="text-[10px] text-text-secondary">Market Cap</p><p className="text-sm font-semibold font-mono text-text-primary">₹{formatNumber(extra.mcap, 0)} Cr</p></div>
-          </div>
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-bg-surface-alt">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-tint-blue"><BarChart3 className="h-4 w-4 text-brand-primary" /></div>
-            <div><p className="text-[10px] text-text-secondary">P/E Ratio</p><p className="text-sm font-semibold font-mono text-text-primary">{extra.peRatio.toFixed(2)}</p></div>
-          </div>
-          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-bg-surface-alt">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-tint-blue"><TrendingUp className="h-4 w-4 text-brand-primary" /></div>
-            <div><p className="text-[10px] text-text-secondary">52W Range</p><p className="text-sm font-semibold font-mono text-text-primary">₹{formatNumber(extra.yearLow, 0)} — ₹{formatNumber(extra.yearHigh, 0)}</p></div>
-          </div>
+        <div className="grid grid-cols-3 gap-3">
+          <FundamentalCell
+            icon={DollarSign}
+            label="Market Cap"
+            value={`₹${formatNumber(extra.mcap, 0)} Cr`}
+          />
+          <FundamentalCell
+            icon={BarChart3}
+            label="P/E Ratio"
+            value={extra.peRatio.toFixed(2)}
+          />
+          <FundamentalCell
+            icon={TrendingUp}
+            label="52W Range"
+            value={`₹${formatNumber(extra.yearLow, 0)} — ₹${formatNumber(extra.yearHigh, 0)}`}
+            small
+          />
         </div>
 
         {/* 52W range slider */}
@@ -546,27 +545,20 @@ export function StockDetailPage() {
 
       {/* ============== SECONDARY BUY/SELL (sticky bottom on mobile) — hidden for indices ============== */}
       {!isIndex && (
-        <div className="md:hidden sticky bottom-0 z-10 mt-4 -mx-4 px-4 py-3 border-t border-border bg-bg-surface/95 backdrop-blur-md">
-          <div className="flex gap-3">
-            <a href={`/trade?symbol=${symbol}&side=BUY`} className="flex-1 h-12 rounded-xl bg-profit-green text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
-              <ArrowUp className="h-4 w-4" /> BUY
+        <div className="card-soft p-3 sticky bottom-[80px] z-10 md:static">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-text-secondary hidden sm:inline">Depth</span>
+            <a href={`/trade?symbol=${stock.symbol}`} className="flex-1">
+              <button className="w-full h-11 rounded-lg bg-profit-green text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-profit-green/90">
+                <ArrowUp className="h-4 w-4" />
+                BUY
+              </button>
             </a>
-            <a href={`/trade?symbol=${symbol}&side=SELL`} className="flex-1 h-12 rounded-xl bg-loss-red text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
-              <ArrowDown className="h-4 w-4" /> SELL
-            </a>
-          </div>
-        </div>
-      )}
-
-      {/* Desktop non-sticky trade bar */}
-      {!isIndex && (
-        <div className="hidden md:block mt-4">
-          <div className="flex gap-3">
-            <a href={`/trade?symbol=${symbol}&side=BUY`} className="flex-1 h-12 rounded-xl bg-profit-green text-white font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
-              <ArrowUp className="h-4 w-4" /> BUY
-            </a>
-            <a href={`/trade?symbol=${symbol}&side=SELL`} className="flex-1 h-12 rounded-xl bg-loss-red text-white font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
-              <ArrowDown className="h-4 w-4" /> SELL
+            <a href={`/trade?symbol=${stock.symbol}&side=SELL`} className="flex-1">
+              <button className="w-full h-11 rounded-lg bg-loss-red text-white font-bold uppercase text-sm flex items-center justify-center gap-1.5 hover:bg-loss-red/90">
+                <ArrowDown className="h-4 w-4" />
+                SELL
+              </button>
             </a>
           </div>
         </div>
@@ -576,18 +568,7 @@ export function StockDetailPage() {
       {isIndex && optionChainSymbol && (
         <a
           href={`/optionchain?symbol=${optionChainSymbol}`}
-          className="md:hidden sticky bottom-0 z-10 mt-4 -mx-4 px-4 py-3 border-t border-border bg-bg-surface/95 backdrop-blur-md flex items-center justify-center gap-2 bg-brand-primary text-white font-bold text-sm"
-        >
-          <ListTree className="h-4 w-4" />
-          View {stock.symbol} Option Chain
-        </a>
-      )}
-
-      {/* Desktop non-sticky option chain CTA */}
-      {isIndex && optionChainSymbol && (
-        <a
-          href={`/optionchain?symbol=${optionChainSymbol}`}
-          className="hidden md:block mt-4 card-soft p-3 flex items-center justify-center gap-2 bg-brand-primary text-white font-bold text-sm hover:bg-brand-primary/90"
+          className="card-soft p-3 sticky bottom-[80px] z-10 md:static flex items-center justify-center gap-2 bg-brand-primary text-white font-bold text-sm hover:bg-brand-primary/90"
         >
           <ListTree className="h-4 w-4" />
           View {stock.symbol} Option Chain

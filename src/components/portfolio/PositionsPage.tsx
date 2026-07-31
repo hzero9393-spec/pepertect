@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useAuthStore } from '@/stores/useAuthStore';
 import { Button } from '@/components/ui/button';
 import { formatNumber, formatINR, getPnlColor, cn } from '@/lib/utils';
-import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap, ChevronDown, History, Target, Edit3, Activity, Wallet, CheckCircle } from 'lucide-react';
+import { Briefcase, XCircle, Layers, TrendingUp, AlertTriangle, Loader2, CalendarDays, Shield, Crosshair, Zap, ChevronDown, History, Target, Edit3 } from 'lucide-react';
 import React from 'react';
 import type { Position, Trade, Order } from '@/types';
 import { StockLogo } from '@/components/shared/StockLogo';
@@ -49,7 +49,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
   const [activeTab, setActiveTab] = useState<'stock' | 'index'>(initialTab);
-  const [activeFilter, setActiveFilter] = useState('All');
   const [exitingAll, setExitingAll] = useState(false);
   const [confirmExitAll, setConfirmExitAll] = useState(false);
   /* ---------- Live quotes via WebSocket ---------- */
@@ -440,23 +439,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
   const indexPositions = positions.filter((p) => isIndexPosition(p));
   const filteredPositions = activeTab === 'stock' ? stockPositions : indexPositions;
 
-  /* ---------- Filter positions by active filter pill ---------- */
-  const displayPositions = activeFilter === 'All'
-    ? filteredPositions
-    : filteredPositions.filter(pos => {
-        if (activeFilter === 'Expiring Today') {
-          return pos.expiry ? isToday(pos.expiry) : false;
-        }
-        const key = getLiveKeyForPosition(pos);
-        const tick = key ? quotes[key] : undefined;
-        const liveLtp = tick?.ltp ?? pos.avgPrice;
-        const dirMult = pos.side === 'LONG' ? 1 : -1;
-        const pnl = (liveLtp - pos.avgPrice) * pos.quantity * dirMult;
-        if (activeFilter === 'Profitable') return pnl > 0;
-        if (activeFilter === 'Loss-making') return pnl < 0;
-        return true;
-      });
-
   /* ---------- Live LTP per position (from WebSocket) ----------
    * Build a map of { positionId: liveLtp } using the same key-resolution
    * logic as getLiveKeyForPosition. This is used to compute REAL-TIME
@@ -581,46 +563,19 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
     return trades.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
   }, [trades]);
 
-  /* ---------- Combined stats for summary header (both stock + index) ---------- */
-  let combinedUnrealizedPnl = 0;
-  try {
-    for (const p of positions) {
-      const key = getLiveKeyForPosition(p);
-      const tick = key ? quotes[key] : undefined;
-      const liveLtp = tick?.ltp ?? p.avgPrice;
-      combinedUnrealizedPnl += (liveLtp - p.avgPrice) * p.quantity * (p.side === 'LONG' ? 1 : -1);
-    }
-  } catch (e) { /* ignore */ }
-  const combinedMarginUsed = positions.reduce((sum, p) => sum + p.investedAmt, 0);
-
   // Filtered trades for current tab (Stock or Index)
   const tabTrades = useMemo(() => {
     return trades.filter((t) => (activeTab === 'index' ? isIndexPosition(t) : !isIndexPosition(t)));
   }, [trades, activeTab]);
 
-  /* ---------- Recent closed trades (today) for closed trades section ---------- */
-  const recentClosedTrades = tabTrades.filter(t => isToday(t.createdAt) && Number(t.pnl) !== 0);
-
   return (
-    <div className="page-enter space-y-3">
+    <div className="space-y-3">
       {/* Upstox reconnect banner (shown when token is expired) */}
       <UpstoxReconnectBanner status={wsStatus} />
 
       {/* ============== LOADING SKELETON ============== */}
       {loading ? (
         <div className="space-y-3 animate-in fade-in duration-200">
-          {/* Summary stats skeleton */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="rounded-xl bg-bg-surface border border-border p-3 md:p-4 space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="h-9 w-9 rounded-lg bg-bg-surface-alt animate-pulse" />
-                  <div className="h-2 w-16 rounded bg-bg-surface-alt animate-pulse" />
-                </div>
-                <div className="h-5 w-24 rounded bg-bg-surface-alt animate-pulse" />
-              </div>
-            ))}
-          </div>
           {/* Tab skeleton */}
           <div className="flex items-center gap-1 border-b border-border pb-0">
             {Array.from({ length: 2 }).map((_, i) => (
@@ -669,58 +624,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         </div>
       ) : (
         <>
-      {/* ============== SUMMARY STATS HEADER ============== */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
-        {/* Total P&L */}
-        <div className="rounded-xl bg-bg-surface border border-border p-3 md:p-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-tint-blue">
-              <TrendingUp className="h-4 w-4 text-brand-primary" />
-            </div>
-            <span className="text-[10px] md:text-xs text-text-secondary">Total P&L</span>
-          </div>
-          <p className={`mt-2 text-base md:text-lg font-bold font-mono tabular-nums ${getPnlColor(combinedUnrealizedPnl)}`}>
-            {combinedUnrealizedPnl >= 0 ? '+' : '−'}{formatINR(Math.abs(combinedUnrealizedPnl))}
-          </p>
-        </div>
-        {/* Today's P&L */}
-        <div className="rounded-xl bg-bg-surface border border-border p-3 md:p-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-tint-green">
-              <Activity className="h-4 w-4 text-profit-green" />
-            </div>
-            <span className="text-[10px] md:text-xs text-text-secondary">Today's P&L</span>
-          </div>
-          <p className={`mt-2 text-base md:text-lg font-bold font-mono tabular-nums ${getPnlColor(combinedTodayStats.total)}`}>
-            {combinedTodayStats.total >= 0 ? '+' : '−'}{formatINR(Math.abs(combinedTodayStats.total))}
-          </p>
-        </div>
-        {/* Open Positions */}
-        <div className="rounded-xl bg-bg-surface border border-border p-3 md:p-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-tint-purple">
-              <Briefcase className="h-4 w-4 text-info-purple" />
-            </div>
-            <span className="text-[10px] md:text-xs text-text-secondary">Open Positions</span>
-          </div>
-          <p className="mt-2 text-base md:text-lg font-bold font-mono text-text-primary">
-            {positions.length}
-          </p>
-        </div>
-        {/* Margin Used */}
-        <div className="rounded-xl bg-bg-surface border border-border p-3 md:p-4">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-tint-yellow">
-              <Wallet className="h-4 w-4 text-accent-gold" />
-            </div>
-            <span className="text-[10px] md:text-xs text-text-secondary">Margin Used</span>
-          </div>
-          <p className="mt-2 text-base md:text-lg font-bold font-mono text-text-primary">
-            ₹{formatINR(combinedMarginUsed)}
-          </p>
-        </div>
-      </div>
-
       {/* ============== TAB SWITCHER: Stock | Index ============== */}
       <div className="flex items-center gap-1 border-b border-border">
         <button
@@ -942,16 +845,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
         <PendingLimitPositions orders={ordersData} quotes={quotes} token={token} />
       )}
 
-      {/* ============== FILTER PILLS ============== */}
-      <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1">
-        {['All', 'Profitable', 'Loss-making', 'Expiring Today'].map((f) => (
-          <button key={f} onClick={() => setActiveFilter(f)} className={cn(
-            'shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
-            activeFilter === f ? 'bg-brand-primary text-white' : 'bg-bg-surface-alt text-text-secondary hover:bg-border'
-          )}>{f}</button>
-        ))}
-      </div>
-
       {/* ============== POSITIONS ============== */}
       <div className="card-soft p-3 sm:p-4">
         <div className="flex items-center justify-between mb-3">
@@ -966,40 +859,22 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
               {activeTab === 'stock' ? 'Stock Positions' : 'Index Positions'}
             </h3>
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
-              {displayPositions.length}
+              {filteredPositions.length}
             </span>
           </div>
         </div>
         {loading ? (
           <div className="space-y-3">{Array.from({ length: 3 }).map((_, i) => <div key={i} className="h-16 animate-pulse rounded-lg bg-bg-surface-alt" />)}</div>
-        ) : positions.length === 0 ? (
-          /* Professional empty state — NO positions at all (neither stock nor index) */
-          <div className="flex flex-col items-center py-8 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-tint-blue mb-3">
-              <Briefcase className="h-7 w-7 text-brand-primary" />
-            </div>
-            <p className="font-heading text-base font-semibold text-text-primary">
-              No Open Positions
-            </p>
-            <p className="text-xs text-text-secondary mt-1">
-              Place your first trade to see positions here
-            </p>
-            <a href="/trade" className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-brand-primary px-4 py-2 text-xs font-bold text-white hover:bg-brand-primary-hover transition-colors">
-              <Zap className="h-3.5 w-3.5" />
-              Start Trading
-            </a>
-          </div>
-        ) : displayPositions.length === 0 ? (
-          /* Filtered empty state — positions exist but filter matches none */
+        ) : filteredPositions.length === 0 ? (
           <div className="flex flex-col items-center py-6 text-center">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-bg-surface-alt mb-2">
               {activeTab === 'stock' ? <TrendingUp className="h-5 w-5 text-text-tertiary" /> : <Layers className="h-5 w-5 text-text-tertiary" />}
             </div>
             <p className="text-sm font-medium text-text-primary">
-              No {activeFilter.toLowerCase()} {activeTab === 'stock' ? 'stock' : 'index'} positions
+              {activeTab === 'stock' ? 'No stock positions' : 'No index positions'}
             </p>
             <p className="text-xs text-text-secondary mt-0.5">
-              Try a different filter to see more positions
+              {activeTab === 'stock' ? 'Place an equity order to see positions here' : 'Place an F&O order to see positions here'}
             </p>
           </div>
         ) : (
@@ -1010,7 +885,7 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
                   Resolving live option-strike instrument keys…
                 </div>
               )}
-              {displayPositions.map((pos) => {
+              {filteredPositions.map((pos) => {
                 /* Look up live LTP from WebSocket quotes.
                  * For OPTIONS positions we use the resolved strike instrument_key
                  * (e.g. NSE_FO|63811) — NOT the underlying index spot price.
@@ -1036,13 +911,8 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
                 const tgtDist = pos.target ? Math.abs(pos.target - liveLtp) / liveLtp * 100 : null;
                 const slNear = slDist != null && slDist < 1.5;
                 const tgtNear = tgtDist != null && tgtDist < 1.5;
-                const daysHeld = Math.max(0, Math.floor((Date.now() - new Date(pos.openedAt).getTime()) / (1000 * 60 * 60 * 24)));
                 return (
-                <div key={pos.id} className={cn(
-                  'rounded-lg border bg-bg-base p-3 sm:p-4 transition-all duration-200 hover:shadow-md hover:shadow-black/5 border-l-[4px]',
-                  livePnl >= 0 ? 'border-l-profit-green' : 'border-l-loss-red',
-                  slNear ? 'border-loss-red/50' : tgtNear ? 'border-profit-green/50' : 'border-border-default'
-                )}>
+                <div key={pos.id} className={cn('rounded-lg border bg-bg-base p-3 sm:p-4 transition-colors', slNear ? 'border-loss-red/50' : tgtNear ? 'border-profit-green/50' : 'border-border-default')}>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-start gap-3 min-w-0">
                       <StockLogo symbol={pos.symbol} size="md" rounded="md" />
@@ -1066,7 +936,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
                               LIVE
                             </span>
                           )}
-                          <span className="text-[10px] text-text-tertiary">{daysHeld}d held</span>
                         </div>
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-text-secondary">
                           <span>{pos.side} · {pos.quantity} qty</span>
@@ -1124,12 +993,14 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
                           <span className="hidden sm:inline">{pos.stopLoss || pos.target ? 'Edit' : 'Set'} SL/TGT</span>
                           <span className="sm:hidden">{pos.stopLoss || pos.target ? 'Edit' : 'Set'}</span>
                         </button>
-                        <button
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-loss-red border-loss-red/30 hover:bg-loss-red/10 h-9"
                           onClick={() => handleSquareOff(pos.id)}
-                          className="flex items-center gap-1 rounded-lg bg-loss-red/10 text-loss-red hover:bg-loss-red hover:text-white px-3 py-1.5 text-xs font-semibold transition-all active:scale-95"
                         >
-                          <XCircle className="h-3.5 w-3.5" /> Exit
-                        </button>
+                          <XCircle className="mr-1 h-3 w-3" /> Exit
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -1139,48 +1010,6 @@ export function PositionsPage({ initialTab = 'stock' }: { initialTab?: 'stock' |
             </div>
           )}
       </div>
-
-      {/* ============== TODAY'S CLOSED TRADES ============== */}
-      {recentClosedTrades.length > 0 && (
-        <div className="card-soft p-3 sm:p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-tint-green">
-              <CheckCircle className="h-3.5 w-3.5 text-profit-green" />
-            </div>
-            <h3 className="font-heading text-sm font-semibold text-text-primary">Today's Closed Trades</h3>
-            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-bg-surface-alt px-1 text-[10px] font-bold text-text-secondary">
-              {recentClosedTrades.length}
-            </span>
-          </div>
-          <p className="text-[10px] font-semibold text-text-tertiary uppercase tracking-wider mb-2">Today</p>
-          <div className="space-y-2">
-            {recentClosedTrades.map(trade => {
-              const tradePnl = Number(trade.pnl) || 0;
-              const isProfit = tradePnl > 0;
-              return (
-                <div key={trade.id} className={cn(
-                  'rounded-lg border border-border-default border-l-[4px] bg-bg-base p-3',
-                  isProfit ? 'border-l-profit-green' : 'border-l-loss-red'
-                )}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {isProfit
-                        ? <CheckCircle className="h-4 w-4 text-profit-green shrink-0" />
-                        : <XCircle className="h-4 w-4 text-loss-red shrink-0" />
-                      }
-                      <span className="font-mono text-sm font-semibold text-text-primary truncate">{trade.symbol}</span>
-                      <span className="text-[10px] text-text-secondary shrink-0">{trade.side} · {trade.quantity} qty</span>
-                    </div>
-                    <span className={cn('font-mono text-sm font-bold tabular-nums shrink-0', getPnlColor(tradePnl))}>
-                      {tradePnl >= 0 ? '+' : ''}₹{formatNumber(tradePnl)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* ============== START TRADING CTA (bottom) ============== */}
       <a href="/trade" className="block">
